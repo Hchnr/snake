@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>贪吃蛇 · 开发预览</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body { background: #101c17; color: #b2c8b6; font: 14px system-ui, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    main { text-align: center; padding: 12px; }
+    .device { width: min(390px, calc(100vw - 24px), calc((100vh - 70px) * 390 / 844)); aspect-ratio: 390 / 844; overflow: hidden; border: 1px solid #354a3c; border-radius: 18px; box-shadow: 0 24px 80px #0008; }
+    canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+    p { margin: 10px 0 0; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="device"><canvas id="game" aria-label="贪吃蛇游戏画布"></canvas></div>
+    <p id="preview-hint">开发预览 · 支持方向键 / WASD、空格和触摸</p>
+  </main>
+  <script src="bundle.js"></script>
+</body>
+</html>
