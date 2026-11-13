@@ -1,0 +1,12 @@
+{
+  "name": "snake-club-minigame",
+  "version": "0.0.1",
+  "private": true,
+  "description": "抖音和微信双平台贪吃蛇小游戏",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "build": "node scripts/build.js",
+    "preview": "node scripts/preview.js"
+  }
+}
