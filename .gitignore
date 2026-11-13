@@ -1,0 +1,18 @@
+# Generated output and dependencies
+dist/
+node_modules/
+coverage/
+
+# Local editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Platform IDE local configuration
+project.private.config.json
+project.private.*.json
+*.local.json
+.env
+.env.*
+!.env.example
