@@ -214,6 +214,10 @@ class GameApp {
       ctx.beginPath(); ctx.fillStyle = '#ffba73'; ctx.arc(fx, fy, cell * 0.34, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.fillStyle = '#f4e2ab'; ctx.arc(fx - cell * 0.10, fy - cell * 0.10, cell * 0.08, 0, Math.PI * 2); ctx.fill();
     }
+    this.game.bots.forEach((bot, index) => {
+      const colors = ['#f28f83', '#86b9ef', '#d5a3ef'];
+      bot.snake.slice().reverse().forEach(part => rounded(ctx, x + part.x * cell + 1, y + part.y * cell + 1, cell - 2, cell - 2, cell * 0.31, colors[index % colors.length]));
+    });
     this.game.snake.slice().reverse().forEach((part, reverseIndex) => {
       const isHead = reverseIndex === this.game.snake.length - 1;
       const unlocked = this.platform.sidebarState && this.platform.sidebarState().rewardClaimed;
@@ -248,7 +252,7 @@ class GameApp {
       rounded(ctx, HIT.sidebar.x, HIT.sidebar.y, HIT.sidebar.w, HIT.sidebar.h, 11, '#385340');
       text(ctx, claimed ? '✦  侧边栏福利 · 薄荷配色已解锁' : '✦  侧边栏福利 · 解锁薄荷配色', 195, 728, 12, '#d9f4bd', 'center', 'bold');
     }
-    text(ctx, '吃掉果实，刷新纪录', 24, 771, 11, '#809b8d');
+    text(ctx, '让对手撞上你的身体', 24, 771, 11, '#809b8d');
     rounded(ctx, HIT.share.x, HIT.share.y, HIT.share.w, HIT.share.h, 13, '#263b32');
     text(ctx, '↗  分享游戏', HIT.share.x + HIT.share.w / 2, HIT.share.y + 19, 12, '#d4e5ce', 'center', 'bold');
   }
@@ -259,7 +263,7 @@ class GameApp {
     ctx.fillRect(DESIGN.boardX, DESIGN.boardY, DESIGN.boardSize, DESIGN.boardSize);
     rounded(ctx, 54, 274, 282, 170, 22, '#f0f6e4');
     const title = { ready: '准备出发？', paused: '先休息一下', gameover: '游戏结束', won: '太棒了！' }[status];
-    const hint = { ready: '吃果实，别撞到自己哦', paused: '准备好了就继续吧', gameover: `本次得分 ${this.game.score} · 最佳 ${this.game.best}`, won: `棋盘已填满 · 得分 ${this.game.score}` }[status];
+    const hint = { ready: '吃果实长大，让对手撞上你', paused: '准备好了就继续吧', gameover: `本次得分 ${this.game.score} · 最佳 ${this.game.best}`, won: `棋盘已填满 · 得分 ${this.game.score}` }[status];
     const button = { ready: '开始游戏', paused: '继续游戏', gameover: '再玩一次', won: '再玩一次' }[status];
     text(ctx, title, 195, 309, 22, '#1b3022', 'center', 'bold');
     text(ctx, hint, 195, 340, 12, '#728373', 'center');
