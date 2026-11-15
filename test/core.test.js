@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const { SnakeGame } = require('../src/core');
 
 function makeGame(options = {}) {
-  const game = new SnakeGame({ random: () => 0, ...options });
+  const game = new SnakeGame({ random: () => 0, botCount: 0, ...options });
   game.start();
   return game;
 }
@@ -97,4 +97,40 @@ test('invalid or unavailable storage does not stop the game', () => {
   assert.doesNotThrow(() => game.step());
   assert.equal(game.best, 1);
   assert.equal(new SnakeGame({ store: { readBest: () => 'not-a-number' } }).best, 0);
+});
+
+test('computer snake hitting the player body awards points and growth, then respawns safely', () => {
+  const game = makeGame({ botCount: 0 });
+  game.botCount = 1;
+  game.snake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }, { x: 2, y: 5 }];
+  game.direction = 'right';
+  game.bots = [{ snake: [{ x: 4, y: 4 }, { x: 4, y: 3 }, { x: 4, y: 2 }], direction: 'down' }];
+  game.botDirection = () => 'down';
+  game.food = { x: 10, y: 10 };
+  game.step();
+  assert.equal(game.status, 'running');
+  assert.equal(game.score, 3);
+  assert.equal(game.pendingGrowth, 3);
+  assert.equal(game.bots.length, 1);
+  assert.ok(game.bots[0].snake.every(p => !game.snake.some(q => p.x === q.x && p.y === q.y)));
+  game.step();
+  assert.equal(game.snake.length, 5);
+  assert.equal(game.pendingGrowth, 2);
+});
+
+test('simultaneous head collision ends the player game', () => {
+  const game = makeGame();
+  game.snake = [{ x: 5, y: 5 }, { x: 4, y: 5 }, { x: 3, y: 5 }];
+  game.direction = 'right';
+  game.bots = [{ snake: [{ x: 7, y: 5 }, { x: 8, y: 5 }, { x: 9, y: 5 }], direction: 'left' }];
+  game.botDirection = () => 'left';
+  game.step();
+  assert.equal(game.status, 'gameover');
+});
+
+test('food and newly spawned snakes never overlap existing snakes', () => {
+  const game = new SnakeGame({ random: () => 0 });
+  const cells = [game.snake, ...game.bots.map(bot => bot.snake)].flat();
+  assert.equal(new Set(cells.map(p => `${p.x},${p.y}`)).size, cells.length);
+  assert.ok(!cells.some(p => p.x === game.food.x && p.y === game.food.y));
 });
