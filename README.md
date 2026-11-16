@@ -16,15 +16,15 @@ v0.0.3.2 正在开发中，首发以抖音小游戏为目标，浏览器 WebGL �
 
 ## 验证状态与未完成项
 
-本机自动化覆盖竞技规则、成长、新旧每日挑战回放与分榜、探洞、旧数据迁移、SQLite 并发结算和重启恢复；Unity 编辑器检查资源导入，并在隔离场景运行角色动画及首页、装扮、结算按钮的指针命中和页面切换。普通 WebGL 与桌面构建只用于本地验证。本次尚未生成 Unity 版抖音小游戏包，也未进行该版本的抖音模拟器、手机真机和平台接口测试；玩法手感、视觉质量与设备性能仍需真实试玩评审。
+本机自动化覆盖竞技规则、成长、新旧每日挑战回放与分榜、探洞、旧数据迁移、SQLite 并发结算和重启恢复；Unity 编辑器检查资源导入，并在隔离场景运行角色动画及首页、装扮、结算按钮的指针命中和页面切换。已生成 Unity 版抖音离线预览包，需求方确认手机抖音扫码可以进入并看到内部参考皮肤；完整玩法、不同设备性能和平台接口仍待真机验证。
 
 服务默认使用单进程 JSON 开发存储，也可显式启用 SQLite 事务存储，适合本机和单节点试用。正式公开榜和账号系统还需要生产数据库与运维方案、HTTPS、域名配置、监控、备份恢复、异常治理、负载及多平台确定性验证；回放能核对规则和分数，不能单独证明由真人操作。匿名账号与正式账号同时已有不同存档时，自动合并冲突尚未实现。
 
-抖音账号登录、分享和激励视频已有按官方接口编写的条件编译适配代码，但 TTSDK 尚未安装，当前 Unity 版本兼容性、分享链路、广告位及服务端可验证回调均须在实际环境确认；广告默认不会发奖。现有角色、玩法和动效仍属可运行原型：角色专属完整动作、首领和探洞演出的品质评审、玩家对照试玩、抖音真机性能与正式授权等尚未完成，不能宣称 v0.0.3.2 计划已全部验收。
+抖音账号登录、分享和激励视频已有按官方接口编写的条件编译适配代码，但当前扫码预览仅为离线练习；分享链路、广告位及服务端可验证回调均须在实际环境确认，广告默认不会发奖。现有角色、玩法和动效仍属可运行原型：角色专属完整动作、首领和探洞演出的品质评审、玩家对照试玩、抖音真机性能与正式授权等尚未完成，不能宣称 v0.0.3.2 计划已全部验收。
 
 ## 本地开发环境
 
-需要 Node.js 22+、.NET 10 SDK，以及 Unity `6000.0.85f2` 和 WebGL Build Support。Apple Silicon Mac 的 Unity Editor 还需要 Rosetta 2；首次运行由使用者处理账号、许可证及相关条款。Unity 与抖音转换器的兼容性尚未实测。
+需要 Node.js 22+、.NET 10 SDK，以及 Unity `6000.0.85f2` 和 WebGL Build Support。Apple Silicon Mac 的 Unity Editor 还需要 Rosetta 2；首次运行由使用者处理账号、许可证及相关条款。当前 Unity 与 TTSDK 的组合已生成一次可打开的抖音预览包，尚未完成广泛兼容性验证。
 
 ```sh
 # 竞技与成长规则、房间通信、服务端账号/回放/探洞/排行
@@ -90,7 +90,13 @@ SNAKE_PREVIEW_ROOT=dist/my-webgl npm run preview:unity
 
 本机这次测试另生成了 `dist/unity-v0.0.3-mac/Snake Club.app`，不覆盖旧版构建。桌面大厅可按回车开始普通对局，按 D 开始每日挑战；对局中使用 WASD 或方向键转向、空格加速。测试产物不纳入版本管理。
 
-BGDT 已导入本机工程；使用[抖音官方指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/install-sdk)安装 TTSDK 后，才可在 WebGL 构建的 Scripting Define Symbols 中启用 `SNAKE_DOUYIN_TTSDK`。需要平台登录/分享/广告配置时应以当前官方接口和实际安装的 SDK 为准，再通过官方工具转换，并在抖音开发者工具与手机上验证。普通 WebGL 构建或旧版 `dist/douyin` 都不是本 Unity 版本的抖音发布包。
+使用[抖音官方指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/install-sdk)在本机安装 BGDT 和 TTSDK；这些工具不提交到仓库。TTSDK 6.9.7 已用于生成本机抖音预览包。以下命令会在隔离副本中构建**离线练习**，不上传或提交审核，输出目录必须尚不存在：
+
+```sh
+python3 scripts/build-douyin-preview.py --appid '你的小游戏AppID' --output 'dist/my-douyin-preview'
+```
+
+仅为经授权的小范围内部审阅，且本机已准备参考素材时，可显式加上 `--include-reference-skins`；该选项会将参考图放入测试包，不代表正式联动或已获商业使用权。构建完成后可将输出的 `tt-minigame` 目录导入抖音开发者工具生成预览码：预览时产物会交给抖音处理，并不等同于上传测试通道或更新已发布的版本。本离线练习包不使用本机游戏服务器，手机需要能够访问抖音获取预览内容。抖音账号登录、分享和广告需要另行配置与真机验证；普通 WebGL 构建或旧版 `dist/douyin` 都不是本 Unity 版本的抖音发布包。
 
 ## 资源许可
 
