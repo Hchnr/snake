@@ -1,29 +1,53 @@
-# 蛇蛇竞技场 · Snake Club
+# 灵蛇秘境 · Snake Club
 
-v0.0.2 正在迁移到 Unity 3D。目标平台为抖音小游戏，浏览器 WebGL 用于开发验证。玩法以蛇与蛇对抗为核心：地图中有果实，击败对手可直接成长；撞墙会反弹，不会因此淘汰。手机使用虚拟摇杆与加速按钮，桌面支持方向键、WASD 和空格加速。
+v0.0.3 正在开发中，首发以抖音小游戏为目标，浏览器 WebGL 用于开发验证。玩家在大地图对抗 AI：可以吃果实，淘汰对手会直接成长；撞墙反弹，不会因此出局。首发设计采用本地 PvE 和真人异步每日挑战，不要求玩家同时在线；不规划微信版本。
 
-- **PvE**：本机单人对抗 AI，无需网络或服务器。
-- **PvP**：通过房间号邀请真人，房间不添加 AI。
-- **混合**：真人与 AI 在同一房间对战。
+## 当前内容
 
-详细规则和开发顺序见 [v0.0.2 计划](docs/plans/v0.0.2.md)。当前代码和默认命令均对应 Unity 版本；旧版历史可通过 Git 查看。
+- **对局**：普通 PvE 加入回弹冲刺与星核争夺。每日挑战以统一参数进行最长 60 秒的对局，使用固定 20 Hz、整数运算和可重放输入；联网后服务端重放成绩，再记录每日个人最高分与排行榜。离线对局明确标记为练习，不产生账号奖励或排名。
+- **养成**：4 款皮肤、9 个天赋节点、免费重置及首局操作提示。前 7 个标准活跃日的经验进度接近线性，后续采用对数增长；每日挑战统一属性。对局经验每天最多计入 3 局，对局基础金币每天最多计入 20 局；完成 2 局的日常目标和探洞经验另计。
+- **梦游探洞**：账号联网派遣和领取，探索期间可离线；服务端按派遣时配置和服务器时间结算。三个洞穴各有碎片和固定图鉴里程碑，经验每天最多计入 20 点。
+- **交互与美术**：秘境大厅背景、3D 灵蛇展示、皮肤预览、竞技场视觉效果及可关闭的基础提示音。手机使用虚拟摇杆与加速按钮，桌面支持方向键、WASD 和空格加速。
+- **商业化预留**：对局、探洞结算与皮肤试穿预留自愿激励视频入口；真实奖励默认关闭，直到平台回调和服务端核验接入。基础奖励不依赖广告。
 
-## 当前验证状态
+设计及数值依据见 [v0.0.3 计划](docs/plans/v0.0.3.md)。v0.0.2 的真人房间代码仍用于开发研究，仅在 Unity 编辑器大厅按 F10 显示，不作为 v0.0.3 首发入口。
 
-竞技规则和本地 WebSocket 房间服务已有自动化测试。本机已安装并激活 Unity Editor，安装 WebGL 组件和 Rosetta 2；macOS 与浏览器 WebGL 版本已成功构建，桌面版首屏已实际显示。抖音官方 BGDT 工具已导入，TTSDK 安装、官方转换和抖音真机验证仍待完成，因此当前仓库**尚未生成可发布的抖音 Unity 包**。游戏完整交互、真机表现、联机稳定性及平台接口仍需实测。
+## 验证状态与未完成项
 
-## 本地工具与测试
+已在本机 Unity 编辑器运行游戏，检查大厅、普通对局操作、结算与进度同步，并完成一局每日挑战的上传、服务端回放与本地排名；自动化测试覆盖竞技规则、成长、每日挑战回放与排行、探洞和重复结算，并通过 Unity 编辑器检查账号响应与背景图片导入。尚未部署服务或发布小游戏，也未进行抖音模拟器、手机真机和平台接口测试。现有设计参数和交互效果仍需后续试玩、设备性能和平台兼容性验证。
 
-需要 Node.js 22+、.NET 10 SDK，以及 Unity `6000.0.85f2` 和 WebGL Build Support。Apple Silicon Mac 上的 Unity Editor 还需要 Rosetta 2；首次运行需由使用者处理相应条款、账号和许可证。版本选择与抖音转换器的兼容性仍需实测，详见计划。
+本地服务为单进程、JSON 文件持久化的开发原型。正式公开榜和账号系统还需要事务型存储、HTTPS、域名配置、限流、监控、备份、异常治理以及多平台确定性验证；回放能核对规则和分数，不能单独证明由真人操作。匿名账号与正式账号同时已有不同存档时，自动合并冲突尚未实现。
+
+抖音账号登录、分享和激励视频已有按官方接口编写的条件编译适配代码，但 TTSDK 尚未安装，当前 Unity 版本兼容性、分享链路、广告位及服务端可验证回调均须在实际环境确认；广告默认不会发奖。完整的音效与美术动效仍待制作。
+
+## 本地开发环境
+
+需要 Node.js 22+、.NET 10 SDK，以及 Unity `6000.0.85f2` 和 WebGL Build Support。Apple Silicon Mac 的 Unity Editor 还需要 Rosetta 2；首次运行由使用者处理账号、许可证及相关条款。Unity 与抖音转换器的兼容性尚未实测。
 
 ```sh
-# 纯 C# 竞技规则、本地房间和 WebGL 通信桥测试
+# 竞技与成长规则、房间通信、服务端账号/回放/探洞/排行
 npm test
+
+# 使用临时 Unity 工程检查客户端 JSON 响应和资源导入
+npm run test:unity
 ```
 
-## Unity 运行和浏览器构建
+每日挑战接口测试按实际局时等待，可能需要约 1 分钟；测试数据放在临时目录，不使用本机游戏存档。Unity 回归检查需要已安装并启用许可证的 Editor；可用 `UNITY_EDITOR` 指定可执行文件。
 
-在 Unity Hub 中以指定 Editor 打开 `unity/`。首次打开时编辑器脚本会创建 `Assets/Scenes/Arena.unity` 和必需材质；打开该场景后进入 Play。也可在 macOS 通过以下命令构建：
+本地开发服务默认监听 `127.0.0.1:2567`。当前客户端的 API 配置使用 `2568`，以便和旧版房间服务并行运行。单机练习不需要启动它；正式账号进度、排行和探洞需要服务：
+
+```sh
+# 仅供本机开发，启用回环地址上的设备登录
+SNAKE_PORT=2568 SNAKE_DEV_AUTH=1 npm run server:v3
+```
+
+开发服务将状态写入忽略版本管理的 `server/data/v0.0.3.json`。可用 `SNAKE_HOST`、`SNAKE_PORT` 和 `SNAKE_DATA_FILE` 修改监听地址、端口和数据文件。`SNAKE_SESSION_KEY` 应为仅在服务端配置的稳定随机密钥；不设置时每次重启随机生成，旧会话和未提交的对局凭证会失效。`SNAKE_ALLOWED_ORIGINS` 是逗号分隔的浏览器允许来源，默认只包含本机 8082 端口。开发登录仅允许回环地址，不能用于手机或公开环境。
+
+客户端 API 地址与开发登录开关位于 `unity/Assets/Resources/GameConfig.json`；默认地址只适用于同一台电脑。公开服务需要配置手机可访问的 HTTPS 地址、抖音域名白名单和平台身份鉴权。抖音 `AppID`、`AppSecret` 只通过服务端环境变量 `SNAKE_DOUYIN_APPID` 与 `SNAKE_DOUYIN_SECRET` 提供，**不要提交密钥或写进客户端**。`SNAKE_DEV_ADS=1` 仅供显式本地开发模拟，不能用于生产发奖。
+
+## Unity 工程与抖音适配
+
+在 Unity Hub 中以指定 Editor 打开 `unity/`。首次打开时编辑器脚本会创建 `Assets/Scenes/Arena.unity` 和必需材质。需要构建时，可运行：
 
 ```sh
 npm run build:unity:mac
@@ -31,24 +55,12 @@ npm run build:unity:webgl
 npm run preview:unity
 ```
 
-构建目录分别为 `dist/unity-mac/Snake Club.app` 和 `dist/unity-webgl/`；浏览器预览默认监听 `http://127.0.0.1:8082`。`npm run build` 和 `npm run preview` 分别等同于 WebGL 构建和预览命令。其他系统或安装位置可设置 `UNITY_EDITOR` 为 Unity 编辑器可执行文件的绝对路径；`SNAKE_BUILD_OUTPUT` 可更改构建输出路径。构建命令不会自动生成抖音小游戏包。
+输出分别位于 `dist/unity-mac/Snake Club.app` 与 `dist/unity-webgl/`；浏览器预览默认使用 `http://127.0.0.1:8082`。其他 Unity 安装位置可设置 `UNITY_EDITOR`，构建输出可设置 `SNAKE_BUILD_OUTPUT`。这些命令不会自动生成抖音小游戏包。
 
-## 本地真人房间
+本机这次测试另生成了 `dist/unity-v0.0.3-mac/Snake Club.app`，不覆盖旧版构建。桌面大厅可按回车开始普通对局，按 D 开始每日挑战；对局中使用 WASD 或方向键转向、空格加速。测试产物不纳入版本管理。
 
-```sh
-npm run server:v2
-```
+BGDT 已导入本机工程；使用[抖音官方指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/install-sdk)安装 TTSDK 后，才可在 WebGL 构建的 Scripting Define Symbols 中启用 `SNAKE_DOUYIN_TTSDK`。需要平台登录/分享/广告配置时应以当前官方接口和实际安装的 SDK 为准，再通过官方工具转换，并在抖音开发者工具与手机上验证。普通 WebGL 构建或旧版 `dist/douyin` 都不是本 Unity 版本的抖音发布包。
 
-服务默认监听 `127.0.0.1:2567`，健康检查为 `http://127.0.0.1:2567/health`，客户端默认连接 `ws://127.0.0.1:2567/ws`。打开两个本机客户端，一个选择创建房间，另一个输入相同模式和房间号加入。只需要单机 PvE 时不必启动服务。
+## 资源许可
 
-可通过 `SNAKE_HOST` 和 `SNAKE_PORT` 配置监听地址及端口。客户端地址在 `unity/Assets/Resources/GameConfig.json` 中设置并随游戏构建，玩家只需输入房间号。其他设备访问时需配置其可访问的服务地址；公网发布还需要实际部署、TLS/WSS、抖音域名配置和必要的鉴权、运维。当前服务是本地开发原型，不包含生产级身份鉴权、持久化、扩容或反作弊，不应直接暴露到公网。
-
-抖音官方支持自建后端或使用抖音云托管，但云托管的 WebSocket 网关文档明确标明不适用于小游戏；本项目没有假设该网关可用，具体云入口及连通性需要在实际环境中验证。
-
-## 抖音小游戏接入
-
-Unity WebGL 构建完成后，仍需使用[抖音官方 Unity WebGL 转换工具](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/open-capacity/sc_webgl_overall)生成小游戏工程，再用抖音开发者工具和手机验证。抖音的[安装指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/install-sdk)要求先安装 BGDT 并登录，再通过 BGDT 安装 TTSDK；本机已导入官方 BGDT 3.0.271，尚未安装 TTSDK。官方 SDK 工具及其本地状态不纳入版本管理，可按官方指南重新安装。建议采用[Unity 新包体格式](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/unity-new)；已有小游戏是否能切换引擎方案、实际权限、AppID、资源托管及网络配置以平台当前要求为准。不得将旧版 `dist/douyin` 或普通 WebGL 构建误标为新的 Unity 小游戏包。
-
-## 字体许可
-
-界面字体是 Noto Sans SC 的 400 字重和常用字符子集，原始字体来自 [Google Fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc)，以 SIL Open Font License 1.1 发布；许可文本位于 `unity/Assets/Resources/NotoSansSC-OFL.txt`。子集不包含所有生僻字。
+大厅秘境背景为本项目生成的原创图片。界面字体是 Noto Sans SC 的 400 字重字符子集，原始字体来自 [Google Fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc)，以 SIL Open Font License 1.1 发布；许可文本位于 `unity/Assets/Resources/NotoSansSC-OFL.txt`。子集不包含所有生僻字。

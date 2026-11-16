@@ -32,6 +32,8 @@ namespace SnakeClub.Core
         public float angle;
         public float shield;
         public bool boosting;
+        public int starPoints;
+        public float rebound;
         public List<Point> segments = new List<Point>();
     }
 
@@ -50,8 +52,19 @@ namespace SnakeClub.Core
         public string phase = "waiting";
         public string winner = "";
         public int tick;
+        public bool starVisible;
+        public Point starPosition;
+        public string starHolder = "";
+        public float starProgress;
         public List<SnakeState> snakes = new List<SnakeState>();
         public List<FruitState> fruits = new List<FruitState>();
+    }
+
+    [Serializable]
+    public sealed class CombatBonuses
+    {
+        public float turn, boostSaving, pickup;
+        public float nearWallTurn, shortBoostSaving, reboundTurn;
     }
 
     // Shared by the Unity client and the authoritative room server. Coordinates
@@ -78,6 +91,9 @@ namespace SnakeClub.Core
             public float boostDebt;
             public float aiTimer;
             public float wander;
+            public float rebound;
+            public float reboundCooldown;
+            public CombatBonuses bonuses = new CombatBonuses();
         }
 
         public readonly ArenaState State;
@@ -86,6 +102,8 @@ namespace SnakeClub.Core
         private readonly Random random;
         private int nextColor;
         private int participantsAtStart;
+        private float starDelay = 35f;
+        private float starHeld;
 
         public Arena(int seed = 1, float halfSize = WorldHalfSize, float roundSeconds = RoundSeconds, int fruitCount = FruitCount)
         {
@@ -129,6 +147,8 @@ namespace SnakeClub.Core
             State.phase = "running";
         }
 
+        public void EndRound() { if (State.phase == "running") Finish(); }
+
         public void SetInput(string id, Point direction, bool boost)
         {
             Control control;
@@ -136,6 +156,12 @@ namespace SnakeClub.Core
             if (float.IsNaN(direction.x) || float.IsNaN(direction.y) || float.IsInfinity(direction.x) || float.IsInfinity(direction.y)) return;
             if (direction.Length > 0.05f) control.target = direction.Normalized;
             control.boost = boost;
+        }
+
+        public void SetBonuses(string id, CombatBonuses bonuses)
+        {
+            Control control;
+            if (controls.TryGetValue(id, out control)) control.bonuses = bonuses ?? new CombatBonuses();
         }
 
         public void Tick(float dt)
@@ -150,11 +176,19 @@ namespace SnakeClub.Core
                 var control = controls[snake.id];
                 if (snake.bot) UpdateBot(snake, control, dt);
                 snake.shield = Math.Max(0, snake.shield - dt);
+                control.rebound = Math.Max(0, control.rebound - dt);
+                control.reboundCooldown = Math.Max(0, control.reboundCooldown - dt);
+                snake.rebound = control.rebound;
                 float targetAngle = (float)Math.Atan2(control.target.y, control.target.x);
-                snake.angle += Clamp(AngleDelta(snake.angle, targetAngle), -TurnSpeed * dt, TurnSpeed * dt);
+                float turnBonus = control.bonuses.turn;
+                Point currentHead = snake.segments[0];
+                if (Math.Abs(currentHead.x) > State.halfSize - 10f || Math.Abs(currentHead.y) > State.halfSize - 10f) turnBonus += control.bonuses.nearWallTurn;
+                if (control.rebound > 0) turnBonus += control.bonuses.reboundTurn;
+                snake.angle += Clamp(AngleDelta(snake.angle, targetAngle), -TurnSpeed * (1 + turnBonus) * dt, TurnSpeed * (1 + turnBonus) * dt);
                 var forward = new Point((float)Math.Cos(snake.angle), (float)Math.Sin(snake.angle));
                 snake.boosting = control.boost && snake.segments.Count > MinimumLength;
-                Point next = snake.segments[0] + forward * (Speed * (snake.boosting ? BoostMultiplier : 1f) * dt);
+                float speedMultiplier = snake.boosting ? BoostMultiplier : control.rebound > 0 ? 1.15f : 1f;
+                Point next = snake.segments[0] + forward * (Speed * speedMultiplier * dt);
                 // Reflect the velocity and unused movement at each arena edge. Holding
                 // a direction toward a wall can never kill or move the snake outside.
                 float edge = Math.Max(1f, State.halfSize - CollisionRadius);
@@ -169,6 +203,7 @@ namespace SnakeClub.Core
                     next.y = Clamp(next.y, -edge, edge);
                     snake.angle = (float)Math.Atan2(forward.y, forward.x);
                     control.target = forward;
+                    if (control.reboundCooldown <= 0) { control.rebound = .8f; control.reboundCooldown = 8f; snake.rebound = control.rebound; }
                 }
                 snake.segments[0] = next;
                 for (int i = 1; i < snake.segments.Count; i++)
@@ -179,7 +214,8 @@ namespace SnakeClub.Core
                 }
                 if (snake.boosting)
                 {
-                    control.boostDebt += dt * 0.4f;
+                    float saving = control.bonuses.boostSaving + (snake.segments.Count <= 12 ? control.bonuses.shortBoostSaving : 0);
+                    control.boostDebt += dt * 0.4f * (1f - Clamp(saving, 0, .07f));
                     if (control.boostDebt >= 1f && snake.segments.Count > MinimumLength)
                     {
                         snake.segments.RemoveAt(snake.segments.Count - 1);
@@ -189,6 +225,7 @@ namespace SnakeClub.Core
             }
             ResolveCollisions();
             CollectFruits();
+            UpdateStar(dt);
             int alive = State.snakes.FindAll(s => s.alive).Count;
             if (State.remaining <= 0 || (participantsAtStart >= 2 && alive <= 1)) Finish();
         }
@@ -255,13 +292,47 @@ namespace SnakeClub.Core
             {
                 foreach (var snake in State.snakes)
                 {
-                    if (!snake.alive || Point.Distance(snake.segments[0], State.fruits[i].position) > 1.25f) continue;
+                    if (!snake.alive || Point.Distance(snake.segments[0], State.fruits[i].position) > 1.25f * (1f + controls[snake.id].bonuses.pickup)) continue;
                     Grow(snake, 1);
                     State.fruits[i] = NewFruit();
                     FruitRevision++;
                     break;
                 }
             }
+        }
+
+        private void UpdateStar(float dt)
+        {
+            if (!State.starVisible)
+            {
+                starDelay -= dt;
+                if (starDelay > 0) return;
+                State.starPosition = new Point((float)(random.NextDouble() * 60 - 30), (float)(random.NextDouble() * 60 - 30));
+                State.starVisible = true; State.starHolder = ""; starHeld = 0;
+            }
+            if (!string.IsNullOrEmpty(State.starHolder))
+            {
+                var holder = Find(State.starHolder);
+                if (holder == null) { State.starHolder = ""; starHeld = 0; }
+                else
+                {
+                    State.starPosition = holder.segments[0];
+                    if (!holder.alive) { State.starHolder = ""; starHeld = 0; }
+                    else
+                    {
+                        starHeld += dt;
+                        if (starHeld >= 10f)
+                        {
+                            holder.starPoints = Math.Min(2, holder.starPoints + 1);
+                            State.starVisible = false; State.starHolder = ""; starHeld = 0; starDelay = 12f;
+                        }
+                    }
+                }
+            }
+            if (State.starVisible && string.IsNullOrEmpty(State.starHolder))
+                foreach (var snake in State.snakes)
+                    if (snake.alive && Point.Distance(snake.segments[0], State.starPosition) <= 1.5f) { State.starHolder = snake.id; break; }
+            State.starProgress = starHeld / 10f;
         }
 
         private static void Grow(SnakeState snake, int amount)
@@ -334,6 +405,8 @@ namespace SnakeClub.Core
                 Point toward = (nearest.segments[0] - head).Normalized;
                 desired += toward * (snake.segments.Count >= nearest.segments.Count || nearestDistance > 12f ? 1.4f : -1.8f);
             }
+            if (State.starVisible && string.IsNullOrEmpty(State.starHolder))
+                desired += (State.starPosition - head).Normalized * 0.8f;
             // Fruit gives the bots something to seek without replacing opponents
             // as their main objective.
             if (nearestDistance > 10f)

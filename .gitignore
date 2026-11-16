@@ -26,6 +26,7 @@ coverage/
 # .NET output
 **/bin/
 **/obj/
+/server/data/
 
 # Local editor and OS files
 .DS_Store
