@@ -21,8 +21,11 @@ namespace SnakeClub
         private Text skinName, skinDescription, skinActionText, skinNotice, skinTrialText;
         private Text resultTitle, resultStats, resultDetails, resultAdText, settingsSound, settingsControls, settingsEffects;
         private readonly Image[] skinCards = new Image[SkinCatalog.All.Length];
+        private readonly RawImage[] skinThumbnails = new RawImage[SkinCatalog.All.Length];
         private readonly Text[] skinStates = new Text[SkinCatalog.All.Length];
         private Button primary, skinAction, skinTrial, resultRetry, resultShare, resultAd, reconnect;
+        private Button skinPrevious, skinNext;
+        private Text skinPageLabel;
         private RectTransform primaryRect;
         private Texture2D roundTexture;
         private Sprite roundSprite;
@@ -31,7 +34,7 @@ namespace SnakeClub
         private Action onSkinBack, onSkinTrial;
         private Action onResultRetry, onResultMenu, onResultShare, onResultAd, onReconnect, onControls, onEffects;
         private Action<int> onSkinSelect, onSkinEquip;
-        private int selectedPreview;
+        private int selectedPreview, skinPageIndex;
         private Rect lastSafe;
         private Vector2Int lastSize;
         private float resultOpenedAt;
@@ -171,22 +174,40 @@ namespace SnakeClub
             selectedPreview = Mathf.Clamp(preview, 0, SkinCatalog.All.Length - 1);
             var skin = SkinCatalog.Get(selectedPreview);
             Set(skinName, skin.Name);
-            Set(skinDescription, skin.Description + (skin.ReferencePreview ? " · 本机预览" : " · 每日挑战属性统一"));
+            Set(skinDescription, skin.Description + (skin.ReferencePreview ? " · 内部参考" : " · 每日挑战属性统一"));
             for (int i = 0; i < skinCards.Length; i++)
             {
                 var card = skinCards[i];
-                bool show = i < SkinCatalog.OwnedSkinCount || referencesEnabled;
+                bool show = (i < SkinCatalog.OwnedSkinCount || referencesEnabled) && i / 6 == skinPageIndex;
                 if (card.gameObject.activeSelf != show) card.gameObject.SetActive(show);
+                var thumbnail = skinThumbnails[i];
+                if (show && thumbnail.texture == null)
+                {
+                    thumbnail.texture = SkinVisual.Texture(i);
+                    if (thumbnail.texture != null)
+                    {
+                        float scale = Mathf.Min(90f / thumbnail.texture.width, 130f / thumbnail.texture.height);
+                        float width = thumbnail.texture.width * scale, height = thumbnail.texture.height * scale;
+                        Position(thumbnail.rectTransform, new Rect(70f - width / 2f, 78f - height / 2f, width, height));
+                    }
+                }
+                thumbnail.enabled = show && thumbnail.texture != null;
                 Color cardColor = i == selectedPreview ? new Color(.17f, .63f, .57f, .96f) : new Color(.035f, .14f, .21f, .94f);
                 if (card.color != cardColor) card.color = cardColor;
                 Set(skinStates[i], SkinCatalog.Get(i).ReferencePreview ? "造型预览" : profile.ownedSkins.Contains(i) ? "已拥有" :
                     i == 1 ? (connected ? "完成 2 场免费领取" : "联网完成 2 场领取") : SkinCatalog.Get(i).Price + " 金币");
             }
+            int pages = referencesEnabled ? (SkinCatalog.All.Length + 5) / 6 : 1;
+            if (skinPageIndex >= pages) skinPageIndex = pages - 1;
+            skinPrevious.interactable = skinPageIndex > 0;
+            skinNext.interactable = skinPageIndex + 1 < pages;
+            Set(skinPageLabel, (skinPageIndex + 1) + " / " + pages);
             bool owned = profile.ownedSkins.Contains(selectedPreview);
-            Set(skinActionText, equipped == selectedPreview ? "使用中" : skin.ReferencePreview ? "本机试用" : owned ? "使用造型" :
+            bool available = !skin.ReferencePreview || (referencesEnabled && SkinVisual.Texture(selectedPreview) != null);
+            Set(skinActionText, !available ? "素材不可用" : equipped == selectedPreview ? "使用中" : skin.ReferencePreview ? "本机试用" : owned ? "使用造型" :
                 skin.Price + (selectedPreview == 1 ? " 金币提前解锁" : " 金币解锁"));
             Set(skinNotice, string.IsNullOrEmpty(message) ? "金币 " + profile.coins : message);
-            skinAction.interactable = !busy && equipped != selectedPreview;
+            skinAction.interactable = available && !busy && equipped != selectedPreview;
             skinTrial.gameObject.SetActive(trialAvailable && !skin.ReferencePreview && !owned);
             Set(skinTrialText, "看 1 次广告，试穿 1 局");
         }
@@ -263,17 +284,27 @@ namespace SnakeClub
             skinName = MakeText("Skin name", skinPage, new Rect(120, 790, 840, 70), "", 39, Color.white, TextAnchor.MiddleCenter, true);
             skinDescription = MakeText("Skin description", skinPage, new Rect(120, 850, 840, 55), "", 23, new Color(.80f, .96f, .92f), TextAnchor.MiddleCenter);
             Color[] swatches = { new Color(.12f, .83f, .69f), new Color(1f, .43f, .20f), new Color(.44f, .39f, .91f),
-                new Color(.23f, .78f, .93f), new Color(.93f, .95f, 1f), new Color(.88f, .18f, .22f) };
+                new Color(.23f, .78f, .93f), new Color(.93f, .95f, 1f), new Color(.88f, .18f, .22f),
+                new Color(1f, .43f, .10f), new Color(.68f, .72f, .75f), new Color(1f, .9f, .12f),
+                new Color(.12f, .8f, .4f), new Color(.48f, .49f, .52f), new Color(.95f, .27f, .7f) };
             for (int i = 0; i < skinCards.Length; i++)
             {
                 int index = i;
-                var card = MakeButton("Skin card " + i, skinPage, new Rect(85 + i % 2 * 465, 925 + i / 2 * 188, 445, 165),
+                int slot = i % 6;
+                var card = MakeButton("Skin card " + i, skinPage, new Rect(85 + slot % 2 * 465, 925 + slot / 2 * 175, 445, 155),
                     new Color(.035f, .14f, .21f, .94f), () => onSkinSelect?.Invoke(index));
                 skinCards[i] = card.image;
-                Panel("Color swatch", card.transform, new Rect(25, 34, 80, 95), swatches[i]);
+                Panel("Color swatch", card.transform, new Rect(25, 34, 80, 95), swatches[i % swatches.Length]);
+                var thumbnail = MakeRaw("Character thumbnail", card.transform, new Rect(25, 13, 90, 130), null);
+                thumbnail.raycastTarget = false; thumbnail.enabled = false; skinThumbnails[i] = thumbnail;
                 MakeText("Name", card.transform, new Rect(125, 25, 295, 58), SkinCatalog.Get(i).Name, 30, Color.white, TextAnchor.MiddleLeft, true);
                 skinStates[i] = MakeText("Status", card.transform, new Rect(125, 90, 295, 48), "", 21, new Color(.76f, .92f, .90f), TextAnchor.MiddleLeft);
             }
+            skinPrevious = MakeButton("Previous skins", skinPage, new Rect(220, 1455, 210, 55), new Color(.13f, .30f, .37f), () => { if (skinPageIndex > 0) skinPageIndex--; });
+            MakeText("Previous label", skinPrevious.transform, new Rect(0, 0, 210, 55), "上一页", 22, Color.white, TextAnchor.MiddleCenter, true);
+            skinNext = MakeButton("Next skins", skinPage, new Rect(650, 1455, 210, 55), new Color(.13f, .30f, .37f), () => { if ((skinPageIndex + 1) * 6 < SkinCatalog.All.Length) skinPageIndex++; });
+            MakeText("Next label", skinNext.transform, new Rect(0, 0, 210, 55), "下一页", 22, Color.white, TextAnchor.MiddleCenter, true);
+            skinPageLabel = MakeText("Skin page number", skinPage, new Rect(440, 1455, 200, 55), "1 / 2", 22, Color.white, TextAnchor.MiddleCenter);
             skinAction = MakeButton("Equip skin", skinPage, new Rect(155, 1525, 770, 118), new Color(.08f, .68f, .54f), () => onSkinEquip?.Invoke(selectedPreview));
             skinActionText = MakeText("Equip label", skinAction.transform, new Rect(0, 0, 770, 118), "使用造型", 34, Color.white, TextAnchor.MiddleCenter, true);
             skinTrial = MakeButton("Trial skin", skinPage, new Rect(250, 1655, 580, 76), new Color(.22f, .38f, .51f), () => onSkinTrial?.Invoke());

@@ -53,6 +53,15 @@ namespace SnakeClub.Tests.Editor
                 Require(floor != null && floor.width == 1024 && floor.height == 1024, "arena floor did not import at its bounded size");
                 Debug.Log("PASS Unity imports the repeatable arena floor texture");
 
+                foreach (string characterPath in new[] { "Assets/Resources/Characters/lanlight.png", "Assets/Resources/Characters/ember.png" })
+                {
+                    var characterImporter = AssetImporter.GetAtPath(characterPath) as TextureImporter;
+                    Require(characterImporter != null && characterImporter.npotScale == TextureImporterNPOTScale.None &&
+                        characterImporter.alphaIsTransparency && !characterImporter.mipmapEnabled && characterImporter.maxTextureSize == 1024,
+                        "character sprite import must preserve proportions, transparency and bounded size: " + characterPath);
+                }
+                Debug.Log("PASS Unity preserves character sprite proportions and transparent edges");
+
                 int selected = -1, equipped = -1, started = 0, retried = 0;
                 var screen = owner.AddComponent<HomeScreen>();
                 var font = Resources.Load<Font>("NotoSansSC");

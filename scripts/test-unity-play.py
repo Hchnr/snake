@@ -15,8 +15,11 @@ if not editor.is_file():
 with tempfile.TemporaryDirectory(prefix='snake-unity-play-') as directory:
     project = Path(directory) / 'project'
     project.mkdir()
+    excluded = ['ByteGame', 'ByteGame.meta', '.DS_Store']
+    if os.environ.get('SNAKE_TEST_EXCLUDE_REFERENCES') == '1':
+        excluded.extend(['ReferenceSkins', 'ReferenceSkins.meta'])
     for name in ('Assets', 'Packages', 'ProjectSettings'):
-        shutil.copytree(root / 'unity' / name, project / name, ignore=shutil.ignore_patterns('ByteGame', 'ByteGame.meta', '.DS_Store'))
+        shutil.copytree(root / 'unity' / name, project / name, ignore=shutil.ignore_patterns(*excluded))
     shutil.copy2(root / 'test/v3/SnakePlayModeRegression.cs', project / 'Assets/Snake/Editor/SnakePlayModeRegression.cs')
     config_path = project / 'Assets/Resources/GameConfig.json'
     config = json.loads(config_path.read_text())

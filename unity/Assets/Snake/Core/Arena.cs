@@ -35,6 +35,10 @@ namespace SnakeClub.Core
         public bool boosting;
         public int starPoints;
         public float rebound;
+        public bool boss, bossRushing;
+        public int bossShield;
+        public float bossWindup;
+        public Point bossAim;
         public List<Point> segments = new List<Point>();
     }
 
@@ -67,6 +71,10 @@ namespace SnakeClub.Core
         public float eventRemaining;
         public List<SnakeState> snakes = new List<SnakeState>();
         public List<FruitState> fruits = new List<FruitState>();
+        // Transient presentation of the latest deterministic capture event.
+        public int captureTick = -1, captureCount;
+        public string captureOwner = "";
+        public List<Point> capturePolygon = new List<Point>();
     }
 
     [Serializable]
@@ -75,6 +83,9 @@ namespace SnakeClub.Core
         public float turn, boostSaving, pickup;
         public float nearWallTurn, shortBoostSaving, reboundTurn;
         public float boostSavingCap = .07f;
+        // Temporary depth-mode effects; never used by the normalized daily rules.
+        public float captureShieldSeconds, reboundFreeSeconds;
+        public int bonusGrowthPerKill;
     }
 
     // Shared by the Unity client and the authoritative room server. Coordinates
@@ -102,7 +113,10 @@ namespace SnakeClub.Core
             public float aiTimer;
             public float wander;
             public float rebound;
-            public float reboundCooldown;
+            public float reboundCooldown, captureCooldown, freeBoostTime;
+            public float bossReady, bossWindup, bossRush, bossHitCooldown;
+            public int bossAttack;
+            public Point bossDirection;
             public CombatBonuses bonuses = new CombatBonuses();
         }
 
@@ -110,17 +124,18 @@ namespace SnakeClub.Core
         public int FruitRevision { get; private set; }
         private readonly Dictionary<string, Control> controls = new Dictionary<string, Control>();
         private readonly Random random;
-        private readonly bool nearbyOpponents;
+        private readonly bool nearbyOpponents, enableCaptures;
         private int nextColor;
         private int participantsAtStart;
         private float starDelay = 35f;
         private float starHeld;
         private string starSpawnNear = "";
 
-        public Arena(int seed = 1, float halfSize = WorldHalfSize, float roundSeconds = RoundSeconds, int fruitCount = FruitCount, bool nearbyOpponents = false)
+        public Arena(int seed = 1, float halfSize = WorldHalfSize, float roundSeconds = RoundSeconds, int fruitCount = FruitCount, bool nearbyOpponents = false, bool enableCaptures = false)
         {
             random = new Random(seed);
             this.nearbyOpponents = nearbyOpponents;
+            this.enableCaptures = enableCaptures;
             State = new ArenaState { halfSize = halfSize, remaining = roundSeconds };
             for (int i = 0; i < fruitCount; i++) State.fruits.Add(NewFruit());
         }
@@ -136,7 +151,7 @@ namespace SnakeClub.Core
                 id = id, name = string.IsNullOrWhiteSpace(name) ? "Snake" : name,
                 bot = bot, color = nextColor++ % 8, angle = angle, shield = SpawnShieldSeconds
             };
-            for (int i = 0; i < StartingLength; i++) snake.segments.Add(head - direction * (i * SegmentSpacing));
+            for (int i = 0; i < (enableCaptures ? DailyMatch.CaptureStartingLength : StartingLength); i++) snake.segments.Add(head - direction * (i * SegmentSpacing));
             State.snakes.Add(snake);
             controls[id] = new Control { target = direction, wander = angle };
             if (State.phase == "running") participantsAtStart++;
@@ -190,6 +205,13 @@ namespace SnakeClub.Core
             starDelay = Math.Max(0, delay); starSpawnNear = nearSnakeId ?? "";
         }
 
+        public void ConfigureBoss(string id)
+        {
+            var boss = Find(id);
+            if (boss == null || State.phase != "waiting" || !boss.bot) return;
+            boss.boss = true; boss.bossShield = 3; controls[id].bossReady = 2.5f;
+        }
+
         public void Tick(float dt)
         {
             if (State.phase != "running" || dt <= 0 || float.IsNaN(dt) || float.IsInfinity(dt)) return;
@@ -197,24 +219,35 @@ namespace SnakeClub.Core
             State.tick++;
             State.remaining = Math.Max(0, State.remaining - dt);
             if (State.eventStatus == "active") State.eventRemaining = State.remaining;
+            var previousHeads = enableCaptures ? new Dictionary<string, Point>() : null;
             foreach (var snake in State.snakes)
             {
                 if (!snake.alive) continue;
                 var control = controls[snake.id];
-                if (snake.bot) UpdateBot(snake, control, dt);
+                if (snake.bot)
+                {
+                    if (snake.boss) UpdateBoss(snake, control, dt);
+                    else UpdateBot(snake, control, dt);
+                }
                 snake.shield = Math.Max(0, snake.shield - dt);
                 control.rebound = Math.Max(0, control.rebound - dt);
                 control.reboundCooldown = Math.Max(0, control.reboundCooldown - dt);
+                control.captureCooldown = Math.Max(0, control.captureCooldown - dt);
+                control.freeBoostTime = Math.Max(0, control.freeBoostTime - dt);
+                control.bossHitCooldown = Math.Max(0, control.bossHitCooldown - dt);
                 snake.rebound = control.rebound;
                 float targetAngle = (float)Math.Atan2(control.target.y, control.target.x);
                 float turnBonus = control.bonuses.turn;
                 Point currentHead = snake.segments[0];
+                if (enableCaptures) previousHeads[snake.id] = currentHead;
                 if (Math.Abs(currentHead.x) > State.halfSize - 10f || Math.Abs(currentHead.y) > State.halfSize - 10f) turnBonus += control.bonuses.nearWallTurn;
                 if (control.rebound > 0) turnBonus += control.bonuses.reboundTurn;
                 snake.angle += Clamp(AngleDelta(snake.angle, targetAngle), -TurnSpeed * (1 + turnBonus) * dt, TurnSpeed * (1 + turnBonus) * dt);
                 var forward = new Point((float)Math.Cos(snake.angle), (float)Math.Sin(snake.angle));
                 snake.boosting = control.boost && snake.segments.Count > MinimumLength;
                 float speedMultiplier = snake.boosting ? BoostMultiplier : control.rebound > 0 ? 1.15f : 1f;
+                if (snake.bossWindup > 0) speedMultiplier *= .45f;
+                if (snake.bossRushing) speedMultiplier *= 1.65f;
                 Point next = snake.segments[0] + forward * (Speed * speedMultiplier * dt);
                 // Reflect the velocity and unused movement at each arena edge. Holding
                 // a direction toward a wall can never kill or move the snake outside.
@@ -230,7 +263,11 @@ namespace SnakeClub.Core
                     next.y = Clamp(next.y, -edge, edge);
                     snake.angle = (float)Math.Atan2(forward.y, forward.x);
                     control.target = forward;
-                    if (control.reboundCooldown <= 0) { control.rebound = .8f; control.reboundCooldown = 8f; snake.rebound = control.rebound; }
+                    if (control.reboundCooldown <= 0)
+                    {
+                        control.rebound = .8f; control.reboundCooldown = 8f; snake.rebound = control.rebound;
+                        control.freeBoostTime = Math.Max(control.freeBoostTime, Math.Max(0, control.bonuses.reboundFreeSeconds));
+                    }
                 }
                 snake.segments[0] = next;
                 for (int i = 1; i < snake.segments.Count; i++)
@@ -239,7 +276,7 @@ namespace SnakeClub.Core
                     float distance = delta.Length;
                     if (distance > SegmentSpacing) snake.segments[i] = snake.segments[i - 1] - delta * (SegmentSpacing / distance);
                 }
-                if (snake.boosting)
+                if (snake.boosting && control.freeBoostTime <= 0)
                 {
                     float saving = control.bonuses.boostSaving + (snake.segments.Count <= 12 ? control.bonuses.shortBoostSaving : 0);
                     control.boostDebt += dt * 0.4f * (1f - Clamp(saving, 0, Clamp(control.bonuses.boostSavingCap, 0, .20f)));
@@ -251,10 +288,58 @@ namespace SnakeClub.Core
                 }
             }
             ResolveCollisions();
+            if (enableCaptures) ResolveCaptures(previousHeads);
             CollectFruits();
             UpdateStar(dt);
             int alive = State.snakes.FindAll(s => s.alive).Count;
             if (State.remaining <= 0 || (participantsAtStart >= 2 && alive <= 1)) Finish();
+        }
+
+        private static CapturePoint CapturePosition(Point point) => new CapturePoint((int)Math.Round(point.x * 1000), (int)Math.Round(point.y * 1000));
+
+        private void ResolveCaptures(Dictionary<string, Point> previousHeads)
+        {
+            var loops = new Dictionary<string, CaptureLoop>();
+            foreach (var snake in State.snakes)
+            {
+                if (!snake.alive || snake.shield > 0 || controls[snake.id].captureCooldown > 0 || !previousHeads.ContainsKey(snake.id)) continue;
+                var path = new List<CapturePoint>(snake.segments.Count);
+                foreach (var point in snake.segments) path.Add(CapturePosition(point));
+                if (!CaptureGeometry.TryLoop(CapturePosition(previousHeads[snake.id]), path, out var loop)) continue;
+                loops[snake.id] = loop; controls[snake.id].captureCooldown = .75f;
+            }
+            var deaths = new Dictionary<string, string>();
+            foreach (var victim in State.snakes)
+            {
+                if (!victim.alive || victim.shield > 0) continue;
+                foreach (var entry in loops)
+                {
+                    if (entry.Key == victim.id || !CaptureGeometry.Contains(entry.Value.polygon, CapturePosition(victim.segments[0]))) continue;
+                    if (!deaths.TryGetValue(victim.id, out var previous) || entry.Value.doubleArea < loops[previous].doubleArea ||
+                        (entry.Value.doubleArea == loops[previous].doubleArea && string.CompareOrdinal(entry.Key, previous) < 0)) deaths[victim.id] = entry.Key;
+                }
+            }
+            ApplyBossDefense(deaths);
+            foreach (var pair in deaths)
+            {
+                var victim = Find(pair.Key); victim.alive = false; victim.boosting = false; victim.eliminatedBy = pair.Value;
+            }
+            foreach (var pair in deaths)
+            {
+                var victim = Find(pair.Key); var killer = Find(pair.Value);
+                if (killer != null && killer.alive)
+                {
+                    var bonus = controls[killer.id].bonuses;
+                    killer.kills++; Grow(killer, Math.Max(1, victim.segments.Count / 2) + Math.Max(0, bonus.bonusGrowthPerKill));
+                    killer.shield = Math.Max(killer.shield, Math.Max(0, bonus.captureShieldSeconds));
+                }
+            }
+            string shown = loops.ContainsKey("you") ? "you" : null;
+            if (shown == null) foreach (var entry in loops) { shown = entry.Key; break; }
+            if (shown == null) return;
+            State.captureTick = State.tick; State.captureOwner = shown; State.captureCount = 0; State.capturePolygon.Clear();
+            foreach (var point in loops[shown].polygon) State.capturePolygon.Add(new Point(point.x / 1000f, point.y / 1000f));
+            foreach (var pair in deaths) if (pair.Value == shown) State.captureCount++;
         }
 
         private void ResolveCollisions()
@@ -288,6 +373,7 @@ namespace SnakeClub.Core
                     if (deaths.ContainsKey(attacker.id)) break;
                 }
             }
+            ApplyBossDefense(deaths);
             foreach (var pair in deaths)
             {
                 var victim = Find(pair.Key);
@@ -299,8 +385,22 @@ namespace SnakeClub.Core
                 var killer = Find(pair.Value);
                 if (victim == null || killer == null || !killer.alive) continue;
                 killer.kills++;
-                Grow(killer, Math.Max(1, victim.segments.Count / 2));
+                Grow(killer, Math.Max(1, victim.segments.Count / 2) + Math.Max(0, controls[killer.id].bonuses.bonusGrowthPerKill));
             }
+        }
+
+        private void ApplyBossDefense(Dictionary<string, string> deaths)
+        {
+            var protectedBosses = new List<string>();
+            foreach (var pair in deaths)
+            {
+                var victim = Find(pair.Key);
+                if (victim == null || !victim.boss || victim.bossShield <= 0) continue;
+                var control = controls[victim.id];
+                if (control.bossHitCooldown <= 0) { victim.bossShield--; control.bossHitCooldown = 1f; }
+                if (victim.bossShield > 0) protectedBosses.Add(victim.id);
+            }
+            foreach (string id in protectedBosses) deaths.Remove(id);
         }
 
         private FruitState NewFruit()
@@ -406,7 +506,7 @@ namespace SnakeClub.Core
                 if (nearbyOpponents && State.snakes.Count > 0 && State.snakes.Count <= 2 && State.halfSize >= 30)
                 {
                     float angle = (float)(random.NextDouble() * Math.PI * 2);
-                    float distance = 13.5f + (float)random.NextDouble() * 4f;
+                    float distance = enableCaptures ? (State.snakes.Count == 1 ? 9f : 12f) + (float)random.NextDouble() * 2f : 13.5f + (float)random.NextDouble() * 4f;
                     Point player = State.snakes[0].segments[0];
                     candidate = new Point(Clamp(player.x + (float)Math.Cos(angle) * distance, -State.halfSize + 2, State.halfSize - 2),
                         Clamp(player.y + (float)Math.Sin(angle) * distance, -State.halfSize + 2, State.halfSize - 2));
@@ -414,10 +514,43 @@ namespace SnakeClub.Core
                 else candidate = new Point((float)(random.NextDouble() * 2 - 1) * spread, (float)(random.NextDouble() * 2 - 1) * spread);
                 bool clear = true;
                 foreach (var snake in State.snakes)
-                    if (snake.alive && Point.Distance(candidate, snake.segments[0]) < 12f) { clear = false; break; }
+                    if (snake.alive && Point.Distance(candidate, snake.segments[0]) < (enableCaptures ? 8f : 12f)) { clear = false; break; }
                 if (clear) break;
             }
             return candidate;
+        }
+
+        private void UpdateBoss(SnakeState snake, Control control, float dt)
+        {
+            snake.bossRushing = false;
+            if (control.bossRush > 0)
+            {
+                control.bossRush = Math.Max(0, control.bossRush - dt);
+                snake.bossRushing = control.bossRush > 0;
+                control.target = control.bossDirection; snake.bossAim = control.bossDirection;
+                return;
+            }
+            if (control.bossWindup > 0)
+            {
+                control.bossWindup = Math.Max(0, control.bossWindup - dt);
+                snake.bossWindup = control.bossWindup; snake.bossAim = control.bossDirection;
+                control.target = control.bossDirection;
+                if (control.bossWindup <= 0) { control.bossRush = 1.2f; snake.bossRushing = true; }
+                return;
+            }
+            snake.bossWindup = 0;
+            control.bossReady -= dt;
+            if (control.bossReady > 0) { UpdateBot(snake, control, dt); return; }
+            SnakeState target = State.snakes.Find(s => s.alive && !s.bot);
+            if (target == null) target = State.snakes.Find(s => s.alive && s != snake);
+            if (target == null) return;
+            Point aim = (target.segments[0] - snake.segments[0]).Normalized;
+            // Alternate a direct charge and a diagonal sweep; both expose the
+            // committed direction throughout the windup.
+            if ((control.bossAttack++ & 1) != 0)
+                aim = new Point(aim.x * .8660254f - aim.y * .5f, aim.x * .5f + aim.y * .8660254f);
+            control.bossDirection = aim; control.bossWindup = 1.2f; control.bossReady = 4.5f;
+            snake.bossAim = aim; snake.bossWindup = control.bossWindup; control.target = aim;
         }
 
         private void UpdateBot(SnakeState snake, Control control, float dt)

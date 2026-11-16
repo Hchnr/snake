@@ -12,7 +12,13 @@ namespace SnakeClub.Core
         public const int MaxTicks = 60 * TickRate;
         public const int MaxScore = 1540;
         public const string LegacyRulesVersion = "daily-1";
-        public const string RulesVersion = "daily-2";
+        public const string PreviousRulesVersion = "daily-2";
+        public const string RulesVersion = "daily-3";
+        public const int CaptureStartingLength = 16;
+        public const int CaptureMaxScore = 1460;
+        public static bool SupportsRules(string version) => version == LegacyRulesVersion || version == PreviousRulesVersion || version == RulesVersion;
+        public static int StartingLengthFor(string version) => version == RulesVersion ? CaptureStartingLength : Arena.StartingLength;
+        public static int MaxScoreFor(string version) => version == RulesVersion ? CaptureMaxScore : MaxScore;
         private const int Unit = 1000;
         private const int Edge = 109280;
         private const int Spacing = 900;
@@ -26,8 +32,9 @@ namespace SnakeClub.Core
         private bool starActive;
         private int starHolder = -1;
         private int starTicks;
-        private int peak = Arena.StartingLength;
-        private readonly bool legacy;
+        private int peak;
+        private readonly bool legacy, captures;
+        private readonly int startingLength, scoreLimit;
         private readonly int eventType;
         private bool eventActive, eventDone;
         private int eventTarget = -1;
@@ -55,21 +62,23 @@ namespace SnakeClub.Core
             public bool bot;
             public bool alive = true;
             public int color, angle, target, shield = 3 * TickRate, kills, stars;
-            public int botTimer, wander, boostDebt, pulse, bounceCooldown;
+            public int botTimer, wander, boostDebt, pulse, bounceCooldown, captureCooldown;
             public bool boosting;
             public readonly List<SimPoint> segments = new List<SimPoint>();
         }
 
         public readonly ArenaState State = new ArenaState { halfSize = Arena.WorldHalfSize, remaining = 60, phase = "running" };
         public bool Finished => State.phase == "ended";
-        public int Score => Math.Min(MaxScore, 10 * (peak - Arena.StartingLength) + 100 * snakes[0].kills + State.tick / TickRate + 30 * snakes[0].stars);
+        public int Score => Math.Min(scoreLimit, 10 * (peak - startingLength) + 100 * snakes[0].kills + State.tick / TickRate + 30 * snakes[0].stars);
         public int PeakLength => peak;
 
         public DailyMatch(int seed, string rulesVersion = RulesVersion)
         {
-            if (rulesVersion != RulesVersion && rulesVersion != LegacyRulesVersion)
+            if (!SupportsRules(rulesVersion))
                 throw new ArgumentException("Unknown daily challenge rules", nameof(rulesVersion));
             legacy = rulesVersion == LegacyRulesVersion;
+            captures = rulesVersion == RulesVersion;
+            startingLength = StartingLengthFor(rulesVersion); scoreLimit = MaxScoreFor(rulesVersion); peak = startingLength;
             uint selection = unchecked((uint)seed);
             eventType = (int)((selection ^ (selection >> 16)) % 3);
             random = unchecked((uint)seed);
@@ -86,6 +95,7 @@ namespace SnakeClub.Core
             if (Finished) return;
             State.tick++;
             if (!legacy && State.tick == EventStart) StartEvent();
+            var previousHeads = captures ? new SimPoint[snakes.Count] : null;
             for (int i = 0; i < snakes.Count; i++)
             {
                 var snake = snakes[i];
@@ -94,11 +104,13 @@ namespace SnakeClub.Core
                 if (snake.shield > 0) snake.shield--;
                 if (snake.pulse > 0) snake.pulse--;
                 if (snake.bounceCooldown > 0) snake.bounceCooldown--;
+                if (snake.captureCooldown > 0) snake.captureCooldown--;
                 int delta = ((snake.target - snake.angle + 384) & 255) - 128;
                 snake.angle = (snake.angle + Math.Max(-8, Math.Min(8, delta)) + 256) & 255;
                 snake.boosting = !snake.bot && boost && snake.segments.Count > Arena.MinimumLength;
                 int distance = snake.boosting ? 495 : snake.pulse > 0 ? 345 : 300;
                 SimPoint head = snake.segments[0];
+                if (captures) previousHeads[i] = head;
                 int x = head.x + Cos(snake.angle) * distance / 10000;
                 int y = head.y + Sin(snake.angle) * distance / 10000;
                 bool bounced = false;
@@ -126,6 +138,7 @@ namespace SnakeClub.Core
                 }
             }
             ResolveCollisions();
+            if (captures) ResolveCaptures(previousHeads);
             CollectFruit();
             if (legacy) UpdateStar(); else UpdateEvent();
             peak = Math.Max(peak, snakes[0].segments.Count);
@@ -147,19 +160,19 @@ namespace SnakeClub.Core
                 if (!legacy && index > 0 && index <= 2)
                 {
                     int direction = Next(256);
-                    int radius = (index == 1 ? 13500 : 17500) + Next(4001);
+                    int radius = captures ? (index == 1 ? 9000 : 12000) + Next(2001) : (index == 1 ? 13500 : 17500) + Next(4001);
                     var player = snakes[0].segments[0];
                     head = new SimPoint(player.x + Cos(direction) * radius / 10000, player.y + Sin(direction) * radius / 10000);
                 }
                 else head = new SimPoint(Next(72001) - 36000, Next(72001) - 36000);
                 bool clear = true;
                 foreach (var other in snakes)
-                    if (Distance(head.x - other.segments[0].x, head.y - other.segments[0].y) < 12000) { clear = false; break; }
+                    if (Distance(head.x - other.segments[0].x, head.y - other.segments[0].y) < (captures ? 8000 : 12000)) { clear = false; break; }
                 if (clear) break;
             }
             int angle = Next(256);
             var snake = new SimSnake { id = index == 0 ? "you" : "bot-" + index, bot = index != 0, color = index, angle = angle, target = angle, wander = angle };
-            for (int i = 0; i < Arena.StartingLength; i++)
+            for (int i = 0; i < startingLength; i++)
                 snake.segments.Add(new SimPoint(head.x - Cos(angle) * i * Spacing / 10000, head.y - Sin(angle) * i * Spacing / 10000));
             snakes.Add(snake);
         }
@@ -238,17 +251,63 @@ namespace SnakeClub.Core
             {
                 int winner = deaths[i];
                 if (winner < 0 || !snakes[winner].alive) continue;
-                snakes[winner].kills++;
-                Grow(snakes[winner], Math.Max(1, snakes[i].segments.Count / 2));
-                if (!legacy && eventActive && winner == 0)
-                {
-                    if (eventType == 0 && i == eventTarget) snakes[0].stars = 2;
-                    else if (eventType == 2 && Dist(snakes[0].segments[0], eventCenter) <= EventRadius)
-                        snakes[0].stars = Math.Min(2, snakes[0].stars + 1);
-                }
+                AwardKill(winner, i);
             }
             if (!legacy && eventActive && eventType == 0 && eventTarget >= 0 && !snakes[eventTarget].alive)
                 FinishEvent();
+        }
+
+        private void AwardKill(int winner, int victim)
+        {
+            snakes[winner].kills++;
+            Grow(snakes[winner], Math.Max(1, snakes[victim].segments.Count / 2));
+            if (!legacy && eventActive && winner == 0)
+            {
+                if (eventType == 0 && victim == eventTarget) snakes[0].stars = 2;
+                else if (eventType == 2 && Dist(snakes[0].segments[0], eventCenter) <= EventRadius)
+                    snakes[0].stars = Math.Min(2, snakes[0].stars + 1);
+            }
+        }
+
+        private void ResolveCaptures(SimPoint[] previousHeads)
+        {
+            var loops = new CaptureLoop[snakes.Count];
+            for (int i = 0; i < snakes.Count; i++)
+            {
+                var owner = snakes[i];
+                if (!owner.alive || owner.shield > 0 || owner.captureCooldown > 0) continue;
+                var path = new List<CapturePoint>(owner.segments.Count);
+                foreach (var p in owner.segments) path.Add(new CapturePoint(p.x, p.y));
+                if (!CaptureGeometry.TryLoop(new CapturePoint(previousHeads[i].x, previousHeads[i].y), path, out loops[i])) continue;
+                owner.captureCooldown = 15;
+            }
+
+            var killer = new int[snakes.Count];
+            for (int victim = 0; victim < snakes.Count; victim++)
+            {
+                killer[victim] = -1;
+                if (!snakes[victim].alive || snakes[victim].shield > 0) continue;
+                var head = snakes[victim].segments[0];
+                for (int owner = 0; owner < snakes.Count; owner++)
+                {
+                    if (owner == victim || loops[owner] == null || !CaptureGeometry.Contains(loops[owner].polygon, new CapturePoint(head.x, head.y))) continue;
+                    int previous = killer[victim];
+                    if (previous < 0 || loops[owner].doubleArea < loops[previous].doubleArea ||
+                        (loops[owner].doubleArea == loops[previous].doubleArea && string.CompareOrdinal(snakes[owner].id, snakes[previous].id) < 0)) killer[victim] = owner;
+                }
+            }
+            for (int i = 0; i < snakes.Count; i++) if (killer[i] >= 0) snakes[i].alive = false;
+            for (int i = 0; i < snakes.Count; i++) if (killer[i] >= 0 && snakes[killer[i]].alive) AwardKill(killer[i], i);
+
+            int shown = loops[0] != null ? 0 : Array.FindIndex(loops, value => value != null);
+            if (shown >= 0)
+            {
+                State.captureTick = State.tick; State.captureOwner = snakes[shown].id;
+                State.captureCount = 0; State.capturePolygon.Clear();
+                foreach (var p in loops[shown].polygon) State.capturePolygon.Add(new Point(p.x / (float)Unit, p.y / (float)Unit));
+                foreach (int owner in killer) if (owner == shown) State.captureCount++;
+            }
+            if (eventActive && eventType == 0 && eventTarget >= 0 && !snakes[eventTarget].alive) FinishEvent();
         }
 
         private void CollectFruit()

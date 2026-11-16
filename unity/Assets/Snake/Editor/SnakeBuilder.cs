@@ -48,7 +48,7 @@ namespace SnakeClub.Editor
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             PlayerSettings.productName = "Snake Club";
             PlayerSettings.companyName = "Snake Club";
-            PlayerSettings.bundleVersion = "0.0.3.1";
+            PlayerSettings.bundleVersion = "0.0.3.2";
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             PlayerSettings.runInBackground = true;
             var settings = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/ProjectSettings.asset")[0]);
@@ -69,9 +69,46 @@ namespace SnakeClub.Editor
                 : Path.GetFullPath(configured);
             if (EditorUserBuildSettings.activeBuildTarget != target)
                 throw new InvalidOperationException("Start Unity with -buildTarget " + target + " before building.");
-            var result = BuildPipeline.BuildPlayer(new[] { ScenePath }, output, target, BuildOptions.None);
+            // Reference artwork stays under Editor and is excluded from normal
+            // player builds. Explicit opt-in is for internal review builds only.
+            bool includeReferences = Environment.GetEnvironmentVariable("SNAKE_INCLUDE_REFERENCE_ASSETS") == "1";
+            const string staged = "Assets/Resources/ReferenceSkins";
+            if (includeReferences && !Directory.Exists("Assets/Editor/ReferenceSkins"))
+                throw new InvalidOperationException("Internal reference images are not present locally; normal builds do not require them.");
+            if (Directory.Exists(staged))
+                throw new InvalidOperationException("Refusing to build with an existing reference staging directory: " + staged);
+            BuildReport result;
+            bool stagedCreated = false;
+            try
+            {
+                if (includeReferences)
+                {
+                    if (string.IsNullOrEmpty(AssetDatabase.CreateFolder("Assets/Resources", "ReferenceSkins")))
+                        throw new InvalidOperationException("Could not create the internal reference staging directory.");
+                    stagedCreated = true;
+                    foreach (string file in Directory.GetFiles("Assets/Editor/ReferenceSkins", "*.png"))
+                    {
+                        string source = file.Replace('\\', '/');
+                        if (!AssetDatabase.CopyAsset(source, staged + "/" + Path.GetFileName(file)))
+                            throw new InvalidOperationException("Could not stage reference image: " + source);
+                    }
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                }
+                result = BuildPipeline.BuildPlayer(new[] { ScenePath }, output, target, BuildOptions.None);
+            }
+            finally
+            {
+                if (stagedCreated && AssetDatabase.IsValidFolder(staged)) AssetDatabase.DeleteAsset(staged);
+            }
             if (result.summary.result != BuildResult.Succeeded)
                 throw new InvalidOperationException("Unity build failed: " + result.summary.result);
+            if (!includeReferences)
+                foreach (var archive in result.packedAssets)
+                    foreach (var asset in archive.contents)
+                        if (!string.IsNullOrEmpty(asset.sourceAssetPath) &&
+                            (asset.sourceAssetPath.StartsWith("Assets/Editor/ReferenceSkins/", StringComparison.OrdinalIgnoreCase) ||
+                             asset.sourceAssetPath.StartsWith("Assets/Resources/ReferenceSkins/", StringComparison.OrdinalIgnoreCase)))
+                            throw new InvalidOperationException("Reference-only asset entered a normal player build: " + asset.sourceAssetPath);
             if (target == BuildTarget.WebGL && !File.Exists(Path.Combine(output, "index.html")))
                 throw new InvalidOperationException("Unity reported success but did not produce a WebGL player.");
             if (target == BuildTarget.StandaloneOSX && !Directory.Exists(output))

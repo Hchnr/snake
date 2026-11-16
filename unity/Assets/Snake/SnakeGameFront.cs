@@ -25,11 +25,14 @@ namespace SnakeClub
         private string frontPage = "home", frontNotice = "", resultNote = "", lastRewardId = "", lastRewardKind = "", activePlayerId = "", friendDate = "";
         private bool busy, resultRecorded, flushing, adShowing, connecting;
         private bool developerRooms = false;
+        private string caveStory = "";
+        private float caveStoryUntil;
         private int previewSkin, lastRewardCoins, localVisualSkin = -1;
         private ApiReply board;
         private const string PendingKey = "snake.v3.pending";
         private PlayerProgress CurrentProfile => api != null && api.Connected ? api.Profile : practiceProfile;
-        private int EffectiveSkin => api != null && api.Config.allowReferenceSkinPreview && localVisualSkin >= SkinCatalog.OwnedSkinCount
+        private bool ReferencePreviewEnabled => api != null && api.Config.allowReferenceSkinPreview && SkinVisual.ReferenceAvailable;
+        private int EffectiveSkin => ReferencePreviewEnabled && localVisualSkin >= SkinCatalog.OwnedSkinCount
             && localVisualSkin < SkinCatalog.All.Length ? localVisualSkin : CurrentProfile.selectedSkin;
 
         private void SetupHomeScreen()
@@ -64,7 +67,7 @@ namespace SnakeClub
             PlayerProgress p = CurrentProfile;
             if (SkinCatalog.Get(index).ReferencePreview)
             {
-                if (!api.Config.allowReferenceSkinPreview) return;
+                if (!ReferencePreviewEnabled || SkinVisual.Texture(index) == null) return;
                 localVisualSkin = index; PlayerPrefs.SetInt("snake.v031.previewSkin", index); PlayerPrefs.Save();
                 previewSkin = index; frontNotice = "本机造型试用中";
             }
@@ -111,7 +114,7 @@ namespace SnakeClub
             {
                 connecting = false;
                 frontNotice = reply.ok ? "进度已同步" : "离线练习 · 进度和排行暂不同步";
-                localVisualSkin = api.Config.allowReferenceSkinPreview ? PlayerPrefs.GetInt("snake.v031.previewSkin", -1) : -1;
+                localVisualSkin = ReferencePreviewEnabled ? PlayerPrefs.GetInt("snake.v031.previewSkin", SkinCatalog.OwnedSkinCount) : -1;
                 previewSkin = EffectiveSkin;
                 arenaRenderer.SelectedSkin = previewSkin;
                 if (reply.ok)
@@ -168,7 +171,7 @@ namespace SnakeClub
             if (busy) return;
             int completed = DepthChallenge.CompletedMatches(CurrentProfile);
             if (!DepthChallenge.IsUnlocked(CurrentProfile)) { frontNotice = "完成 3 场对局后开启深潜（" + completed + "/3）"; return; }
-            depthMode = true; depthRoom = 1; depthTurn = depthBoost = depthPickup = 0;
+            depthMode = true; depthRoom = 1; depthShield = depthRebound = depthGrowth = 0;
             RequestDepthRoom();
         }
 
@@ -186,7 +189,7 @@ namespace SnakeClub
             });
         }
 
-        private string DepthGoalText() => depthRoom == 1 ? "目标：淘汰 1 条对手" : depthRoom == 2 ? "目标：携带星核得分" : "目标：围猎标记巨蛇";
+        private string DepthGoalText() => depthRoom == 1 ? "目标：淘汰 1 条对手" : depthRoom == 2 ? "目标：携带星核得分" : "目标：击破护盾并围猎首领";
 
         private bool DepthGoalReached(ArenaState world)
         {
@@ -196,9 +199,9 @@ namespace SnakeClub
         private void SelectDepthBonus(int choice)
         {
             if (busy) return;
-            if (choice == 0) depthTurn += .03f;
-            else if (choice == 1) depthBoost += .04f;
-            else depthPickup += .05f;
+            if (choice == 0) depthShield++;
+            else if (choice == 1) depthRebound++;
+            else depthGrowth++;
             depthRoom++;
             RequestDepthRoom();
         }
@@ -213,9 +216,9 @@ namespace SnakeClub
             if (depthWon && depthRoom < 3)
             {
                 Label(new Rect(150, 815, 780, 65), "选择一个本次深潜增益", 29, new Color(1f, .86f, .56f), TextAnchor.MiddleCenter, true);
-                if (Button(new Rect(175, 900, 730, 100), "轻盈转向  ·  +3%", new Color(.13f, .51f, .46f))) SelectDepthBonus(0);
-                if (Button(new Rect(175, 1020, 730, 100), "省力加速  ·  消耗 -4%", new Color(.23f, .40f, .62f))) SelectDepthBonus(1);
-                if (Button(new Rect(175, 1140, 730, 100), "果实感知  ·  范围 +5%", new Color(.42f, .33f, .60f))) SelectDepthBonus(2);
+                if (Button(new Rect(175, 900, 730, 100), "收圈护盾  ·  捕获后护盾 2 秒", new Color(.13f, .51f, .46f))) SelectDepthBonus(0);
+                if (Button(new Rect(175, 1020, 730, 100), "反弹冲刺  ·  撞墙后 3 秒加速免费", new Color(.23f, .40f, .62f))) SelectDepthBonus(1);
+                if (Button(new Rect(175, 1140, 730, 100), "猎手长尾  ·  淘汰额外增长 3 节", new Color(.42f, .33f, .60f))) SelectDepthBonus(2);
             }
             else
             {
@@ -316,7 +319,7 @@ namespace SnakeClub
 #endif
             if (developerRooms) { if (homeAvatar != null) homeAvatar.Visible = false; DrawLegacyMenu(); return; }
             if (frontPage == "home" || frontPage == "skins") return;
-            if (homeAvatar != null) { homeAvatar.Visible = frontPage == "skins"; homeAvatar.Skin = previewSkin; }
+            if (homeAvatar != null) { homeAvatar.Visible = frontPage == "caves"; homeAvatar.Skin = EffectiveSkin; }
             if (caveBackground != null) GUI.DrawTexture(new Rect(0, 0, 1080, 1920), caveBackground, ScaleMode.ScaleAndCrop);
             Color old = GUI.color; GUI.color = new Color(.015f, .035f, .065f, .28f); GUI.DrawTexture(new Rect(0, 0, 1080, 1920), Texture2D.whiteTexture); GUI.color = old;
             if (frontPage == "home") DrawHome();
@@ -476,14 +479,24 @@ namespace SnakeClub
                 long remaining = Math.Max(0, end - api.EstimatedServerTime);
                 Panel(new Rect(100, 410, 880, 560), new Color(.025f, .08f, .14f, .94f));
                 Label(new Rect(150, 460, 780, 75), Progression.CaveNames[expedition.cave] + " · 梦游中", 40, Color.white, TextAnchor.MiddleCenter, true);
-                Label(new Rect(150, 560, 780, 80), remaining == 0 ? "探索完成" : "剩余 " + FormatCountdown(remaining), 34, new Color(.60f, .95f, .83f), TextAnchor.MiddleCenter);
-                Label(new Rect(160, 665, 760, 100), "完整收益 " + Progression.ExpeditionCoins(expedition.durationMinutes, expedition.bonusPercent) + " 金币 + " + Progression.ExpeditionExperience(expedition.durationMinutes) + " 经验\n每日探洞经验剩余 " + (20 - p.dailyExpeditionXp), 25, new Color(.72f, .85f, .88f), TextAnchor.MiddleCenter);
+                if (homeAvatar != null && homeAvatar.Texture != null)
+                {
+                    float drift = reducedEffects ? 0 : Mathf.Sin(Time.unscaledTime * 2f) * 12f;
+                    GUI.DrawTexture(new Rect(135 + drift, 550, 250, 230), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
+                }
+                Label(new Rect(380, 560, 535, 80), remaining == 0 ? "探索完成" : "剩余 " + FormatCountdown(remaining), 34, new Color(.60f, .95f, .83f), TextAnchor.MiddleCenter);
+                Label(new Rect(365, 665, 550, 100), "完整收益 " + Progression.ExpeditionCoins(expedition.durationMinutes, expedition.bonusPercent) + " 金币 + " + Progression.ExpeditionExperience(expedition.durationMinutes) + " 经验\n每日探洞经验剩余 " + (20 - p.dailyExpeditionXp), 23, new Color(.72f, .85f, .88f), TextAnchor.MiddleCenter);
                 if (SmallButton(new Rect(240, 805, 600, 105), remaining == 0 ? "领取收获" : "提前带回（按时间结算）", new Color(.10f, .55f, .46f), 27))
                 {
                     string id = expedition.id;
                     Mutate("expedition/claim", new ApiRequest { id = id }, reply =>
                     {
-                        if (reply.ok) { frontNotice = "探洞收获：金币 +" + reply.coins + "  经验 +" + reply.experience + (reply.fragments > 0 ? "  碎片 +" + reply.fragments : ""); lastRewardId = id; lastRewardKind = "cave"; lastRewardCoins = reply.baseCoins; }
+                        if (reply.ok)
+                        {
+                            frontNotice = "探洞收获：金币 +" + reply.coins + "  经验 +" + reply.experience + (reply.fragments > 0 ? "  碎片 +" + reply.fragments : "");
+                            caveStory = reply.fragments > 0 ? "我回来啦！带回了洞穴碎片" : "我回来啦，收获已经带回"; caveStoryUntil = Time.unscaledTime + 4f;
+                            lastRewardId = id; lastRewardKind = "cave"; lastRewardCoins = reply.baseCoins;
+                        }
                     });
                 }
             }
@@ -497,12 +510,22 @@ namespace SnakeClub
                     Label(new Rect(card.x + 35, card.y + 24, 430, 60), Progression.CaveNames[i] + "  ·  " + (Progression.CaveMinutes[i] / 60) + " 小时", 32, Color.white, TextAnchor.MiddleLeft, true);
                     int fragments = p.caveFragments != null && p.caveFragments.Length == 3 ? p.caveFragments[i] : 0;
                     Label(new Rect(card.x + 35, card.y + 95, 545, 100), "约 " + Progression.ExpeditionCoins(Progression.CaveMinutes[i], Progression.CaveBonusPercent(p)) + " 金币 + " + Progression.ExpeditionExperience(Progression.CaveMinutes[i]) + " 经验\n碎片 " + fragments + " · " + Progression.CaveMilestone(fragments), 23, new Color(.68f, .86f, .87f), TextAnchor.MiddleLeft);
-                    if (SmallButton(new Rect(card.x + 610, card.y + 75, 230, 95), "派遣", new Color(.10f, .55f, .46f), 30)) Mutate("expedition/start", new ApiRequest { index = index });
+                    if (SmallButton(new Rect(card.x + 610, card.y + 75, 230, 95), "派遣", new Color(.10f, .55f, .46f), 30))
+                        Mutate("expedition/start", new ApiRequest { index = index }, reply =>
+                        {
+                            if (reply.ok) { caveStory = "我出发啦，稍后见！"; caveStoryUntil = Time.unscaledTime + 4f; }
+                        });
                 }
                 Label(new Rect(100, 1210, 880, 100), "同时仅可探索一个洞穴，最多累计 8 小时。\n每日探洞经验剩余 " + (20 - p.dailyExpeditionXp), 24, new Color(.77f, .88f, .88f), TextAnchor.MiddleCenter);
                 DrawRewardOffer(new Rect(200, 1340, 680, 95));
             }
-            Label(new Rect(100, 1530, 880, 100), frontNotice, 24, new Color(.80f, .91f, .91f), TextAnchor.MiddleCenter);
+            if (Time.unscaledTime < caveStoryUntil && homeAvatar != null && homeAvatar.Texture != null)
+            {
+                GUI.DrawTexture(new Rect(95, 1470, 220, 220), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
+                Label(new Rect(315, 1500, 650, 65), caveStory, 27, new Color(1f, .92f, .65f), TextAnchor.MiddleLeft, true);
+                Label(new Rect(315, 1570, 650, 80), frontNotice, 22, new Color(.80f, .91f, .91f), TextAnchor.MiddleLeft);
+            }
+            else Label(new Rect(100, 1530, 880, 100), frontNotice, 24, new Color(.80f, .91f, .91f), TextAnchor.MiddleCenter);
         }
 
         private void OpenBoard()

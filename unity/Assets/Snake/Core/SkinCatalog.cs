@@ -27,7 +27,25 @@ namespace SnakeClub.Core
             new SkinDefinition("stardust", "星砂", "拾取范围 +1%", 900),
             new SkinDefinition("crystal", "萤晶", "探洞金币 +1%", 1500),
             new SkinDefinition("reference-wenda", "Wenda", "角色造型预览", 0, true),
-            new SkinDefinition("reference-raddy", "Raddy", "角色造型预览", 0, true)
+            new SkinDefinition("reference-raddy", "Raddy", "角色造型预览", 0, true),
+            new SkinDefinition("reference-oren", "Oren", "角色造型预览", 0, true),
+            new SkinDefinition("reference-clukr", "Clukr", "角色造型预览", 0, true),
+            new SkinDefinition("reference-fun-bot", "Fun Bot", "角色造型预览", 0, true),
+            new SkinDefinition("reference-vineria", "Vineria", "角色造型预览", 0, true),
+            new SkinDefinition("reference-gray", "Gray", "角色造型预览", 0, true),
+            new SkinDefinition("reference-pinki", "Pinki", "角色造型预览", 0, true),
+            new SkinDefinition("reference-brud", "Brud", "角色造型预览", 0, true),
+            new SkinDefinition("reference-garnold", "Garnold", "角色造型预览", 0, true),
+            new SkinDefinition("reference-owakcx", "OWAKCX", "角色造型预览", 0, true),
+            new SkinDefinition("reference-sky", "Sky", "角色造型预览", 0, true),
+            new SkinDefinition("reference-mr-sun", "Mr. Sun", "角色造型预览", 0, true),
+            new SkinDefinition("reference-durple", "Durple", "角色造型预览", 0, true),
+            new SkinDefinition("reference-mr-tree", "Mr. Tree", "角色造型预览", 0, true),
+            new SkinDefinition("reference-simon", "Simon", "角色造型预览", 0, true),
+            new SkinDefinition("reference-tunner", "Tunner", "角色造型预览", 0, true),
+            new SkinDefinition("reference-mr-fun-computer", "Mr. Fun Computer", "角色造型预览", 0, true),
+            new SkinDefinition("reference-jevin", "Jevin", "角色造型预览", 0, true),
+            new SkinDefinition("reference-black", "Black", "角色造型预览", 0, true)
         };
 
         public static SkinDefinition Get(int index) => All[Math.Max(0, Math.Min(All.Length - 1, index))];

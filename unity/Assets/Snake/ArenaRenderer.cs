@@ -21,7 +21,7 @@ namespace SnakeClub
             new Color(1f, .66f, .26f), new Color(.98f, .32f, .47f),
             new Color(.35f, .92f, .70f), new Color(.62f, .57f, 1f)
         };
-        private static readonly int[] SkinPalette = { 0, 3, 4, 5, 8, 9 };
+        private static readonly int[] SkinPalette = { 0, 3, 4, 5, 8, 9, 3, 8, 3, 7, 2, 6, 3, 3, 7, 5, 3, 4, 7, 3, 3, 2, 2, 2 };
         private readonly List<Matrix4x4>[] bodies = new List<Matrix4x4>[Palette.Length];
         private readonly List<Matrix4x4>[] links = new List<Matrix4x4>[Palette.Length];
         private readonly List<Matrix4x4>[] horns = new List<Matrix4x4>[Palette.Length];
@@ -31,23 +31,33 @@ namespace SnakeClub
         private readonly List<Matrix4x4> scales = new List<Matrix4x4>();
         private readonly List<Matrix4x4> trail = new List<Matrix4x4>();
         private readonly List<Matrix4x4> sparks = new List<Matrix4x4>();
+        private readonly List<Matrix4x4> trailPulses = new List<Matrix4x4>();
         private readonly Dictionary<string, List<Vector3>> smoothed = new Dictionary<string, List<Vector3>>();
+        private readonly Dictionary<string, SpriteRenderer> characters = new Dictionary<string, SpriteRenderer>();
+        private readonly Dictionary<string, LineRenderer[]> characterTrails = new Dictionary<string, LineRenderer[]>();
+        private readonly Dictionary<string, LineRenderer> opponentMarkers = new Dictionary<string, LineRenderer>();
         private readonly List<Transform> crystals = new List<Transform>();
         private Material[] bodyMaterials;
         private Material[] fruitMaterials;
         private Material eyeMaterial;
         private Material pupilMaterial;
         private Material scaleMaterial;
+        private Material trailLineMaterial;
         private Mesh sphere;
         private Mesh cylinder;
         private Mesh cone;
         private Camera view;
-        private LineRenderer marker, eventRing;
+        private LineRenderer marker, eventRing, captureOutline, captureFlare, reboundRipple, directionArrow, bossWarning;
+        private Transform runtimeRoot;
         private GameObject starObject;
         private bool cameraReady;
         private int lastTick = -1, lastKills;
         private float burstStarted = -10f;
         private Vector3 burstPosition;
+        private int shownCaptureTick = -1;
+        private float captureStarted = -10f;
+        private float reboundStarted = -10f, previousRebound;
+        private Vector3 reboundPosition;
         public int SelectedSkin { get; set; }
         public bool ReducedEffects { get; set; }
         public bool Visible
@@ -88,6 +98,8 @@ namespace SnakeClub
             pupilMaterial = MakeMaterial(new Color(.025f, .035f, .075f), .1f);
             scaleMaterial = MakeMaterial(new Color(.70f, 1f, .9f), .2f);
             scaleMaterial.EnableKeyword("_EMISSION");
+            var lineShader = Shader.Find("Sprites/Default");
+            trailLineMaterial = lineShader != null ? new Material(lineShader) : MakeMaterial(Color.white, 0);
             SetupScene();
         }
 
@@ -106,8 +118,8 @@ namespace SnakeClub
         {
             var previous = transform.Find("Arena Runtime");
             if (previous != null) { previous.gameObject.SetActive(false); Destroy(previous.gameObject); }
-            var runtimeRoot = new GameObject("Arena Runtime");
-            runtimeRoot.transform.SetParent(transform, false);
+            var runtime = new GameObject("Arena Runtime");
+            runtime.transform.SetParent(transform, false); runtimeRoot = runtime.transform; characters.Clear(); characterTrails.Clear(); opponentMarkers.Clear();
             RenderSettings.ambientLight = new Color(.44f, .48f, .61f);
             RenderSettings.fog = true;
             RenderSettings.fogColor = new Color(.025f, .045f, .09f);
@@ -116,7 +128,7 @@ namespace SnakeClub
             RenderSettings.fogEndDistance = 180;
 
             var cameraObject = new GameObject("Arena Camera");
-            cameraObject.transform.SetParent(runtimeRoot.transform, false);
+            cameraObject.transform.SetParent(runtimeRoot, false);
             view = cameraObject.AddComponent<Camera>();
             cameraObject.AddComponent<AudioListener>();
             view.clearFlags = CameraClearFlags.SolidColor;
@@ -130,7 +142,7 @@ namespace SnakeClub
             cameraObject.tag = "MainCamera";
 
             var lightObject = new GameObject("Sun");
-            lightObject.transform.SetParent(runtimeRoot.transform, false);
+            lightObject.transform.SetParent(runtimeRoot, false);
             var sun = lightObject.AddComponent<Light>();
             sun.type = LightType.Directional;
             sun.intensity = 1.15f;
@@ -139,16 +151,17 @@ namespace SnakeClub
             lightObject.transform.rotation = Quaternion.Euler(50, -30, 0);
 
             var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            floor.transform.SetParent(runtimeRoot.transform, false);
+            floor.transform.SetParent(runtimeRoot, false);
             floor.name = "Arena Floor";
             floor.transform.localScale = Vector3.one * (Arena.WorldHalfSize * 2 / 10f);
             Destroy(floor.GetComponent<Collider>());
-            var ground = Resources.Load<Texture2D>("ArenaFloor");
-            var floorMat = MakeMaterial(ground != null ? new Color(.66f, .76f, .78f) : new Color(.17f, .26f, .36f), .05f);
+            var ground = Resources.Load<Texture2D>("ArenaStage");
+            if (ground == null) ground = Resources.Load<Texture2D>("ArenaFloor");
+            var floorMat = MakeMaterial(ground != null ? new Color(.82f, .88f, .94f) : new Color(.17f, .26f, .36f), .05f);
             if (ground != null)
             {
                 floorMat.mainTexture = ground;
-                floorMat.mainTextureScale = Vector2.one * 11;
+                floorMat.mainTextureScale = Vector2.one * 7;
             }
             else
             {
@@ -171,7 +184,7 @@ namespace SnakeClub
             for (int i = 0; i < 4; i++)
             {
                 var rail = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                rail.transform.SetParent(runtimeRoot.transform, false);
+                rail.transform.SetParent(runtimeRoot, false);
                 rail.name = "Reflecting Boundary";
                 Destroy(rail.GetComponent<Collider>());
                 rail.GetComponent<Renderer>().sharedMaterial = railMat;
@@ -188,7 +201,7 @@ namespace SnakeClub
                 float z = (float)(decorationRandom.NextDouble() * 194 - 97);
                 if (Mathf.Abs(x) < 18 && Mathf.Abs(z) < 18) x += x < 0 ? -25 : 25;
                 var crystal = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                crystal.transform.SetParent(runtimeRoot.transform, false);
+                crystal.transform.SetParent(runtimeRoot, false);
                 crystal.name = "Cave crystal"; Destroy(crystal.GetComponent<Collider>());
                 float height = 1.3f + (float)decorationRandom.NextDouble() * 1.8f;
                 crystal.transform.position = new Vector3(x, height * .45f, z);
@@ -199,29 +212,67 @@ namespace SnakeClub
             }
 
             starObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            starObject.transform.SetParent(runtimeRoot.transform, false);
+            starObject.transform.SetParent(runtimeRoot, false);
             starObject.name = "Star core"; Destroy(starObject.GetComponent<Collider>());
             var starMaterial = MakeMaterial(new Color(1f, .78f, .30f), .35f);
             starMaterial.EnableKeyword("_EMISSION"); starMaterial.SetColor("_EmissionColor", new Color(.5f, .24f, .025f));
             starObject.GetComponent<Renderer>().sharedMaterial = starMaterial; starObject.SetActive(false);
 
             var ring = new GameObject("Player Marker");
-            ring.transform.SetParent(runtimeRoot.transform, false);
+            ring.transform.SetParent(runtimeRoot, false);
             marker = ring.AddComponent<LineRenderer>();
             marker.useWorldSpace = true;
             marker.loop = true;
             marker.positionCount = 48;
             marker.widthMultiplier = .08f;
-            marker.material = MakeMaterial(new Color(.6f, 1f, .87f), 0);
+            marker.sharedMaterial = trailLineMaterial; marker.sortingOrder = 4;
             marker.startColor = marker.endColor = new Color(.7f, 1f, .9f, .9f);
             marker.shadowCastingMode = ShadowCastingMode.Off;
+            var arrowObject = new GameObject("Movement direction"); arrowObject.transform.SetParent(runtimeRoot, false);
+            directionArrow = arrowObject.AddComponent<LineRenderer>(); directionArrow.useWorldSpace = true;
+            directionArrow.positionCount = 3; directionArrow.widthMultiplier = .14f;
+            directionArrow.sharedMaterial = trailLineMaterial; directionArrow.sortingOrder = 4;
+            directionArrow.startColor = directionArrow.endColor = new Color(.9f, 1f, .95f, 1f);
+            directionArrow.shadowCastingMode = ShadowCastingMode.Off;
+            var bossObject = new GameObject("Boss attack warning"); bossObject.transform.SetParent(runtimeRoot, false);
+            bossWarning = bossObject.AddComponent<LineRenderer>(); bossWarning.useWorldSpace = true;
+            bossWarning.positionCount = 2; bossWarning.widthMultiplier = .20f; bossWarning.sortingOrder = 3;
+            bossWarning.sharedMaterial = trailLineMaterial; bossWarning.startColor = bossWarning.endColor = new Color(1f, .55f, .18f, 1f);
+            bossWarning.shadowCastingMode = ShadowCastingMode.Off;
             var eventObject = new GameObject("Event boundary");
-            eventObject.transform.SetParent(runtimeRoot.transform, false);
+            eventObject.transform.SetParent(runtimeRoot, false);
             eventRing = eventObject.AddComponent<LineRenderer>();
             eventRing.useWorldSpace = true; eventRing.loop = true; eventRing.positionCount = 64;
             eventRing.widthMultiplier = .12f; eventRing.material = MakeMaterial(new Color(1f, .73f, .29f), 0);
             eventRing.startColor = eventRing.endColor = new Color(1f, .78f, .35f, .65f);
             eventRing.shadowCastingMode = ShadowCastingMode.Off;
+            var captureObject = new GameObject("Capture outline"); captureObject.transform.SetParent(runtimeRoot, false);
+            captureOutline = captureObject.AddComponent<LineRenderer>();
+            captureOutline.useWorldSpace = true; captureOutline.loop = true; captureOutline.enabled = false;
+            captureOutline.widthMultiplier = .22f; captureOutline.sharedMaterial = trailLineMaterial;
+            captureOutline.startColor = captureOutline.endColor = new Color(1f, .94f, .60f, 1f);
+            captureOutline.shadowCastingMode = ShadowCastingMode.Off;
+            captureFlare = MakeEffectRing("Capture closing point", new Color(1f, .94f, .60f, 1f));
+            reboundRipple = MakeEffectRing("Rebound ripple", new Color(.55f, 1f, .91f, 1f));
+        }
+
+        private LineRenderer MakeEffectRing(string name, Color color)
+        {
+            var item = new GameObject(name); item.transform.SetParent(runtimeRoot, false);
+            var line = item.AddComponent<LineRenderer>(); line.useWorldSpace = true; line.loop = true;
+            line.positionCount = 32; line.widthMultiplier = .09f; line.sharedMaterial = trailLineMaterial;
+            line.startColor = line.endColor = color; line.sortingOrder = 5;
+            line.shadowCastingMode = ShadowCastingMode.Off; line.enabled = false;
+            return line;
+        }
+
+        private static void PlaceRing(LineRenderer line, Vector3 center, float radius)
+        {
+            for (int i = 0; i < line.positionCount; i++)
+            {
+                float angle = i * Mathf.PI * 2f / line.positionCount;
+                line.SetPosition(i, center + new Vector3(Mathf.Cos(angle) * radius, 0, Mathf.Sin(angle) * radius));
+            }
         }
 
         public void Draw(ArenaState state, string playerId)
@@ -231,7 +282,30 @@ namespace SnakeClub
             foreach (var list in links) list.Clear();
             foreach (var list in horns) list.Clear();
             foreach (var list in fruits) list.Clear();
-            eyes.Clear(); pupils.Clear(); scales.Clear(); trail.Clear(); sparks.Clear();
+            eyes.Clear(); pupils.Clear(); scales.Clear(); trail.Clear(); sparks.Clear(); trailPulses.Clear();
+            foreach (var character in characters.Values) if (character != null) character.enabled = false;
+            foreach (var pair in characterTrails.Values) foreach (var line in pair) if (line != null) line.enabled = false;
+            foreach (var ring in opponentMarkers.Values) if (ring != null) ring.enabled = false;
+            bool characterMode = SkinVisual.Sprite(SelectedSkin) != null;
+            bool referenceMode = characterMode && SelectedSkin >= SkinCatalog.OwnedSkinCount;
+            if (state.tick < lastTick) { shownCaptureTick = -1; captureStarted = -10f; reboundStarted = -10f; previousRebound = 0; }
+            if (state.captureTick >= 0 && state.captureTick != shownCaptureTick && state.capturePolygon != null && state.capturePolygon.Count > 2)
+            {
+                shownCaptureTick = state.captureTick; captureStarted = Time.time;
+                captureOutline.positionCount = state.capturePolygon.Count;
+                for (int i = 0; i < state.capturePolygon.Count; i++)
+                    captureOutline.SetPosition(i, new Vector3(state.capturePolygon[i].x, .20f, state.capturePolygon[i].y));
+            }
+            captureOutline.enabled = Time.time - captureStarted < .55f;
+            if (captureOutline.enabled) captureOutline.widthMultiplier = .24f * (1f - (Time.time - captureStarted) / .55f);
+            float captureAge = Time.time - captureStarted;
+            captureFlare.enabled = !ReducedEffects && captureAge >= 0f && captureAge < .4f && state.capturePolygon != null && state.capturePolygon.Count > 0;
+            if (captureFlare.enabled)
+            {
+                var hit = state.capturePolygon[0];
+                PlaceRing(captureFlare, new Vector3(hit.x, .29f, hit.y), Mathf.Lerp(.15f, .9f, captureAge / .4f));
+                captureFlare.widthMultiplier = .12f * (1f - captureAge / .4f);
+            }
             SnakeState focus = state.snakes.Find(s => s.id == playerId && s.alive);
             if (focus == null) focus = state.snakes.Find(s => s.alive);
             if (focus != null && focus.segments.Count > 0)
@@ -245,6 +319,8 @@ namespace SnakeClub
             for (int i = 0; i < crystals.Count; i++)
                 if (crystals[i] != null) crystals[i].Rotate(Vector3.up, Time.deltaTime * (5f + i % 5), Space.World);
             marker.enabled = false;
+            directionArrow.enabled = false;
+            bossWarning.enabled = false;
             eventRing.enabled = state.eventStatus == "active" && state.eventKind == "fruit" && state.eventRadius > 0;
             if (eventRing.enabled)
                 for (int i = 0; i < eventRing.positionCount; i++)
@@ -256,7 +332,18 @@ namespace SnakeClub
             foreach (var snake in state.snakes)
             {
                 if (!snake.alive || snake.segments.Count == 0) continue;
-                int color = snake.id == playerId ? SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)] : Mathf.Abs(snake.color % bodies.Length);
+                int visualSkin = SelectedSkin;
+                if (snake.id != playerId)
+                {
+                    int first = referenceMode ? SkinCatalog.OwnedSkinCount : 0;
+                    int count = referenceMode ? SkinCatalog.All.Length - first : SkinCatalog.OwnedSkinCount;
+                    int choice = Mathf.Abs(snake.color % (count - 1));
+                    int playerChoice = Mathf.Clamp(SelectedSkin - first, 0, count - 1);
+                    if (choice >= playerChoice) choice++;
+                    visualSkin = first + choice;
+                }
+                Sprite characterSprite = characterMode ? SkinVisual.Sprite(visualSkin) : null;
+                int color = characterSprite != null || snake.id == playerId ? SkinPalette[Mathf.Clamp(visualSkin, 0, SkinPalette.Length - 1)] : Mathf.Abs(snake.color % bodies.Length);
                 var list = bodies[color];
                 List<Vector3> positions;
                 if (!smoothed.TryGetValue(snake.id, out positions))
@@ -274,11 +361,11 @@ namespace SnakeClub
                 {
                     Point p = snake.segments[i];
                     Vector3 target = new Vector3(p.x, .72f + .045f * Mathf.Sin(Time.time * 7f - i * .55f), p.y);
-                    positions[i] = Vector3.Distance(positions[i], target) > 8f ? target :
+                    positions[i] = characterMode || Vector3.Distance(positions[i], target) > 8f ? target :
                         Vector3.Lerp(positions[i], target, 1f - Mathf.Exp(-16f * Time.deltaTime));
-                    float taper = i == 0 ? 1.65f : Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((snake.segments.Count - i) / 6f));
-                    list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * taper));
-                    if (snake.id == playerId && i > 0 && i % (SelectedSkin == 1 ? 3 : 2) == 0)
+                    float taper = characterSprite != null ? .80f : i == 0 ? 1.65f : Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((snake.segments.Count - i) / 6f));
+                    if (characterSprite == null) list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * taper));
+                    if (characterSprite == null && snake.id == playerId && i > 0 && i % (SelectedSkin == 1 ? 3 : 2) == 0)
                     {
                         float scale = SelectedSkin == 2 ? .45f : .35f;
                         scales.Add(Matrix4x4.TRS(positions[i] + Vector3.up * .53f, Quaternion.identity, new Vector3(scale, .17f, scale)));
@@ -288,16 +375,44 @@ namespace SnakeClub
                 {
                     Vector3 delta = positions[i - 1] - positions[i];
                     if (delta.sqrMagnitude < .0001f) continue;
-                    float diameter = Mathf.Lerp(.70f, 1.27f, Mathf.Clamp01((positions.Count - i) / 6f));
-                    links[color].Add(Matrix4x4.TRS((positions[i - 1] + positions[i]) * .5f, Quaternion.FromToRotation(Vector3.up, delta), new Vector3(diameter, delta.magnitude * .5f, diameter)));
+                    float diameter = characterSprite != null ? .80f : Mathf.Lerp(.70f, 1.27f, Mathf.Clamp01((positions.Count - i) / 6f));
+                    if (characterSprite == null)
+                        links[color].Add(Matrix4x4.TRS((positions[i - 1] + positions[i]) * .5f, Quaternion.FromToRotation(Vector3.up, delta), new Vector3(diameter, delta.magnitude * .5f, diameter)));
                 }
                 Vector3 forward = new Vector3(Mathf.Cos(snake.angle), 0, Mathf.Sin(snake.angle));
                 Vector3 side = new Vector3(-forward.z, 0, forward.x);
                 Vector3 center = positions[0];
+                if (snake.boss && snake.bossWindup > 0)
+                {
+                    Vector3 aim = new Vector3(snake.bossAim.x, 0, snake.bossAim.y);
+                    bossWarning.enabled = true; bossWarning.SetPosition(0, center + Vector3.down * .42f);
+                    bossWarning.SetPosition(1, center + aim * 10f + Vector3.down * .42f);
+                    bossWarning.widthMultiplier = .14f + .08f * (.5f + .5f * Mathf.Sin(Time.time * 12f));
+                }
+                if (characterSprite != null)
+                {
+                    DrawCharacterTrail(snake.id, positions, Palette[color]);
+                    if (snake.id != playerId) DrawOpponentMarker(snake.id, center, Palette[color]);
+                    if (!characters.TryGetValue(snake.id, out var character) || character == null)
+                    {
+                        var item = new GameObject("Full character " + snake.id); item.transform.SetParent(runtimeRoot, false);
+                        character = item.AddComponent<SpriteRenderer>(); character.sortingOrder = 10;
+                        characters[snake.id] = character;
+                    }
+                    character.sprite = characterSprite; character.enabled = true;
+                    float characterScale = snake.boosting ? 1.46f : 1.35f;
+                    float bob = ReducedEffects ? 0 : .06f * Mathf.Sin(Time.time * 4f + snake.color);
+                    // Anchor the bottom of the camera-facing sprite at the real
+                    // head position, leaving the collision marker visible.
+                    character.transform.position = center + view.transform.up * (2f * characterScale + bob);
+                    character.transform.rotation = view.transform.rotation * Quaternion.Euler(0, 0, -forward.x * 4f);
+                    character.transform.localScale = Vector3.one * characterScale;
+                }
                 if (snake.id == playerId)
                 {
                     int shape = Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1);
-                    if (shape == 5)
+                    if (characterSprite != null) { }
+                    else if (shape == 5)
                     {
                         for (int i = -2; i <= 2; i++)
                             horns[color].Add(Matrix4x4.TRS(center + side * (i * .18f) + Vector3.up * .62f,
@@ -309,9 +424,11 @@ namespace SnakeClub
                                 Quaternion.Euler(0, 0, sign * 15f), new Vector3(.31f, shape == 4 ? .85f : .55f, .28f)));
                     if (state.tick < lastTick) { lastKills = snake.kills; burstStarted = -10f; }
                     if (lastTick >= 0 && snake.kills > lastKills) { burstStarted = Time.time; burstPosition = center; }
+                    if (snake.rebound > 0 && previousRebound <= 0) { reboundStarted = Time.time; reboundPosition = center; }
+                    previousRebound = snake.rebound;
                     lastKills = snake.kills; lastTick = state.tick;
                 }
-                for (int sign = -1; sign <= 1; sign += 2)
+                for (int sign = -1; characterSprite == null && sign <= 1; sign += 2)
                 {
                     Vector3 eye = center + forward * .52f + side * (.37f * sign) + Vector3.up * .37f;
                     eyes.Add(Matrix4x4.TRS(eye, Quaternion.identity, Vector3.one * .38f));
@@ -331,13 +448,26 @@ namespace SnakeClub
                         }
                     }
                     marker.enabled = true;
+                    directionArrow.enabled = true;
+                    Vector3 arrowTip = center + forward * 1.8f + Vector3.down * .45f;
+                    directionArrow.SetPosition(0, arrowTip - forward * .65f + side * .45f);
+                    directionArrow.SetPosition(1, arrowTip);
+                    directionArrow.SetPosition(2, arrowTip - forward * .65f - side * .45f);
                     marker.widthMultiplier = snake.rebound > 0 ? .18f : .08f;
                     for (int i = 0; i < marker.positionCount; i++)
                     {
                         float angle = i * Mathf.PI * 2 / marker.positionCount;
-                        marker.SetPosition(i, center + new Vector3(Mathf.Cos(angle) * 1.35f, -.62f, Mathf.Sin(angle) * 1.35f));
+                        float radius = characterSprite != null ? Arena.CollisionRadius : 1.35f;
+                        marker.SetPosition(i, center + new Vector3(Mathf.Cos(angle) * radius, -.52f, Mathf.Sin(angle) * radius));
                     }
                 }
+            }
+            float reboundAge = Time.time - reboundStarted;
+            reboundRipple.enabled = !ReducedEffects && reboundAge >= 0f && reboundAge < .5f;
+            if (reboundRipple.enabled)
+            {
+                PlaceRing(reboundRipple, new Vector3(reboundPosition.x, .27f, reboundPosition.z), Mathf.Lerp(.45f, 1.7f, reboundAge / .5f));
+                reboundRipple.widthMultiplier = .12f * (1f - reboundAge / .5f);
             }
             float burstAge = Time.time - burstStarted;
             if (!ReducedEffects && burstAge >= 0 && burstAge < .8f)
@@ -369,7 +499,59 @@ namespace SnakeClub
             for (int i = 0; i < fruits.Length; i++) DrawBatch(fruits[i], fruitMaterials[i]);
             scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)]], Color.white, .65f);
             scaleMaterial.SetColor("_EmissionColor", scaleMaterial.color * .18f);
-            DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+            DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, scaleMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+        }
+
+        private void DrawOpponentMarker(string id, Vector3 center, Color color)
+        {
+            if (!opponentMarkers.TryGetValue(id, out var ring) || ring == null)
+            {
+                ring = MakeEffectRing("Opponent collision " + id, color);
+                opponentMarkers[id] = ring;
+            }
+            ring.enabled = true; ring.widthMultiplier = .075f;
+            ring.startColor = ring.endColor = Color.Lerp(color, Color.white, .55f);
+            PlaceRing(ring, new Vector3(center.x, .20f, center.z), Arena.CollisionRadius);
+        }
+
+        private void DrawCharacterTrail(string id, List<Vector3> positions, Color color)
+        {
+            // Segments 0 and 1 are excluded by body collision, so the visible
+            // collidable trail begins at segment 2 rather than at the avatar.
+            if (positions.Count < 4) return;
+            if (!characterTrails.TryGetValue(id, out var lines) || lines[0] == null)
+            {
+                lines = new LineRenderer[2];
+                for (int layer = 0; layer < lines.Length; layer++)
+                {
+                    var item = new GameObject("Character trail " + id + " " + layer); item.transform.SetParent(runtimeRoot, false);
+                    var line = item.AddComponent<LineRenderer>(); line.sharedMaterial = trailLineMaterial;
+                    line.useWorldSpace = true; line.numCapVertices = 4; line.numCornerVertices = 3;
+                    line.widthMultiplier = layer == 0 ? .80f : .25f; line.sortingOrder = layer;
+                    line.shadowCastingMode = ShadowCastingMode.Off; lines[layer] = line;
+                }
+                characterTrails[id] = lines;
+            }
+            for (int layer = 0; layer < lines.Length; layer++)
+            {
+                var line = lines[layer]; line.enabled = true; line.positionCount = positions.Count - 2;
+                Color shade = layer == 0 ? color : Color.Lerp(color, Color.white, .78f);
+                float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(Time.time * 4f);
+                line.startColor = line.endColor = new Color(shade.r * pulse, shade.g * pulse, shade.b * pulse, 1f);
+                for (int i = 2; i < positions.Count; i++) line.SetPosition(i - 2, new Vector3(positions[i].x, .23f + layer * .02f, positions[i].z));
+            }
+            if (!ReducedEffects)
+            {
+                // Moving highlights remain inside the real collidable path.
+                float phase = Mathf.Repeat(Time.time * 3f, 5f);
+                for (float sample = 2f + phase; sample < positions.Count - 1; sample += 5f)
+                {
+                    int i = Mathf.FloorToInt(sample);
+                    Vector3 point = Vector3.Lerp(positions[i], positions[i + 1], sample - i);
+                    point.y = .34f;
+                    trailPulses.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * .22f));
+                }
+            }
         }
 
         private static Mesh CreateCone()
@@ -390,7 +572,7 @@ namespace SnakeClub
             return mesh;
         }
 
-        public Vector3 WorldToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, 2.1f, point.y));
+        public Vector3 WorldToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y) + view.transform.up * 5.7f);
 
         private void DrawBatch(List<Matrix4x4> matrices, Material material, Mesh mesh = null)
         {

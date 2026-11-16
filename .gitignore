@@ -22,6 +22,9 @@ coverage/
 # Official Douyin SDK tools are installed locally, including their local state.
 /unity/Assets/Plugins/ByteGame/
 /unity/Assets/Plugins/ByteGame.meta
+# Unlicensed reference-character art is kept locally for internal review only.
+/unity/Assets/Editor/ReferenceSkins/
+/unity/Assets/Editor/ReferenceSkins.meta
 
 # .NET output
 **/bin/

@@ -66,7 +66,13 @@ before(async () => {
   const caveId = idFor('v3-cave');
   const legacyId = idFor('v3-legacy');
   const oldProfileId = idFor('v3-old-profile');
+  const newId = idFor('v3-new-rules');
+  const missingId = idFor('v3-missing-rules');
   const legacy = { id: 'legacy-run', playerId: legacyId, mode: 'daily', date: chinaDay(), rules: 'daily-1', seed: 1,
+    startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
+  const current = { id: 'capture-run', playerId: newId, mode: 'daily', date: chinaDay(), rules: 'daily-3', seed: 1,
+    startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
+  const missing = { id: 'missing-rules-run', playerId: missingId, mode: 'daily', date: chinaDay(), seed: 1,
     startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   fs.writeFileSync(dataFile, JSON.stringify({
     players: {
@@ -74,7 +80,7 @@ before(async () => {
       [oldProfileId]: { playerId: oldProfileId, displayName: '老玩家', tutorialComplete: true, experience: 345, coins: 777, ownedSkins: [0, 2], selectedSkin: 2,
         talents: [1, 0, 0, 0, 0, 0, 0, 0, 0], dailyKey: chinaDay(), expedition: { id: 'old-cave', cave: 1, durationMinutes: 240, startedAt: Date.now() - 10000, bonusPercent: 2 } }
     },
-    runs: { [legacy.id]: legacy }
+    runs: { [legacy.id]: legacy, [current.id]: current, [missing.id]: missing }
   }));
   port = await new Promise((resolve, reject) => {
     const listener = net.createServer(); listener.once('error', reject);
@@ -123,6 +129,21 @@ test('old signed daily replay remains valid without entering the new leaderboard
   const oldBoard = await request('challenge/leaderboard', { token: player.session });
   assert.equal(oldBoard.data.total, 1); assert.equal(oldBoard.data.rank, 1); assert.equal(oldBoard.data.rows[0].score, 90);
   assert.equal((await request('challenge/leaderboard?rules=unknown', { token: player.session })).status, 400);
+});
+
+test('daily-3 capture replay verifies and is isolated from older leaderboards', async () => {
+  const player = await login('v3-new-rules');
+  const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs['capture-run'];
+  const run = replay(stored.seed, 0, stored.rules);
+  assert.ok(run.score <= 1460);
+  const result = await request('challenge/submit', { token: player.session, body: {
+    runId: stored.id, token: legacyToken(stored), inputs: run.inputs, score: run.score, actions: 10
+  }});
+  assert.equal(result.status, 200); assert.equal(result.data.verified, true);
+  const board = await request('challenge/leaderboard?rules=daily-3', { token: player.session });
+  assert.equal(board.data.total, 1); assert.equal(board.data.rows[0].score, run.score);
+  const previous = await request('challenge/leaderboard?rules=daily-2', { token: player.session });
+  assert.equal(previous.data.total, 0);
 });
 
 test('old account inventory, talent and active expedition survive progress migration', async () => {
@@ -216,4 +237,15 @@ test('progress and signed session survive restart with a stable key', async () =
   assert.equal(after.data.profile.experience, before.data.profile.experience);
   const board = await request('challenge/leaderboard?rules=daily-2', { token: alice.session });
   assert.equal(board.data.total, 2); assert.equal(board.data.rank, 1);
+});
+
+test('an older stored run without a rules field keeps the previous default', async () => {
+  const player = await login('v3-missing-rules');
+  const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs['missing-rules-run'];
+  const previous = { ...stored, rules: 'daily-2' };
+  const run = replay(previous.seed, 0, previous.rules);
+  const result = await request('challenge/submit', { token: player.session, body: {
+    runId: previous.id, token: legacyToken(previous), inputs: run.inputs, score: run.score, actions: 10
+  }});
+  assert.equal(result.status, 200); assert.equal(result.data.verified, true);
 });

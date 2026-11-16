@@ -8,8 +8,10 @@ namespace SnakeClub
     public sealed class ArenaFeedback : MonoBehaviour
     {
         private AudioSource output;
-        private AudioClip growth, rebound, elimination, star, finish;
+        private AudioClip growth, rebound, elimination, capture, star, finish;
         private int tick = -1, length, kills, stars;
+        private int captureTick = -1;
+        private int bossShield = -1;
         private float pulse;
         private bool ended;
         private float nextGrowth;
@@ -34,6 +36,7 @@ namespace SnakeClub
             growth = MakeClip("Growth", 700, 960, .07f);
             rebound = MakeClip("Rebound", 300, 580, .16f);
             elimination = MakeClip("Elimination", 440, 880, .20f);
+            capture = MakeClip("Loop closed", 520, 780, .12f);
             star = MakeClip("Star", 620, 1180, .24f);
             finish = MakeClip("Finish", 600, 360, .28f);
         }
@@ -43,16 +46,20 @@ namespace SnakeClub
             if (state == null || string.IsNullOrEmpty(playerId)) return;
             var snake = state.snakes.Find(item => item.id == playerId);
             if (snake == null) return;
+            var boss = state.snakes.Find(item => item.boss);
             if (tick < 0 || state.tick < tick)
             {
                 length = snake.segments.Count; kills = snake.kills; stars = snake.starPoints;
-                pulse = snake.rebound; ended = state.phase == "ended"; tick = state.tick; return;
+                bossShield = boss != null ? boss.bossShield : -1;
+                pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick; tick = state.tick; return;
             }
             if (Enabled)
             {
                 if (!ended && state.phase == "ended") output.PlayOneShot(finish);
+                else if (boss != null && bossShield >= 0 && boss.bossShield < bossShield) output.PlayOneShot(star);
                 else if (snake.starPoints > stars) output.PlayOneShot(star);
                 else if (snake.kills > kills) output.PlayOneShot(elimination);
+                else if (state.captureOwner == playerId && state.captureTick >= 0 && state.captureTick != captureTick) output.PlayOneShot(capture);
                 else if (snake.rebound > 0 && pulse <= 0) output.PlayOneShot(rebound);
                 else if (snake.segments.Count > length && Time.unscaledTime >= nextGrowth)
                 {
@@ -60,7 +67,8 @@ namespace SnakeClub
                 }
             }
             tick = state.tick; length = snake.segments.Count; kills = snake.kills;
-            stars = snake.starPoints; pulse = snake.rebound; ended = state.phase == "ended";
+            bossShield = boss != null ? boss.bossShield : -1;
+            stars = snake.starPoints; pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick;
         }
 
         private static AudioClip MakeClip(string name, float from, float to, float seconds)
@@ -84,7 +92,7 @@ namespace SnakeClub
         private void OnDestroy()
         {
             if (growth != null) Destroy(growth); if (rebound != null) Destroy(rebound);
-            if (elimination != null) Destroy(elimination); if (star != null) Destroy(star); if (finish != null) Destroy(finish);
+            if (elimination != null) Destroy(elimination); if (capture != null) Destroy(capture); if (star != null) Destroy(star); if (finish != null) Destroy(finish);
         }
     }
 }
