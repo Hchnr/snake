@@ -86,6 +86,8 @@ python3 scripts/build-unity-isolated.py webgl --output 'dist/my-webgl'
 SNAKE_PREVIEW_ROOT=dist/my-webgl npm run preview:unity
 ```
 
+只需手机浏览器临时试玩时，可为隔离构建添加 `--offline-practice`：构建副本会关闭开发登录、服务端地址和参考角色，不改变工作区配置；成绩和进度不会同步账号。手机浏览器版是兼容性预览，不是抖音小游戏包。可用 `SNAKE_PREVIEW_ROOT` 指定构建目录，并用 `SNAKE_PREVIEW_PREFIX=/随机字符串/` 为预览增加难以猜测的访问路径。预览服务只监听本机；若通过隧道分享，拿到链接的人均可访问，链接和构建应仅用于授权范围内的测试。
+
 本机这次测试另生成了 `dist/unity-v0.0.3-mac/Snake Club.app`，不覆盖旧版构建。桌面大厅可按回车开始普通对局，按 D 开始每日挑战；对局中使用 WASD 或方向键转向、空格加速。测试产物不纳入版本管理。
 
 BGDT 已导入本机工程；使用[抖音官方指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/install-sdk)安装 TTSDK 后，才可在 WebGL 构建的 Scripting Define Symbols 中启用 `SNAKE_DOUYIN_TTSDK`。需要平台登录/分享/广告配置时应以当前官方接口和实际安装的 SDK 为准，再通过官方工具转换，并在抖音开发者工具与手机上验证。普通 WebGL 构建或旧版 `dist/douyin` 都不是本 Unity 版本的抖音发布包。

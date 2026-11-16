@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a local Unity player without closing an already-open project."""
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -12,6 +13,7 @@ root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
 parser.add_argument('target', choices=('mac', 'webgl'))
 parser.add_argument('--output', required=True, help='new player output path')
+parser.add_argument('--offline-practice', action='store_true', help='disable development login and reference-only characters in the copied project')
 args = parser.parse_args()
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
 if not editor.is_file():
@@ -24,11 +26,21 @@ method = 'SnakeClub.Editor.SnakeBuilder.BuildMac' if args.target == 'mac' else '
 with tempfile.TemporaryDirectory(prefix='snake-unity-build-') as directory:
     project = Path(directory) / 'project'
     project.mkdir()
+    excluded = ['ByteGame', 'ByteGame.meta', '.DS_Store']
+    if args.offline_practice:
+        excluded.extend(['ReferenceSkins', 'ReferenceSkins.meta'])
     for name in ('Assets', 'Packages', 'ProjectSettings'):
-        shutil.copytree(root / 'unity' / name, project / name, ignore=shutil.ignore_patterns('ByteGame', 'ByteGame.meta', '.DS_Store'))
+        shutil.copytree(root / 'unity' / name, project / name, ignore=shutil.ignore_patterns(*excluded))
+    if args.offline_practice:
+        config_path = project / 'Assets/Resources/GameConfig.json'
+        config = json.loads(config_path.read_text())
+        config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=False)
+        config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     log = Path(directory) / 'build.log'
     stamp = Path(directory) / 'built'
     environment = {**os.environ, 'SNAKE_BUILD_OUTPUT': str(output), 'SNAKE_BUILD_STAMP': str(stamp)}
+    if args.offline_practice:
+        environment['SNAKE_INCLUDE_REFERENCE_ASSETS'] = '0'
     command = [str(editor), '-batchmode', '-quit', '-projectPath', str(project), '-buildTarget', target, '-executeMethod', method, '-logFile', str(log)]
     print(f'Building {target} in an isolated project: {output}', flush=True)
     try:
