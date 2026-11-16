@@ -2,16 +2,20 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using SnakeClub.Core;
 
-// Single-process development persistence. Production requires a transactional
-// database, TLS and a stable SNAKE_SESSION_KEY; no deployment is performed here.
+// JSON remains available for local compatibility. SQLite transactions are
+// opt-in for a single-node deployment; TLS and operational setup remain external.
 sealed class GameApi
 {
     private readonly object gate = new();
     private readonly string path;
     private readonly byte[] secret;
-    private readonly GameData data;
+    private GameData data;
+    private readonly GameStore? store;
+    private SqliteConnection? activeConnection;
+    private SqliteTransaction? activeTransaction;
     private static readonly JsonSerializerOptions Json = new() { IncludeFields = true, PropertyNameCaseInsensitive = true };
     private static readonly TimeSpan China = TimeSpan.FromHours(8);
     private static readonly HttpClient Http = new();
@@ -20,8 +24,15 @@ sealed class GameApi
     {
         path = Environment.GetEnvironmentVariable("SNAKE_DATA_FILE") ?? Path.Combine(root, "data", "v0.0.3.json");
         string? key = Environment.GetEnvironmentVariable("SNAKE_SESSION_KEY");
+        string? database = Environment.GetEnvironmentVariable("SNAKE_SQLITE_FILE");
+        bool production = string.Equals(Environment.GetEnvironmentVariable("SNAKE_ENV"), "production", StringComparison.OrdinalIgnoreCase);
+        if (production && (string.IsNullOrWhiteSpace(database) || string.IsNullOrWhiteSpace(key) || key.Length < 32))
+            throw new InvalidOperationException("Production requires SNAKE_SQLITE_FILE and a stable SNAKE_SESSION_KEY of at least 32 characters.");
+        if (production && (Environment.GetEnvironmentVariable("SNAKE_DEV_AUTH") == "1" || Environment.GetEnvironmentVariable("SNAKE_DEV_ADS") == "1"))
+            throw new InvalidOperationException("Development authentication and ad simulation cannot be enabled in production.");
         secret = string.IsNullOrEmpty(key) ? RandomNumberGenerator.GetBytes(32) : SHA256.HashData(Encoding.UTF8.GetBytes(key));
-        data = File.Exists(path) ? JsonSerializer.Deserialize<GameData>(File.ReadAllText(path), Json) ?? new GameData() : new GameData();
+        store = string.IsNullOrWhiteSpace(database) ? null : new GameStore(database, path, Json);
+        data = store == null && File.Exists(path) ? JsonSerializer.Deserialize<GameData>(File.ReadAllText(path), Json) ?? new GameData() : new GameData();
     }
 
     public static void Map(WebApplication app, string root)
@@ -33,6 +44,8 @@ sealed class GameApi
             Results.Json(new { ok = true, profile, date = Day(now), seed = Seed(Day(now)), serverTime = now.ToUnixTimeMilliseconds(), adEnabled = Environment.GetEnvironmentVariable("SNAKE_DEV_ADS") == "1" })));
         app.MapPost("/api/v3/talent/allocate", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) =>
             Progression.Allocate(p, request.index) ? Results.Json(new { ok = true, profile = p }) : Fail("天赋点不足或该天赋已满级")));
+        app.MapPost("/api/v3/talent/recommend", (HttpContext context) => service.WithPlayer(context, (p, now) =>
+            Progression.AllocateRecommended(p) > 0 ? Results.Json(new { ok = true, profile = p }) : Fail("没有可分配的天赋点")));
         app.MapPost("/api/v3/talent/reset", (HttpContext context) => service.WithPlayer(context, (p, now) => { p.talents = new int[9]; return Results.Json(new { ok = true, profile = p }); }));
         app.MapPost("/api/v3/skin/buy", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => service.BuySkin(p, request.index)));
         app.MapPost("/api/v3/skin/equip", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => EquipSkin(p, request.index)));
@@ -40,9 +53,17 @@ sealed class GameApi
         app.MapPost("/api/v3/expedition/claim", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.ClaimExpedition(p, request.id, now)));
         app.MapPost("/api/v3/match/start", (HttpContext context) => service.WithPlayer(context, (p, now) => service.StartRun(p, now, "pve")));
         app.MapPost("/api/v3/match/finish", (HttpContext context, MatchRequest request) => service.WithPlayer(context, (p, now) => service.FinishPve(p, request, now)));
-        app.MapPost("/api/v3/challenge/start", (HttpContext context) => service.WithPlayer(context, (p, now) => service.StartRun(p, now, "daily")));
+        app.MapPost("/api/v3/challenge/start", (HttpContext context) =>
+        {
+            string? rules = RequestedDailyRules(context);
+            return rules == null ? Fail("挑战规则不存在") : service.WithPlayer(context, (p, now) => service.StartRun(p, now, "daily", rules));
+        });
         app.MapPost("/api/v3/challenge/submit", (HttpContext context, ChallengeRequest request) => service.WithPlayer(context, (p, now) => service.SubmitChallenge(p, request, now)));
-        app.MapGet("/api/v3/challenge/leaderboard", (HttpContext context) => service.WithPlayer(context, (p, now) => service.Leaderboard(p, Day(now))));
+        app.MapGet("/api/v3/challenge/leaderboard", (HttpContext context) =>
+        {
+            string? rules = RequestedDailyRules(context);
+            return rules == null ? Fail("挑战规则不存在") : service.WithPlayer(context, (p, now) => service.Leaderboard(p, Day(now), rules));
+        });
         app.MapPost("/api/v3/ad/prepare", (HttpContext context, AdRequest request) => service.WithPlayer(context, (p, now) => service.PrepareAd(p, request, now)));
         app.MapPost("/api/v3/ad/complete", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.CompleteAd(p, request.id, now)));
     }
@@ -88,12 +109,14 @@ sealed class GameApi
     private IResult Login(string identity, string? fallbackIdentity = null)
     {
         string identityId = IdentityId(identity);
-        lock (gate)
+        string? fallbackId = string.IsNullOrEmpty(fallbackIdentity) ? null : IdentityId(fallbackIdentity);
+        var now = DateTimeOffset.UtcNow;
+        return Transact(null, new[] { identityId, fallbackId }, now, () =>
         {
             string id = data.identityLinks.TryGetValue(identityId, out var linked) ? linked : identityId;
-            if (!data.players.ContainsKey(id) && !string.IsNullOrEmpty(fallbackIdentity))
+            if (!data.players.ContainsKey(id) && fallbackId != null)
             {
-                string fallback = IdentityId(fallbackIdentity);
+                string fallback = fallbackId;
                 if (data.identityLinks.TryGetValue(fallback, out var fallbackLinked)) fallback = fallbackLinked;
                 if (data.players.ContainsKey(fallback)) id = fallback;
             }
@@ -103,11 +126,10 @@ sealed class GameApi
                 profile = new PlayerProgress { playerId = id, displayName = "玩家" + id[..4] };
                 data.players[id] = profile;
             }
-            ResetDay(profile, DateTimeOffset.UtcNow);
-            Save();
-            long expiry = DateTimeOffset.UtcNow.AddDays(7).ToUnixTimeSeconds();
-            return Results.Json(new { ok = true, session = Sign(id + ":" + expiry), profile, serverTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() });
-        }
+            ResetDay(profile, now);
+            long expiry = now.AddDays(7).ToUnixTimeSeconds();
+            return Results.Json(new { ok = true, session = Sign(id + ":" + expiry), profile, serverTime = now.ToUnixTimeMilliseconds() });
+        });
     }
 
     private static string IdentityId(string identity) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant()[..24];
@@ -118,20 +140,45 @@ sealed class GameApi
         string? payload = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? Verify(header[7..]) : null;
         var parts = payload?.Split(':');
         if (parts == null || parts.Length != 2 || !long.TryParse(parts[1], out var expiry) || expiry < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) return Fail("登录已过期，请重新登录", 401);
-        lock (gate)
+        var now = DateTimeOffset.UtcNow;
+        return Transact(parts[0], null, now, () =>
         {
             if (!data.players.TryGetValue(parts[0], out var profile)) return Fail("账号不存在", 401);
-            var now = DateTimeOffset.UtcNow;
+            if (profile.completedMatches == 0 && profile.tutorialComplete) profile.completedMatches = Math.Max(1, profile.dailyMatches);
             ResetDay(profile, now);
-            var result = action(profile, now);
-            Save();
-            return result;
+            return action(profile, now);
+        });
+    }
+
+    private IResult Transact(string? playerId, string?[]? identities, DateTimeOffset now, Func<IResult> action)
+    {
+        lock (gate)
+        {
+            if (store == null)
+            {
+                var result = action();
+                Save();
+                return result;
+            }
+            using var connection = store.Open();
+            using var transaction = connection.BeginTransaction(deferred: false);
+            try
+            {
+                activeConnection = connection; activeTransaction = transaction;
+                data = playerId == null ? store.LoadLogin(connection, transaction, identities ?? Array.Empty<string?>())
+                    : store.LoadPlayerState(connection, transaction, playerId, Day(now), now.ToUnixTimeMilliseconds());
+                var result = action();
+                store.Save(connection, transaction, data);
+                transaction.Commit();
+                return result;
+            }
+            finally { activeConnection = null; activeTransaction = null; }
         }
     }
 
     private IResult BuySkin(PlayerProgress p, int index)
     {
-        if (index <= 0 || index >= Progression.SkinPrices.Length) return Fail("皮肤不存在");
+        if (index <= 0 || index >= SkinCatalog.OwnedSkinCount) return Fail("皮肤不存在");
         if (p.ownedSkins.Contains(index)) return Results.Json(new { ok = true, profile = p });
         if (p.coins < Progression.SkinPrices[index]) return Fail("金币不足");
         p.coins -= Progression.SkinPrices[index]; p.ownedSkins.Add(index);
@@ -173,10 +220,20 @@ sealed class GameApi
         return Results.Json(new { ok = true, profile = p, coins = expedition.coins, baseCoins = minutes / 2, experience = expedition.experience, fragments = expedition.fragments });
     }
 
-    private IResult StartRun(PlayerProgress p, DateTimeOffset now, string mode)
+    // Old clients did not send a rules version; continue issuing and ranking
+    // daily-1 runs until the old client compatibility window is closed.
+    private static string? RequestedDailyRules(HttpContext context)
+    {
+        string requested = context.Request.Query["rules"].ToString();
+        if (string.IsNullOrEmpty(requested)) return DailyMatch.LegacyRulesVersion;
+        return requested == DailyMatch.LegacyRulesVersion || requested == DailyMatch.RulesVersion ? requested : null;
+    }
+
+    private IResult StartRun(PlayerProgress p, DateTimeOffset now, string mode, string? requestedRules = null)
     {
         string date = Day(now);
-        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, seed = Seed(date), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
+        string rules = requestedRules ?? DailyMatch.RulesVersion;
+        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
         if (mode == "pve" && p.trialSkin > 0)
         {
             bool reserved = !string.IsNullOrEmpty(p.trialRunId) && data.runs.TryGetValue(p.trialRunId, out var trialRun) && !trialRun.completed && now.ToUnixTimeMilliseconds() - trialRun.startedAt < 190000;
@@ -190,7 +247,7 @@ sealed class GameApi
     {
         var run = FindRun(p, request.runId, request.token, "pve", now);
         if (run == null) return Fail("对局凭证无效或已过期");
-        if (run.completed) return Results.Json(new { ok = true, profile = p, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience });
+        if (run.completed) return Results.Json(new { ok = true, profile = p, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin });
         double elapsed = (now.ToUnixTimeMilliseconds() - run.startedAt) / 1000.0;
         if (request.seconds < 3 || request.seconds > 180 || request.seconds > elapsed + 2) return Fail("对局时长无效");
         if (request.actions < 1) return Fail("未检测到操作，本局不发放账号奖励");
@@ -198,27 +255,27 @@ sealed class GameApi
         if (run.trialSkin > 0 && p.trialRunId == run.id) { p.trialSkin = -1; p.trialRunId = ""; }
         if (run.coins > 0) p.dailyRewardedMatches++;
         if (p.dailyMatches < 3) { p.dailyMatches++; run.experience = 20; p.experience += 20; }
-        p.coins += run.coins; p.tutorialComplete = true;
+        p.coins += run.coins; RecordCompletion(p, run);
         if (p.dailyMatches >= 2 && !p.dailyQuestClaimed)
         {
             p.dailyQuestClaimed = true; run.questExperience = 20; run.questCoins = 40 * (100 + Progression.TaskBonusPercent(p)) / 100;
             p.experience += run.questExperience; p.coins += run.questCoins;
         }
         if (run.coins > 0) data.rewards[run.id] = new RewardSource { playerId = p.playerId, kind = "match", baseCoins = run.coins };
-        return Results.Json(new { ok = true, profile = p, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience });
+        return Results.Json(new { ok = true, profile = p, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin });
     }
 
     private IResult SubmitChallenge(PlayerProgress p, ChallengeRequest request, DateTimeOffset now)
     {
         var run = FindRun(p, request.runId, request.token, "daily", now);
         if (run == null) return Fail("挑战凭证无效或已过期");
-        if (run.completed) return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience });
-        if (run.rules != DailyMatch.RulesVersion) return Fail("挑战规则已更新，请重新开始");
+        if (run.completed) return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin });
+        if (run.rules != DailyMatch.RulesVersion && run.rules != DailyMatch.LegacyRulesVersion) return Fail("挑战规则已更新，请重新开始");
         if (request.actions < 1) return Fail("未检测到操作，本局不发放账号奖励");
         byte[] recording;
         try { recording = Convert.FromBase64String(request.inputs ?? ""); } catch (FormatException) { return Fail("回放格式无效"); }
         if (recording.Length == 0 || recording.Length > DailyMatch.MaxTicks * 2 || recording.Length % 2 != 0) return Fail("回放长度无效");
-        var match = new DailyMatch(run.seed);
+        var match = new DailyMatch(run.seed, run.rules);
         for (int i = 0; i < recording.Length; i += 2)
         {
             if (match.Finished || recording[i + 1] > 1) return Fail("回放内容无效");
@@ -228,7 +285,7 @@ sealed class GameApi
         if (now.ToUnixTimeMilliseconds() - run.startedAt + 2000 < match.State.tick * 50L) return Fail("挑战时长无效");
         run.completed = true; run.score = match.Score; run.finishedAt = now.ToUnixTimeMilliseconds(); run.coins = p.dailyRewardedMatches < 20 ? 35 : 0;
         if (run.coins > 0) p.dailyRewardedMatches++;
-        p.coins += run.coins; p.tutorialComplete = true;
+        p.coins += run.coins; RecordCompletion(p, run);
         if (p.dailyMatches < 3) { p.dailyMatches++; run.experience = 20; p.experience += 20; }
         if (p.dailyMatches >= 2 && !p.dailyQuestClaimed)
         {
@@ -236,12 +293,27 @@ sealed class GameApi
             p.experience += run.questExperience; p.coins += run.questCoins;
         }
         if (run.coins > 0) data.rewards[run.id] = new RewardSource { playerId = p.playerId, kind = "match", baseCoins = run.coins };
-        return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience });
+        return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin });
     }
 
-    private IResult Leaderboard(PlayerProgress p, string day)
+    private static void RecordCompletion(PlayerProgress p, RunRecord run)
     {
-        var best = data.runs.Values.Where(r => r.mode == "daily" && r.completed && r.date == day)
+        p.tutorialComplete = true;
+        if (p.completedMatches < int.MaxValue) p.completedMatches++;
+        // Inventory is the permanent, idempotent record of this early reward.
+        // Existing owners retain their purchase and never receive a duplicate.
+        if (p.completedMatches >= 2 && !p.ownedSkins.Contains(1))
+        {
+            p.ownedSkins.Add(1);
+            run.unlockedSkin = 1;
+        }
+    }
+
+    private IResult Leaderboard(PlayerProgress p, string day, string rules)
+    {
+        if (store != null && activeConnection != null && activeTransaction != null)
+            return store.Leaderboard(activeConnection, activeTransaction, p.playerId, day, rules);
+        var best = data.runs.Values.Where(r => r.mode == "daily" && r.completed && r.date == day && r.rules == rules)
             .GroupBy(r => r.playerId).Select(g => g.OrderByDescending(r => r.score).ThenBy(r => r.finishedAt).First())
             .OrderByDescending(r => r.score).ThenBy(r => r.finishedAt).ThenBy(r => r.playerId, StringComparer.Ordinal).ToList();
         var rows = best.Take(100).Select((r, i) => new { rank = i + 1, playerId = r.playerId, name = data.players.TryGetValue(r.playerId, out var player) ? player.displayName : "玩家", score = r.score }).ToList();
@@ -257,7 +329,7 @@ sealed class GameApi
         bool trial = request.kind == "trial";
         if (trial)
         {
-            if (request.index <= 0 || request.index >= Progression.SkinPrices.Length || p.ownedSkins.Contains(request.index) || p.dailyTrialUsed) return Fail("今天暂不可试穿该皮肤");
+            if (request.index <= 0 || request.index >= SkinCatalog.OwnedSkinCount || p.ownedSkins.Contains(request.index) || p.dailyTrialUsed) return Fail("今天暂不可试穿该皮肤");
         }
         else
         {
@@ -324,7 +396,7 @@ sealed class GameApi
     private static IResult Fail(string message, int status = 400) => Results.Json(new { ok = false, error = message }, statusCode: status);
     private static string Day(DateTimeOffset now) => now.ToOffset(China).ToString("yyyy-MM-dd");
     private static DateTimeOffset EndOfDay(DateTimeOffset now) { var local = now.ToOffset(China); return new DateTimeOffset(local.Year, local.Month, local.Day, 0, 0, 0, China).AddDays(1); }
-    private static int Seed(string date) => BitConverter.ToInt32(SHA256.HashData(Encoding.UTF8.GetBytes(DailyMatch.RulesVersion + ":" + date)), 0);
+    private static int Seed(string date, string rules = DailyMatch.RulesVersion) => BitConverter.ToInt32(SHA256.HashData(Encoding.UTF8.GetBytes(rules + ":" + date)), 0);
     private static void ResetDay(PlayerProgress p, DateTimeOffset now)
     {
         string date = Day(now);
@@ -344,7 +416,7 @@ sealed class GameData
 sealed class RunRecord
 {
     public string id = "", playerId = "", mode = "", date = "", rules = DailyMatch.RulesVersion;
-    public int seed, score, coins, experience, questCoins, questExperience, trialSkin = -1;
+    public int seed, score, coins, experience, questCoins, questExperience, trialSkin = -1, unlockedSkin = -1;
     public long startedAt, finishedAt, expiresAt;
     public bool completed;
 }

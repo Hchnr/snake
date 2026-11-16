@@ -25,6 +25,7 @@ namespace SnakeClub.Core
         public int experience;
         public int coins;
         public bool tutorialComplete;
+        public int completedMatches;
         public int selectedSkin;
         public List<int> ownedSkins = new List<int> { 0 };
         public int[] talents = new int[9];
@@ -39,9 +40,9 @@ namespace SnakeClub.Core
 
     public static class Progression
     {
-        public static readonly string[] SkinNames = { "岚光", "曜焰", "星砂", "萤晶" };
-        public static readonly string[] SkinDescriptions = { "转向速度 +1%", "加速消耗 -1%", "拾取范围 +1%", "探洞金币 +1%" };
-        public static readonly int[] SkinPrices = { 0, 500, 900, 1500 };
+        public static readonly string[] SkinNames = Array.ConvertAll(SkinCatalog.All, s => s.Name);
+        public static readonly string[] SkinDescriptions = Array.ConvertAll(SkinCatalog.All, s => s.Description);
+        public static readonly int[] SkinPrices = Array.ConvertAll(SkinCatalog.All, s => s.Price);
         public static readonly string[] TalentNames = { "灵动转向", "轻盈加速", "果实感知", "临墙应变", "短身节流", "回弹控制", "矿脉采集", "任务收获", "梦游收获" };
         public static readonly string[] TalentDescriptions = {
             "转向 +0.5% / 级", "加速消耗 -0.5% / 级", "果实拾取 +0.5% / 级",
@@ -78,6 +79,19 @@ namespace SnakeClub.Core
             if (index < 0 || index >= TalentNames.Length || profile.talents == null || profile.talents.Length != 9 || profile.talents[index] >= 3 || AvailablePoints(profile) == 0) return false;
             profile.talents[index]++;
             return true;
+        }
+
+        // Spread the available points across the basic movement and exploration
+        // nodes before ranking any one of them up. Players can reset for free.
+        public static int AllocateRecommended(PlayerProgress profile)
+        {
+            if (profile == null || profile.talents == null || profile.talents.Length != TalentNames.Length) return 0;
+            int[] order = { 0, 1, 2, 6, 7, 8, 3, 4, 5 };
+            int allocated = 0;
+            for (int rank = 0; rank < 3; rank++)
+                foreach (int index in order)
+                    if (profile.talents[index] == rank && Allocate(profile, index)) allocated++;
+            return allocated;
         }
 
         public static CombatBonuses Bonuses(PlayerProgress profile, bool competitive = false)

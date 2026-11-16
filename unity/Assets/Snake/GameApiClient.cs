@@ -18,6 +18,7 @@ namespace SnakeClub
         public string apiUrl = "http://127.0.0.1:2567";
         public string rewardedAdUnitId = "";
         public bool allowDevLogin;
+        public bool allowReferenceSkinPreview;
     }
 
     [Serializable] public sealed class LeaderboardRow
@@ -31,7 +32,7 @@ namespace SnakeClub
         public bool ok, verified, adEnabled;
         public string error = "", session = "", runId = "", token = "", date = "", rules = "", id = "";
         public int seed, score, rank, total, gap, coins, baseCoins, experience, fragments, questCoins, questExperience;
-        public int trialSkin = -1;
+        public int trialSkin = -1, unlockedSkin = -1;
         public long serverTime, expiresAt;
         public PlayerProgress profile;
         public List<LeaderboardRow> rows;
@@ -142,7 +143,9 @@ namespace SnakeClub
             bool hasProfile = reply.profile != null && !string.IsNullOrEmpty(reply.profile.playerId);
             if (hasProfile) Profile = reply.profile;
             if (!string.IsNullOrEmpty(reply.date)) Date = reply.date;
-            if (reply.seed != 0 || (!string.IsNullOrEmpty(reply.date) && (hasProfile || !string.IsNullOrEmpty(reply.rules)))) Seed = reply.seed;
+            // A versioned leaderboard also contains date and rules but no seed.
+            // Only bootstrap and run-start replies may replace a seed with zero.
+            if (reply.seed != 0 || (!string.IsNullOrEmpty(reply.date) && (hasProfile || !string.IsNullOrEmpty(reply.runId)))) Seed = reply.seed;
             if (reply.serverTime > 0) { ServerTime = reply.serverTime; ServerTimeReceivedAt = Time.realtimeSinceStartup; }
             if (!string.IsNullOrEmpty(reply.date) && hasProfile) AdEnabled = reply.adEnabled;
         }

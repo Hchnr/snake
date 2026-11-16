@@ -1,7 +1,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn, execFileSync } = require('node:child_process');
-const { createHash } = require('node:crypto');
+const { createHash, createHmac } = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
@@ -16,9 +16,12 @@ const chinaDay = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0,
 let temp, dataFile, port, base, server, output = '', alice, bob, challengeA, challengeB, recording;
 
 async function startServer() {
+  const env = { ...process.env, SNAKE_ENV: 'development', SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), SNAKE_DEV_AUTH: '1', SNAKE_DEV_ADS: '0', SNAKE_DATA_FILE: dataFile, SNAKE_SESSION_KEY: 'v3-isolated-test-key', DOTNET_CLI_TELEMETRY_OPTOUT: '1' };
+  delete env.SNAKE_SQLITE_FILE;
+  delete env.SNAKE_RATE_LIMIT_PER_MIN;
   server = spawn('dotnet', [serverDll], {
     cwd: root,
-    env: { ...process.env, SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), SNAKE_DEV_AUTH: '1', SNAKE_DEV_ADS: '0', SNAKE_DATA_FILE: dataFile, SNAKE_SESSION_KEY: 'v3-isolated-test-key', DOTNET_CLI_TELEMETRY_OPTOUT: '1' },
+    env,
     stdio: ['ignore', 'pipe', 'pipe']
   });
   server.stdout.on('data', chunk => { output += chunk; });
@@ -47,16 +50,31 @@ async function login(device) {
   const reply = await request('auth/dev', { body: { deviceId: device } });
   assert.equal(reply.status, 200); assert.equal(reply.data.ok, true); return reply.data;
 }
-function replay(seed, variant = 0) {
-  return JSON.parse(execFileSync('dotnet', [coreDll, 'replay', String(seed), String(variant)], { encoding: 'utf8' }));
+function replay(seed, variant = 0, rules = 'daily-2') {
+  return JSON.parse(execFileSync('dotnet', [coreDll, 'replay', String(seed), String(variant), rules], { encoding: 'utf8' }));
+}
+
+function legacyToken(run) {
+  const payload = Buffer.from([run.id, run.playerId, run.mode, run.date, run.rules, run.seed, run.expiresAt].join(':')).toString('base64url');
+  const key = createHash('sha256').update('v3-isolated-test-key').digest();
+  return `${payload}.${createHmac('sha256', key).update(payload).digest('base64url')}`;
 }
 
 before(async () => {
   temp = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-v3-test-'));
   dataFile = path.join(temp, 'progress.json');
   const caveId = idFor('v3-cave');
+  const legacyId = idFor('v3-legacy');
+  const oldProfileId = idFor('v3-old-profile');
+  const legacy = { id: 'legacy-run', playerId: legacyId, mode: 'daily', date: chinaDay(), rules: 'daily-1', seed: 1,
+    startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   fs.writeFileSync(dataFile, JSON.stringify({
-    players: { [caveId]: { playerId: caveId, displayName: '洞穴测试', dailyKey: chinaDay(), expedition: { id: 'expedition-fixture', cave: 2, durationMinutes: 480, startedAt: Date.now() - 12 * 3600000, bonusPercent: 7 } } }
+    players: {
+      [caveId]: { playerId: caveId, displayName: '洞穴测试', dailyKey: chinaDay(), expedition: { id: 'expedition-fixture', cave: 2, durationMinutes: 480, startedAt: Date.now() - 12 * 3600000, bonusPercent: 7 } },
+      [oldProfileId]: { playerId: oldProfileId, displayName: '老玩家', tutorialComplete: true, experience: 345, coins: 777, ownedSkins: [0, 2], selectedSkin: 2,
+        talents: [1, 0, 0, 0, 0, 0, 0, 0, 0], dailyKey: chinaDay(), expedition: { id: 'old-cave', cave: 1, durationMinutes: 240, startedAt: Date.now() - 10000, bonusPercent: 2 } }
+    },
+    runs: { [legacy.id]: legacy }
   }));
   port = await new Promise((resolve, reject) => {
     const listener = net.createServer(); listener.once('error', reject);
@@ -65,9 +83,10 @@ before(async () => {
   base = `http://127.0.0.1:${port}`;
   await startServer();
   alice = await login('v3-alice'); bob = await login('v3-bob');
-  challengeA = (await request('challenge/start', { token: alice.session, body: {} })).data;
-  challengeB = (await request('challenge/start', { token: bob.session, body: {} })).data;
+  challengeA = (await request('challenge/start?rules=daily-2', { token: alice.session, body: {} })).data;
+  challengeB = (await request('challenge/start?rules=daily-2', { token: bob.session, body: {} })).data;
   assert.equal(challengeA.seed, challengeB.seed);
+  assert.equal(challengeA.rules, 'daily-2');
   recording = replay(challengeA.seed);
 });
 
@@ -82,8 +101,38 @@ test('authentication, skin inventory and talent points use server authority', as
   assert.equal(bootstrap.status, 200); assert.equal(bootstrap.data.profile.coins, 0);
   assert.equal(bootstrap.data.adEnabled, false);
   assert.equal((await request('skin/buy', { token: alice.session, body: { index: 1 } })).status, 400);
+  assert.equal((await request('skin/buy', { token: alice.session, body: { index: 4 } })).status, 400);
   assert.equal((await request('skin/equip', { token: alice.session, body: { index: 1 } })).status, 400);
   assert.equal((await request('talent/allocate', { token: alice.session, body: { index: 0 } })).status, 400);
+});
+
+test('old signed daily replay remains valid without entering the new leaderboard', async () => {
+  const player = await login('v3-legacy');
+  const oldClientRun = await request('challenge/start', { token: player.session, body: {} });
+  assert.equal(oldClientRun.status, 200); assert.equal(oldClientRun.data.rules, 'daily-1');
+  assert.equal((await request('challenge/start?rules=unknown', { token: player.session, body: {} })).status, 400);
+  const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs['legacy-run'];
+  const old = replay(stored.seed, 0, stored.rules);
+  assert.equal(old.score, 90);
+  const result = await request('challenge/submit', { token: player.session, body: {
+    runId: stored.id, token: legacyToken(stored), inputs: old.inputs, score: old.score, actions: 10
+  }});
+  assert.equal(result.status, 200); assert.equal(result.data.verified, true);
+  const board = await request('challenge/leaderboard?rules=daily-2', { token: player.session });
+  assert.equal(board.data.total, 0); assert.equal(board.data.rank, 0);
+  const oldBoard = await request('challenge/leaderboard', { token: player.session });
+  assert.equal(oldBoard.data.total, 1); assert.equal(oldBoard.data.rank, 1); assert.equal(oldBoard.data.rows[0].score, 90);
+  assert.equal((await request('challenge/leaderboard?rules=unknown', { token: player.session })).status, 400);
+});
+
+test('old account inventory, talent and active expedition survive progress migration', async () => {
+  const user = await login('v3-old-profile');
+  const first = (await request('bootstrap', { token: user.session })).data.profile;
+  const second = (await request('bootstrap', { token: user.session })).data.profile;
+  assert.equal(first.completedMatches, 1); assert.equal(second.completedMatches, 1);
+  assert.equal(first.coins, 777); assert.equal(first.experience, 345);
+  assert.deepEqual(first.ownedSkins, [0, 2]); assert.equal(first.selectedSkin, 2); assert.equal(first.talents[0], 1);
+  assert.equal(first.expedition.id, 'old-cave'); assert.equal(first.expedition.bonusPercent, 2);
 });
 
 test('PvE settlement is bound to the player and pays once, including daily objective', async () => {
@@ -102,11 +151,18 @@ test('PvE settlement is bound to the player and pays once, including daily objec
   const second = await request('match/finish', { token: alice.session, body: finish(runB) });
   assert.equal(second.status, 200); assert.equal(second.data.questCoins, 40); assert.equal(second.data.questExperience, 20);
   assert.equal(second.data.profile.coins, 110); assert.equal(second.data.profile.experience, 60);
+  assert.equal(second.data.unlockedSkin, 1); assert.deepEqual(second.data.profile.ownedSkins, [0, 1]);
+  const secondAgain = await request('match/finish', { token: alice.session, body: finish(runB) });
+  assert.equal(secondAgain.data.unlockedSkin, 1); assert.deepEqual(secondAgain.data.profile.ownedSkins, [0, 1]);
   const allocated = await request('talent/allocate', { token: alice.session, body: { index: 0 } });
   assert.equal(allocated.status, 200); assert.equal(allocated.data.profile.talents[0], 1);
   assert.equal((await request('talent/allocate', { token: alice.session, body: { index: 0 } })).status, 400);
   const reset = await request('talent/reset', { token: alice.session, body: {} });
   assert.equal(reset.data.profile.talents[0], 0);
+  const recommended = await request('talent/recommend', { token: alice.session, body: {} });
+  assert.equal(recommended.status, 200); assert.equal(recommended.data.profile.talents[0], 1);
+  assert.equal((await request('talent/recommend', { token: alice.session, body: {} })).status, 400);
+  assert.equal((await request('talent/reset', { token: alice.session, body: {} })).status, 200);
   const prepared = await request('ad/prepare', { token: alice.session, body: { sourceId: runA.runId, kind: 'match' } });
   assert.equal(prepared.status, 200);
   const disabled = await request('ad/complete', { token: alice.session, body: { id: prepared.data.id } });
@@ -146,8 +202,8 @@ test('daily replay rejects tampering, records real users once and ranks equal sc
   assert.equal(duplicate.data.profile.coins, a.data.profile.coins);
   const b = await request('challenge/submit', { token: bob.session, body: payload(challengeB) });
   assert.equal(b.status, 200); assert.equal(b.data.score, recording.score);
-  const boardA = await request('challenge/leaderboard', { token: alice.session });
-  const boardB = await request('challenge/leaderboard', { token: bob.session });
+  const boardA = await request('challenge/leaderboard?rules=daily-2', { token: alice.session });
+  const boardB = await request('challenge/leaderboard?rules=daily-2', { token: bob.session });
   assert.equal(boardA.data.total, 2); assert.equal(boardA.data.rank, 1); assert.equal(boardB.data.rank, 2); assert.equal(boardB.data.gap, 0);
   assert.equal(boardA.data.rows.length, 2); assert.equal(boardA.data.rows[0].score, recording.score);
 });
@@ -158,6 +214,6 @@ test('progress and signed session survive restart with a stable key', async () =
   const after = await request('bootstrap', { token: alice.session });
   assert.equal(after.status, 200); assert.equal(after.data.profile.coins, before.data.profile.coins);
   assert.equal(after.data.profile.experience, before.data.profile.experience);
-  const board = await request('challenge/leaderboard', { token: alice.session });
+  const board = await request('challenge/leaderboard?rules=daily-2', { token: alice.session });
   assert.equal(board.data.total, 2); assert.equal(board.data.rank, 1);
 });

@@ -29,6 +29,7 @@ namespace SnakeClub.Core
         public bool alive = true;
         public int color;
         public int kills;
+        public string eliminatedBy = "";
         public float angle;
         public float shield;
         public bool boosting;
@@ -56,6 +57,14 @@ namespace SnakeClub.Core
         public Point starPosition;
         public string starHolder = "";
         public float starProgress;
+        // Presentation fields are projections of the rule simulation. They do
+        // not participate in collisions or scoring.
+        public string eventKind = "";
+        public string eventTarget = "";
+        public string eventStatus = "";
+        public Point eventPosition;
+        public float eventRadius;
+        public float eventRemaining;
         public List<SnakeState> snakes = new List<SnakeState>();
         public List<FruitState> fruits = new List<FruitState>();
     }
@@ -65,6 +74,7 @@ namespace SnakeClub.Core
     {
         public float turn, boostSaving, pickup;
         public float nearWallTurn, shortBoostSaving, reboundTurn;
+        public float boostSavingCap = .07f;
     }
 
     // Shared by the Unity client and the authoritative room server. Coordinates
@@ -100,14 +110,17 @@ namespace SnakeClub.Core
         public int FruitRevision { get; private set; }
         private readonly Dictionary<string, Control> controls = new Dictionary<string, Control>();
         private readonly Random random;
+        private readonly bool nearbyOpponents;
         private int nextColor;
         private int participantsAtStart;
         private float starDelay = 35f;
         private float starHeld;
+        private string starSpawnNear = "";
 
-        public Arena(int seed = 1, float halfSize = WorldHalfSize, float roundSeconds = RoundSeconds, int fruitCount = FruitCount)
+        public Arena(int seed = 1, float halfSize = WorldHalfSize, float roundSeconds = RoundSeconds, int fruitCount = FruitCount, bool nearbyOpponents = false)
         {
             random = new Random(seed);
+            this.nearbyOpponents = nearbyOpponents;
             State = new ArenaState { halfSize = halfSize, remaining = roundSeconds };
             for (int i = 0; i < fruitCount; i++) State.fruits.Add(NewFruit());
         }
@@ -164,12 +177,26 @@ namespace SnakeClub.Core
             if (controls.TryGetValue(id, out control)) control.bonuses = bonuses ?? new CombatBonuses();
         }
 
+        public void SetStartingLength(string id, int length)
+        {
+            var snake = Find(id);
+            if (snake == null || State.phase != "waiting") return;
+            Grow(snake, Math.Max(0, Math.Min(MaximumLength, length) - snake.segments.Count));
+        }
+
+        public void ConfigureStar(float delay, string nearSnakeId)
+        {
+            if (State.phase != "waiting") return;
+            starDelay = Math.Max(0, delay); starSpawnNear = nearSnakeId ?? "";
+        }
+
         public void Tick(float dt)
         {
             if (State.phase != "running" || dt <= 0 || float.IsNaN(dt) || float.IsInfinity(dt)) return;
             dt = Math.Min(dt, 0.1f);
             State.tick++;
             State.remaining = Math.Max(0, State.remaining - dt);
+            if (State.eventStatus == "active") State.eventRemaining = State.remaining;
             foreach (var snake in State.snakes)
             {
                 if (!snake.alive) continue;
@@ -215,7 +242,7 @@ namespace SnakeClub.Core
                 if (snake.boosting)
                 {
                     float saving = control.bonuses.boostSaving + (snake.segments.Count <= 12 ? control.bonuses.shortBoostSaving : 0);
-                    control.boostDebt += dt * 0.4f * (1f - Clamp(saving, 0, .07f));
+                    control.boostDebt += dt * 0.4f * (1f - Clamp(saving, 0, Clamp(control.bonuses.boostSavingCap, 0, .20f)));
                     if (control.boostDebt >= 1f && snake.segments.Count > MinimumLength)
                     {
                         snake.segments.RemoveAt(snake.segments.Count - 1);
@@ -264,7 +291,7 @@ namespace SnakeClub.Core
             foreach (var pair in deaths)
             {
                 var victim = Find(pair.Key);
-                if (victim != null) { victim.alive = false; victim.boosting = false; }
+                if (victim != null) { victim.alive = false; victim.boosting = false; victim.eliminatedBy = pair.Value ?? ""; }
             }
             foreach (var pair in deaths)
             {
@@ -307,7 +334,15 @@ namespace SnakeClub.Core
             {
                 starDelay -= dt;
                 if (starDelay > 0) return;
-                State.starPosition = new Point((float)(random.NextDouble() * 60 - 30), (float)(random.NextDouble() * 60 - 30));
+                var anchor = Find(starSpawnNear);
+                if (anchor != null && anchor.alive)
+                {
+                    float angle = (float)(random.NextDouble() * Math.PI * 2);
+                    float edge = Math.Max(1f, State.halfSize - 2f);
+                    State.starPosition = new Point(Clamp(anchor.segments[0].x + (float)Math.Cos(angle) * 9f, -edge, edge),
+                        Clamp(anchor.segments[0].y + (float)Math.Sin(angle) * 9f, -edge, edge));
+                }
+                else State.starPosition = new Point((float)(random.NextDouble() * 60 - 30), (float)(random.NextDouble() * 60 - 30));
                 State.starVisible = true; State.starHolder = ""; starHeld = 0;
             }
             if (!string.IsNullOrEmpty(State.starHolder))
@@ -368,7 +403,15 @@ namespace SnakeClub.Core
             float spread = Math.Min(State.halfSize * 0.55f, 36f);
             for (int attempt = 0; attempt < 80; attempt++)
             {
-                candidate = new Point((float)(random.NextDouble() * 2 - 1) * spread, (float)(random.NextDouble() * 2 - 1) * spread);
+                if (nearbyOpponents && State.snakes.Count > 0 && State.snakes.Count <= 2 && State.halfSize >= 30)
+                {
+                    float angle = (float)(random.NextDouble() * Math.PI * 2);
+                    float distance = 13.5f + (float)random.NextDouble() * 4f;
+                    Point player = State.snakes[0].segments[0];
+                    candidate = new Point(Clamp(player.x + (float)Math.Cos(angle) * distance, -State.halfSize + 2, State.halfSize - 2),
+                        Clamp(player.y + (float)Math.Sin(angle) * distance, -State.halfSize + 2, State.halfSize - 2));
+                }
+                else candidate = new Point((float)(random.NextDouble() * 2 - 1) * spread, (float)(random.NextDouble() * 2 - 1) * spread);
                 bool clear = true;
                 foreach (var snake in State.snakes)
                     if (snake.alive && Point.Distance(candidate, snake.segments[0]) < 12f) { clear = false; break; }

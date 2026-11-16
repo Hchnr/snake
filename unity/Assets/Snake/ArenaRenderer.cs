@@ -13,22 +13,26 @@ namespace SnakeClub
         {
             new Color(.16f, .94f, .74f), new Color(1f, .39f, .48f), new Color(.46f, .57f, 1f),
             new Color(1f, .72f, .23f), new Color(.75f, .43f, 1f), new Color(.20f, .77f, 1f),
-            new Color(1f, .45f, .79f), new Color(.70f, .91f, .30f)
+            new Color(1f, .45f, .79f), new Color(.70f, .91f, .30f),
+            new Color(.93f, .96f, 1f), new Color(.91f, .20f, .24f)
         };
         private static readonly Color[] FruitColors =
         {
             new Color(1f, .66f, .26f), new Color(.98f, .32f, .47f),
             new Color(.35f, .92f, .70f), new Color(.62f, .57f, 1f)
         };
-        private static readonly int[] SkinPalette = { 0, 3, 4, 5 };
-        private readonly List<Matrix4x4>[] bodies = new List<Matrix4x4>[8];
-        private readonly List<Matrix4x4>[] links = new List<Matrix4x4>[8];
+        private static readonly int[] SkinPalette = { 0, 3, 4, 5, 8, 9 };
+        private readonly List<Matrix4x4>[] bodies = new List<Matrix4x4>[Palette.Length];
+        private readonly List<Matrix4x4>[] links = new List<Matrix4x4>[Palette.Length];
+        private readonly List<Matrix4x4>[] horns = new List<Matrix4x4>[Palette.Length];
         private readonly List<Matrix4x4>[] fruits = new List<Matrix4x4>[4];
         private readonly List<Matrix4x4> eyes = new List<Matrix4x4>();
         private readonly List<Matrix4x4> pupils = new List<Matrix4x4>();
         private readonly List<Matrix4x4> scales = new List<Matrix4x4>();
         private readonly List<Matrix4x4> trail = new List<Matrix4x4>();
+        private readonly List<Matrix4x4> sparks = new List<Matrix4x4>();
         private readonly Dictionary<string, List<Vector3>> smoothed = new Dictionary<string, List<Vector3>>();
+        private readonly List<Transform> crystals = new List<Transform>();
         private Material[] bodyMaterials;
         private Material[] fruitMaterials;
         private Material eyeMaterial;
@@ -36,11 +40,26 @@ namespace SnakeClub
         private Material scaleMaterial;
         private Mesh sphere;
         private Mesh cylinder;
+        private Mesh cone;
         private Camera view;
-        private LineRenderer marker;
+        private LineRenderer marker, eventRing;
         private GameObject starObject;
         private bool cameraReady;
+        private int lastTick = -1, lastKills;
+        private float burstStarted = -10f;
+        private Vector3 burstPosition;
         public int SelectedSkin { get; set; }
+        public bool ReducedEffects { get; set; }
+        public bool Visible
+        {
+            get => view != null && view.enabled;
+            set
+            {
+                if (view == null || view.enabled == value) return;
+                view.enabled = value;
+                if (!value) cameraReady = false;
+            }
+        }
 
         private void Awake() => Initialize();
 
@@ -52,7 +71,7 @@ namespace SnakeClub
 
         private void Initialize()
         {
-            for (int i = 0; i < bodies.Length; i++) { bodies[i] = new List<Matrix4x4>(); links[i] = new List<Matrix4x4>(); }
+            for (int i = 0; i < bodies.Length; i++) { bodies[i] = new List<Matrix4x4>(); links[i] = new List<Matrix4x4>(); horns[i] = new List<Matrix4x4>(); }
             for (int i = 0; i < fruits.Length; i++) fruits[i] = new List<Matrix4x4>();
             var sample = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere = sample.GetComponent<MeshFilter>().sharedMesh;
@@ -60,6 +79,7 @@ namespace SnakeClub
             var cylinderSample = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             cylinder = cylinderSample.GetComponent<MeshFilter>().sharedMesh;
             Destroy(cylinderSample);
+            cone = CreateCone();
             bodyMaterials = new Material[Palette.Length];
             fruitMaterials = new Material[FruitColors.Length];
             for (int i = 0; i < Palette.Length; i++) bodyMaterials[i] = MakeMaterial(Palette[i], .28f);
@@ -123,18 +143,25 @@ namespace SnakeClub
             floor.name = "Arena Floor";
             floor.transform.localScale = Vector3.one * (Arena.WorldHalfSize * 2 / 10f);
             Destroy(floor.GetComponent<Collider>());
-            var floorMat = MakeMaterial(new Color(.17f, .26f, .36f), .05f);
-            var grid = new Texture2D(64, 64, TextureFormat.RGBA32, false);
-            grid.wrapMode = TextureWrapMode.Repeat;
-            for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++)
+            var ground = Resources.Load<Texture2D>("ArenaFloor");
+            var floorMat = MakeMaterial(ground != null ? new Color(.66f, .76f, .78f) : new Color(.17f, .26f, .36f), .05f);
+            if (ground != null)
             {
-                float line = (x < 2 || y < 2) ? .22f : 0f;
-                float pattern = ((x / 32 + y / 32) % 2 == 0) ? .035f : 0f;
-                grid.SetPixel(x, y, new Color(.20f + line + pattern, .30f + line + pattern, .40f + line + pattern, 1));
+                floorMat.mainTexture = ground;
+                floorMat.mainTextureScale = Vector2.one * 11;
             }
-            grid.Apply();
-            floorMat.mainTexture = grid;
-            floorMat.mainTextureScale = Vector2.one * 44;
+            else
+            {
+                var grid = new Texture2D(64, 64, TextureFormat.RGBA32, false);
+                grid.wrapMode = TextureWrapMode.Repeat;
+                for (int y = 0; y < 64; y++) for (int x = 0; x < 64; x++)
+                {
+                    float line = (x < 2 || y < 2) ? .22f : 0f;
+                    float pattern = ((x / 32 + y / 32) % 2 == 0) ? .035f : 0f;
+                    grid.SetPixel(x, y, new Color(.20f + line + pattern, .30f + line + pattern, .40f + line + pattern, 1));
+                }
+                grid.Apply(); floorMat.mainTexture = grid; floorMat.mainTextureScale = Vector2.one * 44;
+            }
             floor.GetComponent<Renderer>().sharedMaterial = floorMat;
 
             var railMat = MakeMaterial(new Color(.20f, .89f, .86f), .1f);
@@ -168,6 +195,7 @@ namespace SnakeClub
                 crystal.transform.rotation = Quaternion.Euler(0, decorationRandom.Next(45), 45);
                 crystal.transform.localScale = new Vector3(.5f, height, .5f);
                 crystal.GetComponent<Renderer>().sharedMaterial = crystalMat;
+                crystals.Add(crystal.transform);
             }
 
             starObject = GameObject.CreatePrimitive(PrimitiveType.Sphere);
@@ -187,6 +215,13 @@ namespace SnakeClub
             marker.material = MakeMaterial(new Color(.6f, 1f, .87f), 0);
             marker.startColor = marker.endColor = new Color(.7f, 1f, .9f, .9f);
             marker.shadowCastingMode = ShadowCastingMode.Off;
+            var eventObject = new GameObject("Event boundary");
+            eventObject.transform.SetParent(runtimeRoot.transform, false);
+            eventRing = eventObject.AddComponent<LineRenderer>();
+            eventRing.useWorldSpace = true; eventRing.loop = true; eventRing.positionCount = 64;
+            eventRing.widthMultiplier = .12f; eventRing.material = MakeMaterial(new Color(1f, .73f, .29f), 0);
+            eventRing.startColor = eventRing.endColor = new Color(1f, .78f, .35f, .65f);
+            eventRing.shadowCastingMode = ShadowCastingMode.Off;
         }
 
         public void Draw(ArenaState state, string playerId)
@@ -194,8 +229,9 @@ namespace SnakeClub
             if (state == null) return;
             foreach (var list in bodies) list.Clear();
             foreach (var list in links) list.Clear();
+            foreach (var list in horns) list.Clear();
             foreach (var list in fruits) list.Clear();
-            eyes.Clear(); pupils.Clear(); scales.Clear(); trail.Clear();
+            eyes.Clear(); pupils.Clear(); scales.Clear(); trail.Clear(); sparks.Clear();
             SnakeState focus = state.snakes.Find(s => s.id == playerId && s.alive);
             if (focus == null) focus = state.snakes.Find(s => s.alive);
             if (focus != null && focus.segments.Count > 0)
@@ -203,9 +239,20 @@ namespace SnakeClub
                 Point p = focus.segments[0];
                 Vector3 target = new Vector3(p.x, 29, p.y - 10.5f);
                 view.transform.position = cameraReady ? Vector3.Lerp(view.transform.position, target, 1f - Mathf.Exp(-5f * Time.deltaTime)) : target;
+                view.orthographicSize = Mathf.Lerp(view.orthographicSize, focus.boosting ? 22f : 20f, 1f - Mathf.Exp(-2.5f * Time.deltaTime));
                 cameraReady = true;
             }
+            for (int i = 0; i < crystals.Count; i++)
+                if (crystals[i] != null) crystals[i].Rotate(Vector3.up, Time.deltaTime * (5f + i % 5), Space.World);
             marker.enabled = false;
+            eventRing.enabled = state.eventStatus == "active" && state.eventKind == "fruit" && state.eventRadius > 0;
+            if (eventRing.enabled)
+                for (int i = 0; i < eventRing.positionCount; i++)
+                {
+                    float angle = i * Mathf.PI * 2 / eventRing.positionCount;
+                    eventRing.SetPosition(i, new Vector3(state.eventPosition.x + Mathf.Cos(angle) * state.eventRadius, .1f,
+                        state.eventPosition.y + Mathf.Sin(angle) * state.eventRadius));
+                }
             foreach (var snake in state.snakes)
             {
                 if (!snake.alive || snake.segments.Count == 0) continue;
@@ -226,10 +273,10 @@ namespace SnakeClub
                 for (int i = snake.segments.Count - 1; i >= 0; i--)
                 {
                     Point p = snake.segments[i];
-                    Vector3 target = new Vector3(p.x, .72f, p.y);
+                    Vector3 target = new Vector3(p.x, .72f + .045f * Mathf.Sin(Time.time * 7f - i * .55f), p.y);
                     positions[i] = Vector3.Distance(positions[i], target) > 8f ? target :
                         Vector3.Lerp(positions[i], target, 1f - Mathf.Exp(-16f * Time.deltaTime));
-                    float taper = i == 0 ? 1.65f : Mathf.Lerp(1.05f, 1.38f, Mathf.Clamp01((snake.segments.Count - i) / 5f));
+                    float taper = i == 0 ? 1.65f : Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((snake.segments.Count - i) / 6f));
                     list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * taper));
                     if (snake.id == playerId && i > 0 && i % (SelectedSkin == 1 ? 3 : 2) == 0)
                     {
@@ -241,12 +288,29 @@ namespace SnakeClub
                 {
                     Vector3 delta = positions[i - 1] - positions[i];
                     if (delta.sqrMagnitude < .0001f) continue;
-                    float diameter = Mathf.Lerp(.92f, 1.18f, Mathf.Clamp01((positions.Count - i) / 5f));
+                    float diameter = Mathf.Lerp(.70f, 1.27f, Mathf.Clamp01((positions.Count - i) / 6f));
                     links[color].Add(Matrix4x4.TRS((positions[i - 1] + positions[i]) * .5f, Quaternion.FromToRotation(Vector3.up, delta), new Vector3(diameter, delta.magnitude * .5f, diameter)));
                 }
                 Vector3 forward = new Vector3(Mathf.Cos(snake.angle), 0, Mathf.Sin(snake.angle));
                 Vector3 side = new Vector3(-forward.z, 0, forward.x);
                 Vector3 center = positions[0];
+                if (snake.id == playerId)
+                {
+                    int shape = Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1);
+                    if (shape == 5)
+                    {
+                        for (int i = -2; i <= 2; i++)
+                            horns[color].Add(Matrix4x4.TRS(center + side * (i * .18f) + Vector3.up * .62f,
+                                Quaternion.Euler(0, 0, -i * 10f), new Vector3(.27f, .48f + (2 - Mathf.Abs(i)) * .08f, .27f)));
+                    }
+                    else
+                        for (int sign = -1; sign <= 1; sign += 2)
+                            horns[color].Add(Matrix4x4.TRS(center + side * (.48f * sign) + Vector3.up * .54f,
+                                Quaternion.Euler(0, 0, sign * 15f), new Vector3(.31f, shape == 4 ? .85f : .55f, .28f)));
+                    if (state.tick < lastTick) { lastKills = snake.kills; burstStarted = -10f; }
+                    if (lastTick >= 0 && snake.kills > lastKills) { burstStarted = Time.time; burstPosition = center; }
+                    lastKills = snake.kills; lastTick = state.tick;
+                }
                 for (int sign = -1; sign <= 1; sign += 2)
                 {
                     Vector3 eye = center + forward * .52f + side * (.37f * sign) + Vector3.up * .37f;
@@ -255,7 +319,7 @@ namespace SnakeClub
                 }
                 if (snake.id == playerId)
                 {
-                    if (positions.Count >= 2)
+                    if (!ReducedEffects && positions.Count >= 2)
                     {
                         Vector3 tail = positions[positions.Count - 1];
                         Vector3 back = (tail - positions[positions.Count - 2]).normalized;
@@ -275,6 +339,17 @@ namespace SnakeClub
                     }
                 }
             }
+            float burstAge = Time.time - burstStarted;
+            if (!ReducedEffects && burstAge >= 0 && burstAge < .8f)
+            {
+                float progress = burstAge / .8f;
+                for (int i = 0; i < 16; i++)
+                {
+                    float angle = i * Mathf.PI * 2 / 16f + progress;
+                    Vector3 point = burstPosition + new Vector3(Mathf.Cos(angle) * progress * 3f, .5f + Mathf.Sin(progress * Mathf.PI) * 1.3f, Mathf.Sin(angle) * progress * 3f);
+                    sparks.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * (.28f * (1f - progress))));
+                }
+            }
             if (starObject != null)
             {
                 starObject.SetActive(state.starVisible);
@@ -290,11 +365,29 @@ namespace SnakeClub
                 float pulse = .65f + .08f * Mathf.Sin(Time.time * 2.4f + p.x + p.y);
                 fruits[Mathf.Abs(fruit.color % fruits.Length)].Add(Matrix4x4.TRS(new Vector3(p.x, .52f, p.y), Quaternion.identity, Vector3.one * pulse));
             }
-            for (int i = 0; i < bodies.Length; i++) { DrawBatch(links[i], bodyMaterials[i], cylinder); DrawBatch(bodies[i], bodyMaterials[i], sphere); }
+            for (int i = 0; i < bodies.Length; i++) { DrawBatch(links[i], bodyMaterials[i], cylinder); DrawBatch(bodies[i], bodyMaterials[i], sphere); DrawBatch(horns[i], bodyMaterials[i], cone); }
             for (int i = 0; i < fruits.Length; i++) DrawBatch(fruits[i], fruitMaterials[i]);
-            scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, 3)]], Color.white, .65f);
+            scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)]], Color.white, .65f);
             scaleMaterial.SetColor("_EmissionColor", scaleMaterial.color * .18f);
-            DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+            DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+        }
+
+        private static Mesh CreateCone()
+        {
+            const int sides = 12;
+            var mesh = new Mesh { name = "Arena character ornaments" };
+            var points = new Vector3[sides + 2]; var triangles = new int[sides * 6];
+            points[0] = Vector3.up; points[1] = Vector3.zero;
+            for (int i = 0; i < sides; i++)
+            {
+                float angle = i * Mathf.PI * 2 / sides;
+                points[i + 2] = new Vector3(Mathf.Cos(angle) * .5f, 0, Mathf.Sin(angle) * .5f);
+                int next = (i + 1) % sides + 2, k = i * 6;
+                triangles[k] = 0; triangles[k + 1] = next; triangles[k + 2] = i + 2;
+                triangles[k + 3] = 1; triangles[k + 4] = i + 2; triangles[k + 5] = next;
+            }
+            mesh.vertices = points; mesh.triangles = triangles; mesh.RecalculateNormals();
+            return mesh;
         }
 
         public Vector3 WorldToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, 2.1f, point.y));

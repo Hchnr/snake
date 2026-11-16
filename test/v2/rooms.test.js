@@ -4,14 +4,17 @@ const { spawn } = require('node:child_process');
 const net = require('node:net');
 const path = require('node:path');
 const fs = require('node:fs');
+const os = require('node:os');
 const vm = require('node:vm');
 
 let server;
 let base;
 let output = '';
+let temp;
 const clients = new Set();
 
 before(async () => {
+  temp = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-room-test-'));
   const port = await new Promise((resolve, reject) => {
     const listener = net.createServer();
     listener.once('error', reject);
@@ -21,8 +24,11 @@ before(async () => {
     });
   });
   base = `http://127.0.0.1:${port}`;
+  const env = { ...process.env, SNAKE_ENV: 'development', SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), SNAKE_DATA_FILE: path.join(temp, 'data.json'), DOTNET_CLI_TELEMETRY_OPTOUT: '1' };
+  delete env.SNAKE_SQLITE_FILE;
+  delete env.SNAKE_RATE_LIMIT_PER_MIN;
   server = spawn('dotnet', [path.join(__dirname, '../../server/bin/Debug/net10.0/Snake.Server.dll')], {
-    env: { ...process.env, SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), DOTNET_CLI_TELEMETRY_OPTOUT: '1' },
+    env,
     stdio: ['ignore', 'pipe', 'pipe']
   });
   server.stdout.on('data', chunk => { output += chunk; });
@@ -39,6 +45,7 @@ before(async () => {
 after(() => {
   for (const client of clients) client.close();
   if (server && server.exitCode === null) server.kill('SIGTERM');
+  if (temp) fs.rmSync(temp, { recursive: true, force: true });
 });
 
 async function connect() {

@@ -9,7 +9,7 @@ namespace SnakeClub
     {
         [Serializable] private sealed class PendingChallenge
         {
-            public string playerId, runId, token, inputs, mode;
+            public string playerId, runId, token, inputs, mode, rules;
             public int score, seconds, actions;
         }
         [Serializable] private sealed class PendingChallenges { public List<PendingChallenge> entries = new List<PendingChallenge>(); }
@@ -21,19 +21,89 @@ namespace SnakeClub
         private ApiReply activeRun;
         private Texture2D caveBackground;
         private HomeAvatar homeAvatar;
+        private HomeScreen homeScreen;
         private string frontPage = "home", frontNotice = "", resultNote = "", lastRewardId = "", lastRewardKind = "", activePlayerId = "", friendDate = "";
         private bool busy, resultRecorded, flushing, adShowing, connecting;
         private bool developerRooms = false;
-        private int previewSkin, lastRewardCoins;
+        private int previewSkin, lastRewardCoins, localVisualSkin = -1;
         private ApiReply board;
         private const string PendingKey = "snake.v3.pending";
         private PlayerProgress CurrentProfile => api != null && api.Connected ? api.Profile : practiceProfile;
+        private int EffectiveSkin => api != null && api.Config.allowReferenceSkinPreview && localVisualSkin >= SkinCatalog.OwnedSkinCount
+            && localVisualSkin < SkinCatalog.All.Length ? localVisualSkin : CurrentProfile.selectedSkin;
+
+        private void SetupHomeScreen()
+        {
+            homeScreen = GetComponent<HomeScreen>();
+            if (homeScreen == null) homeScreen = gameObject.AddComponent<HomeScreen>();
+            homeScreen.Setup(uiFont, StartMain, () => { frontPage = "skins"; previewSkin = EffectiveSkin; },
+                () => frontPage = "caves", () => frontPage = "more", () => feedback.Enabled = !feedback.Enabled,
+                () => { frontPage = "home"; arenaRenderer.SelectedSkin = EffectiveSkin; },
+                index => previewSkin = index, EquipPreviewSkin, TrialPreviewSkin);
+            homeScreen.SetupReconnect(ConnectProfile);
+            homeScreen.SetupPreferences(
+                () => { mirrorControls = !mirrorControls; PlayerPrefs.SetInt("snake.v031.mirrorControls", mirrorControls ? 1 : 0); PlayerPrefs.Save(); },
+                () => { reducedEffects = !reducedEffects; PlayerPrefs.SetInt("snake.v031.reducedEffects", reducedEffects ? 1 : 0); PlayerPrefs.Save(); });
+            homeScreen.SetupResults(
+                () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
+                () => GamePlatform.ShareChallenge(api.Date, message => { if (!string.IsNullOrEmpty(message)) resultNote = message; }),
+                () =>
+                {
+                    if (string.IsNullOrEmpty(lastRewardId) || lastRewardCoins <= 0) return;
+                    StartRewarded(lastRewardKind, lastRewardId, 0, reply =>
+                    {
+                        if (reply.ok) { lastRewardId = ""; resultNote = "额外金币 +" + reply.coins; }
+                        else if (!string.IsNullOrEmpty(reply.error)) resultNote = reply.error;
+                    });
+                });
+        }
+
+        private void EquipPreviewSkin(int index)
+        {
+            if (index < 0 || index >= SkinCatalog.All.Length || index == EffectiveSkin) return;
+            PlayerProgress p = CurrentProfile;
+            if (SkinCatalog.Get(index).ReferencePreview)
+            {
+                if (!api.Config.allowReferenceSkinPreview) return;
+                localVisualSkin = index; PlayerPrefs.SetInt("snake.v031.previewSkin", index); PlayerPrefs.Save();
+                previewSkin = index; frontNotice = "本机造型试用中";
+            }
+            else if (!api.Connected && !p.ownedSkins.Contains(index)) frontNotice = "联网后可解锁并保存皮肤";
+            else if (!api.Connected)
+            {
+                localVisualSkin = -1; practiceProfile.selectedSkin = index; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index;
+            }
+            else Mutate(p.ownedSkins.Contains(index) ? "skin/equip" : "skin/buy", new ApiRequest { index = index }, reply =>
+            {
+                if (reply.ok) { localVisualSkin = -1; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index; }
+            });
+        }
+
+        private void TrialPreviewSkin()
+        {
+            if (previewSkin < 1 || previewSkin >= SkinCatalog.OwnedSkinCount) return;
+            int selected = previewSkin;
+            StartRewarded("trial", "", selected, reply => { if (reply.ok) frontNotice = "试穿已领取，将在下场普通对局使用"; });
+        }
+
+        private void StartMain()
+        {
+            if (!CurrentProfile.tutorialComplete) RequestPve();
+            else { friendDate = ""; RequestDaily(); }
+        }
+
+        private void LoadPreferences()
+        {
+            mirrorControls = PlayerPrefs.GetInt("snake.v031.mirrorControls", 0) != 0;
+            reducedEffects = PlayerPrefs.GetInt("snake.v031.reducedEffects", 0) != 0;
+        }
 
         private void ConnectProfile()
         {
             if (connecting) return;
             connecting = true;
-            caveBackground = Resources.Load<Texture2D>("MysticCave");
+            caveBackground = Resources.Load<Texture2D>("HomeGarden");
+            if (caveBackground == null) caveBackground = Resources.Load<Texture2D>("MysticCave");
             if (caveBackground == null) Debug.LogWarning("[Snake Club] Home background could not be loaded.");
             if (homeAvatar == null) homeAvatar = gameObject.AddComponent<HomeAvatar>();
             frontNotice = "正在连接进度服务…";
@@ -41,7 +111,8 @@ namespace SnakeClub
             {
                 connecting = false;
                 frontNotice = reply.ok ? "进度已同步" : "离线练习 · 进度和排行暂不同步";
-                previewSkin = CurrentProfile.selectedSkin;
+                localVisualSkin = api.Config.allowReferenceSkinPreview ? PlayerPrefs.GetInt("snake.v031.previewSkin", -1) : -1;
+                previewSkin = EffectiveSkin;
                 arenaRenderer.SelectedSkin = previewSkin;
                 if (reply.ok)
                 {
@@ -72,6 +143,7 @@ namespace SnakeClub
         private void RequestPve()
         {
             if (busy) return;
+            depthMode = false;
             if (!api.Connected) { BeginPve(null); resultNote = "离线练习不计账号奖励"; return; }
             busy = true;
             api.Post("match/start", new ApiRequest(), reply =>
@@ -85,21 +157,85 @@ namespace SnakeClub
         private void RequestDaily()
         {
             if (busy) return;
+            depthMode = false;
             if (!api.Connected) { BeginDaily(null); return; }
             busy = true;
-            api.Post("challenge/start", new ApiRequest(), reply => { busy = false; BeginDaily(reply.ok ? reply : null); });
+            api.Post("challenge/start?rules=" + DailyMatch.RulesVersion, new ApiRequest(), reply => { busy = false; BeginDaily(reply.ok ? reply : null); });
+        }
+
+        private void StartDepth()
+        {
+            if (busy) return;
+            int completed = DepthChallenge.CompletedMatches(CurrentProfile);
+            if (!DepthChallenge.IsUnlocked(CurrentProfile)) { frontNotice = "完成 3 场对局后开启深潜（" + completed + "/3）"; return; }
+            depthMode = true; depthRoom = 1; depthTurn = depthBoost = depthPickup = 0;
+            RequestDepthRoom();
+        }
+
+        private void RequestDepthRoom()
+        {
+            if (busy) return;
+            depthWon = false;
+            if (!api.Connected) { BeginPve(null); resultNote = "离线练习不计账号奖励"; return; }
+            busy = true;
+            api.Post("match/start", new ApiRequest(), reply =>
+            {
+                busy = false;
+                BeginPve(reply.ok ? reply : null);
+                resultNote = reply.ok ? "" : "离线练习不计账号奖励";
+            });
+        }
+
+        private string DepthGoalText() => depthRoom == 1 ? "目标：淘汰 1 条对手" : depthRoom == 2 ? "目标：携带星核得分" : "目标：围猎标记巨蛇";
+
+        private bool DepthGoalReached(ArenaState world)
+        {
+            return DepthChallenge.GoalReached(depthRoom, world, playerId);
+        }
+
+        private void SelectDepthBonus(int choice)
+        {
+            if (busy) return;
+            if (choice == 0) depthTurn += .03f;
+            else if (choice == 1) depthBoost += .04f;
+            else depthPickup += .05f;
+            depthRoom++;
+            RequestDepthRoom();
+        }
+
+        private void DrawDepthResult(SnakeState me)
+        {
+            Panel(new Rect(105, 490, 870, 970), new Color(.035f, .065f, .12f, .96f));
+            string title = depthWon ? depthRoom == 3 ? "深潜完成！" : "房间完成！" : "本次深潜结束";
+            Label(new Rect(140, 530, 800, 90), title, 49, Color.white, TextAnchor.MiddleCenter, true);
+            Label(new Rect(150, 640, 780, 70), me == null ? "" : "淘汰 " + me.kills + "  ·  长度 " + me.segments.Count, 29, new Color(.75f, .92f, .88f), TextAnchor.MiddleCenter);
+            Label(new Rect(150, 715, 780, 90), resultNote, 22, new Color(.75f, .88f, .91f), TextAnchor.MiddleCenter);
+            if (depthWon && depthRoom < 3)
+            {
+                Label(new Rect(150, 815, 780, 65), "选择一个本次深潜增益", 29, new Color(1f, .86f, .56f), TextAnchor.MiddleCenter, true);
+                if (Button(new Rect(175, 900, 730, 100), "轻盈转向  ·  +3%", new Color(.13f, .51f, .46f))) SelectDepthBonus(0);
+                if (Button(new Rect(175, 1020, 730, 100), "省力加速  ·  消耗 -4%", new Color(.23f, .40f, .62f))) SelectDepthBonus(1);
+                if (Button(new Rect(175, 1140, 730, 100), "果实感知  ·  范围 +5%", new Color(.42f, .33f, .60f))) SelectDepthBonus(2);
+            }
+            else
+            {
+                Label(new Rect(150, 850, 780, 80), depthWon ? "三间秘境全部完成" : "已完成房间的奖励仍会保留", 28, new Color(.80f, .94f, .90f), TextAnchor.MiddleCenter);
+                if (Button(new Rect(210, 980, 660, 105), "再次深潜", new Color(.10f, .60f, .49f))) StartDepth();
+                if (Button(new Rect(210, 1110, 660, 100), "返回大厅", new Color(.17f, .25f, .34f))) BackToMenu();
+            }
         }
 
         private void BeginDaily(ApiReply run)
         {
             connection.Close(); online = false; inGame = true; paused = false; status = ""; room = "";
-            playerId = "you"; arena = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed());
+            playerId = "you"; arena = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
+                run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
             state = daily.State; activeRun = run; resultRecorded = false; dailyInputs.Clear();
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; firstRun = !CurrentProfile.tutorialComplete;
             resultNote = run == null ? "离线练习不计入排行榜" : "挑战完成后验证成绩";
-            arenaRenderer.SelectedSkin = CurrentProfile.selectedSkin;
+            arenaRenderer.SelectedSkin = EffectiveSkin;
         }
 
         private void RecordResult()
@@ -107,13 +243,13 @@ namespace SnakeClub
             resultRecorded = true;
             if (activeRun == null || string.IsNullOrEmpty(activePlayerId))
             {
-                if (controlActions > 0) practiceProfile.tutorialComplete = true;
+                if (controlActions > 0) { practiceProfile.tutorialComplete = true; practiceProfile.completedMatches++; }
                 resultNote = daily != null ? "练习局 · 不计入排行榜" : "离线练习 · 不计账号奖励"; return;
             }
             string runId = activeRun.runId;
             var pending = ReadPending();
             pending.entries.Add(new PendingChallenge { playerId = activePlayerId, runId = runId, token = activeRun.token,
-                mode = daily != null ? "daily" : "pve", inputs = daily != null ? Convert.ToBase64String(dailyInputs.ToArray()) : "",
+                mode = daily != null ? "daily" : "pve", rules = activeRun.rules, inputs = daily != null ? Convert.ToBase64String(dailyInputs.ToArray()) : "",
                 score = daily != null ? daily.Score : 0, seconds = state.tick / 20, actions = controlActions });
             SavePending(pending);
             resultNote = api.Connected ? "正在结算…" : "结果已保存，联网后重试";
@@ -151,9 +287,10 @@ namespace SnakeClub
                     if (activeRun != null && activeRun.runId == entry.runId)
                     {
                         string rewards = "金币 +" + (reply.coins + reply.questCoins) + "  经验 +" + (reply.experience + reply.questExperience) + (reply.questExperience > 0 ? "（含日常）" : "");
+                        if (reply.unlockedSkin > 0 && reply.unlockedSkin < SkinCatalog.OwnedSkinCount) rewards += "\n解锁皮肤：" + SkinCatalog.Get(reply.unlockedSkin).Name;
                         resultNote = reply.ok ? (challenge ? "成绩已验证 · " : "") + rewards : reply.error;
                         if (reply.ok && reply.coins > 0) { lastRewardId = entry.runId; lastRewardKind = "match"; lastRewardCoins = reply.coins; }
-                        if (reply.ok && challenge) api.Get("challenge/leaderboard", ranking =>
+                        if (reply.ok && challenge) api.Get("challenge/leaderboard?rules=" + Uri.EscapeDataString(string.IsNullOrEmpty(entry.rules) ? DailyMatch.LegacyRulesVersion : entry.rules), ranking =>
                         {
                             if (!ranking.ok || activeRun == null || activeRun.runId != entry.runId) return;
                             string position = ranking.rank > 0 ? "今日第 " + ranking.rank + " 名 / " + ranking.total + " 人" : "成绩已记录";
@@ -171,14 +308,15 @@ namespace SnakeClub
         {
             if (Event.current.type == EventType.KeyDown && frontPage == "home")
             {
-                if (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter) { RequestPve(); Event.current.Use(); }
+                if (Event.current.keyCode == KeyCode.Return || Event.current.keyCode == KeyCode.KeypadEnter) { StartMain(); Event.current.Use(); }
                 else if (Event.current.keyCode == KeyCode.D) { RequestDaily(); Event.current.Use(); }
             }
 #if UNITY_EDITOR
             if (Event.current.type == EventType.KeyDown && Event.current.keyCode == KeyCode.F10) { developerRooms = !developerRooms; onlineMenu = false; }
 #endif
             if (developerRooms) { if (homeAvatar != null) homeAvatar.Visible = false; DrawLegacyMenu(); return; }
-            if (homeAvatar != null) { homeAvatar.Visible = frontPage == "home" || frontPage == "skins"; homeAvatar.Skin = frontPage == "skins" ? previewSkin : CurrentProfile.selectedSkin; }
+            if (frontPage == "home" || frontPage == "skins") return;
+            if (homeAvatar != null) { homeAvatar.Visible = frontPage == "skins"; homeAvatar.Skin = previewSkin; }
             if (caveBackground != null) GUI.DrawTexture(new Rect(0, 0, 1080, 1920), caveBackground, ScaleMode.ScaleAndCrop);
             Color old = GUI.color; GUI.color = new Color(.015f, .035f, .065f, .28f); GUI.DrawTexture(new Rect(0, 0, 1080, 1920), Texture2D.whiteTexture); GUI.color = old;
             if (frontPage == "home") DrawHome();
@@ -186,6 +324,7 @@ namespace SnakeClub
             else if (frontPage == "talents") DrawTalents();
             else if (frontPage == "caves") DrawCaves();
             else if (frontPage == "leaderboard") DrawLeaderboard();
+            else if (frontPage == "more") DrawMore();
         }
 
         private void DrawHome()
@@ -215,7 +354,7 @@ namespace SnakeClub
         private void FrontHeader(string title, string subtitle)
         {
             Panel(new Rect(55, 65, 970, 215), new Color(.025f, .065f, .12f, .91f));
-            if (SmallButton(new Rect(80, 102, 130, 76), "返回", new Color(.15f, .25f, .33f), 24)) { frontPage = "home"; arenaRenderer.SelectedSkin = CurrentProfile.selectedSkin; }
+            if (SmallButton(new Rect(80, 102, 130, 76), "返回", new Color(.15f, .25f, .33f), 24)) { frontPage = "home"; arenaRenderer.SelectedSkin = EffectiveSkin; }
             Label(new Rect(225, 91, 610, 82), title, 48, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(100, 185, 880, 55), subtitle, 25, new Color(.68f, .84f, .87f), TextAnchor.MiddleCenter);
         }
@@ -224,32 +363,55 @@ namespace SnakeClub
         {
             PlayerProgress p = CurrentProfile;
             FrontHeader("灵蛇衣橱", "收集外观与小幅属性 · 每日挑战使用统一属性");
-            if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(275, 285, 530, 430), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
-            Label(new Rect(180, 680, 720, 70), Progression.SkinNames[previewSkin] + "  ·  " + Progression.SkinDescriptions[previewSkin], 32, Color.white, TextAnchor.MiddleCenter, true);
-            for (int i = 0; i < 4; i++)
+            if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(185, 280, 710, 600), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
+            Label(new Rect(180, 815, 720, 70), Progression.SkinNames[previewSkin] + "  ·  " + Progression.SkinDescriptions[previewSkin], 32, Color.white, TextAnchor.MiddleCenter, true);
+            int count = api.Config.allowReferenceSkinPreview ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount;
+            for (int i = 0; i < count; i++)
             {
                 int index = i;
-                Rect card = new Rect(90 + i % 2 * 465, 805 + i / 2 * 310, 435, 280);
-                Panel(card, new Color(.035f, .10f, .16f, .93f));
-                Label(new Rect(card.x + 25, card.y + 20, 385, 55), Progression.SkinNames[i], 34, Color.white, TextAnchor.MiddleCenter, true);
-                Label(new Rect(card.x + 25, card.y + 80, 385, 50), Progression.SkinDescriptions[i], 24, new Color(.66f, .89f, .84f), TextAnchor.MiddleCenter);
-                if (SmallButton(new Rect(card.x + 24, card.y + 155, 145, 80), "预览", new Color(.18f, .31f, .40f), 25)) previewSkin = index;
-                string action = p.ownedSkins.Contains(i) ? (p.selectedSkin == i ? "已使用" : "使用") : Progression.SkinPrices[i] + " 金币";
-                if (SmallButton(new Rect(card.x + 188, card.y + 155, 220, 80), action, new Color(.12f, .51f, .44f), 25) && p.selectedSkin != index)
+                Rect card = new Rect(90 + i % 2 * 465, 905 + i / 2 * 225, 435, 205);
+                Panel(card, i == previewSkin ? new Color(.10f, .31f, .33f, .96f) : new Color(.035f, .10f, .16f, .93f));
+                Label(new Rect(card.x + 25, card.y + 8, 385, 48), Progression.SkinNames[i], 31, Color.white, TextAnchor.MiddleCenter, true);
+                Label(new Rect(card.x + 25, card.y + 58, 385, 43), Progression.SkinDescriptions[i], 22, new Color(.66f, .89f, .84f), TextAnchor.MiddleCenter);
+                if (SmallButton(new Rect(card.x + 24, card.y + 118, 145, 70), "预览", new Color(.18f, .31f, .40f), 24)) previewSkin = index;
+                bool reference = SkinCatalog.Get(i).ReferencePreview;
+                string action = reference ? (EffectiveSkin == i ? "试用中" : "本机试用") : p.ownedSkins.Contains(i) ? (EffectiveSkin == i ? "已使用" : "使用") : Progression.SkinPrices[i] + " 金币";
+                if (SmallButton(new Rect(card.x + 188, card.y + 118, 220, 70), action, new Color(.12f, .51f, .44f), 23) && EffectiveSkin != index)
                 {
-                    if (!api.Connected) frontNotice = "联网后可解锁并保存皮肤";
-                    else Mutate(p.ownedSkins.Contains(index) ? "skin/equip" : "skin/buy", new ApiRequest { index = index }, reply => { if (reply.ok) previewSkin = index; });
+                    if (reference)
+                    {
+                        localVisualSkin = index; PlayerPrefs.SetInt("snake.v031.previewSkin", index); PlayerPrefs.Save();
+                        previewSkin = index; frontNotice = "本机造型试用中";
+                    }
+                    else if (!api.Connected && !p.ownedSkins.Contains(index)) frontNotice = "联网后可解锁并保存皮肤";
+                    else if (!api.Connected) { localVisualSkin = -1; practiceProfile.selectedSkin = index; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index; }
+                    else Mutate(p.ownedSkins.Contains(index) ? "skin/equip" : "skin/buy", new ApiRequest { index = index }, reply =>
+                    {
+                        if (reply.ok) { localVisualSkin = -1; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index; }
+                    });
                 }
             }
             if (p.trialSkin > 0)
-                Label(new Rect(120, 1490, 840, 70), "下场普通对局试穿 " + Progression.SkinNames[p.trialSkin], 26, new Color(.65f, .95f, .84f), TextAnchor.MiddleCenter);
-            else if (p.tutorialComplete && !p.dailyTrialUsed && !p.ownedSkins.Contains(previewSkin) && GamePlatform.HasRewardedAds(api))
+                Label(new Rect(120, 1600, 840, 70), "下场普通对局试穿 " + Progression.SkinNames[p.trialSkin], 26, new Color(.65f, .95f, .84f), TextAnchor.MiddleCenter);
+            else if (previewSkin < SkinCatalog.OwnedSkinCount && p.tutorialComplete && !p.dailyTrialUsed && !p.ownedSkins.Contains(previewSkin) && GamePlatform.HasRewardedAds(api))
             {
                 int selected = previewSkin;
-                if (SmallButton(new Rect(210, 1470, 660, 95), "看 1 次广告，试穿 1 局", new Color(.25f, .40f, .55f), 25))
+                if (SmallButton(new Rect(210, 1590, 660, 95), "看 1 次广告，试穿 1 局", new Color(.25f, .40f, .55f), 25))
                     StartRewarded("trial", "", selected, reply => { if (reply.ok) frontNotice = "试穿已领取，将在下场普通对局使用"; });
             }
-            Label(new Rect(100, 1590, 880, 90), "当前金币 " + p.coins + "  ·  " + frontNotice, 25, new Color(.83f, .92f, .92f), TextAnchor.MiddleCenter);
+            Label(new Rect(100, 1710, 880, 90), "当前金币 " + p.coins + "  ·  " + frontNotice, 25, new Color(.83f, .92f, .92f), TextAnchor.MiddleCenter);
+        }
+
+        private void DrawMore()
+        {
+            FrontHeader("更多玩法", "成长、挑战与排行");
+            if (Button(new Rect(130, 390, 820, 140), "普通围猎  ·  属性生效", new Color(.10f, .55f, .46f))) RequestPve();
+            if (Button(new Rect(130, 570, 820, 140), "每日挑战  ·  60 秒", new Color(.20f, .38f, .69f))) RequestDaily();
+            if (Button(new Rect(130, 750, 820, 140), "每日排行榜", new Color(.34f, .31f, .62f))) OpenBoard();
+            if (Button(new Rect(130, 930, 820, 140), "灵蛇天赋", new Color(.30f, .30f, .56f))) frontPage = "talents";
+            int completed = DepthChallenge.CompletedMatches(CurrentProfile);
+            if (Button(new Rect(130, 1110, 820, 140), completed >= 3 ? "秘境深潜  ·  三重挑战" : "秘境深潜  ·  " + completed + "/3 场", new Color(.42f, .28f, .57f))) StartDepth();
+            Label(new Rect(150, 1300, 780, 120), string.IsNullOrEmpty(frontNotice) ? "每日挑战采用统一属性\n普通围猎可体验皮肤与天赋加成" : frontNotice, 25, new Color(.84f, .96f, .94f), TextAnchor.MiddleCenter);
         }
 
         private void DrawTalents()
@@ -270,7 +432,12 @@ namespace SnakeClub
                     Rect card = new Rect(82 + column * 305, 580 + row * 265, 285, 235);
                     Panel(card, new Color(.035f, .10f, .16f, .93f));
                     Label(new Rect(card.x + 10, card.y + 16, 265, 48), Progression.TalentNames[index], 25, Color.white, TextAnchor.MiddleCenter, true);
-                    Label(new Rect(card.x + 12, card.y + 67, 261, 55), Progression.TalentDescriptions[index], 19, new Color(.68f, .84f, .87f), TextAnchor.MiddleCenter);
+                    Label(new Rect(card.x + 12, card.y + 62, 261, 42), Progression.TalentDescriptions[index], 19, new Color(.68f, .84f, .87f), TextAnchor.MiddleCenter);
+                    int rank = p.talents[index];
+                    float each = index < 6 ? .5f : 1f;
+                    string current = (rank * each).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                    string nextRank = (Math.Min(3, rank + 1) * each).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+                    Label(new Rect(card.x + 12, card.y + 102, 261, 35), rank >= 3 ? "当前 +" + current + "% · 已满级" : "当前 +" + current + "% → +" + nextRank + "%", 18, new Color(.80f, .94f, .86f), TextAnchor.MiddleCenter);
                     string value = p.talents[index] + " / 3  +";
                     if (SmallButton(new Rect(card.x + 40, card.y + 137, 205, 70), value, new Color(.13f, .43f, .42f), 24))
                     {
@@ -279,11 +446,16 @@ namespace SnakeClub
                     }
                 }
             }
-            if (SmallButton(new Rect(290, 1450, 500, 95), "免费重置", new Color(.23f, .32f, .40f), 27))
+            if (SmallButton(new Rect(95, 1450, 425, 95), "推荐加点", new Color(.12f, .45f, .40f), 27))
+            {
+                if (api.Connected) Mutate("talent/recommend", new ApiRequest());
+                else frontNotice = Progression.AllocateRecommended(practiceProfile) > 0 ? "已按推荐方案分配" : "没有可分配的天赋点";
+            }
+            if (SmallButton(new Rect(560, 1450, 425, 95), "免费重置", new Color(.23f, .32f, .40f), 27))
             {
                 if (api.Connected) Mutate("talent/reset", new ApiRequest()); else practiceProfile.talents = new int[9];
             }
-            Label(new Rect(80, 1560, 920, 80), api.Connected ? frontNotice : "离线天赋仅供练习，不会写入账号", 23, new Color(.75f, .88f, .88f), TextAnchor.MiddleCenter);
+            Label(new Rect(80, 1560, 920, 80), string.IsNullOrEmpty(frontNotice) ? (api.Connected ? "推荐加点会分配全部可用点数，可随时免费重置" : "离线天赋仅供练习，不会写入账号") : frontNotice, 23, new Color(.75f, .88f, .88f), TextAnchor.MiddleCenter);
         }
 
         private void DrawCaves()
@@ -337,7 +509,7 @@ namespace SnakeClub
         {
             frontPage = "leaderboard"; board = null;
             if (!api.Connected) { frontNotice = "连接后可查看真人排行"; return; }
-            api.Get("challenge/leaderboard", reply => { board = reply.ok ? reply : null; frontNotice = reply.ok ? "" : reply.error; });
+            api.Get("challenge/leaderboard?rules=" + DailyMatch.RulesVersion, reply => { board = reply.ok ? reply : null; frontNotice = reply.ok ? "" : reply.error; });
         }
 
         private void DrawLeaderboard()
@@ -383,12 +555,12 @@ namespace SnakeClub
             if (adShowing) return;
             Mutate("ad/prepare", new ApiRequest { sourceId = source, kind = kind, index = index }, prepared =>
             {
-                if (!prepared.ok) return;
+                if (!prepared.ok) { after?.Invoke(prepared); return; }
                 adShowing = true;
                 GamePlatform.ShowRewarded(api, (completed, error) =>
                 {
                     adShowing = false;
-                    if (!completed) { frontNotice = error; return; }
+                    if (!completed) { frontNotice = error; after?.Invoke(new ApiReply { error = error }); return; }
                     Mutate("ad/complete", new ApiRequest { id = prepared.id }, after);
                 });
             });
