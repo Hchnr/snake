@@ -6,7 +6,7 @@ v0.0.2 正在迁移到 Unity 3D。目标平台为抖音小游戏，浏览器 Web
 - **PvP**：通过房间号邀请真人，房间不添加 AI。
 - **混合**：真人与 AI 在同一房间对战。
 
-详细规则和开发顺序见 [v0.0.2 计划](docs/plans/v0.0.2.md)。v0.0.1 的 JavaScript 源码和构建脚本保留在原位置，不能把旧构建产物当作 Unity 版本。旧版也支持电脑蛇，但仍使用撞墙出局等旧规则，详见 [旧版电脑蛇计划](docs/plans/snake-arena.md)。
+详细规则和开发顺序见 [v0.0.2 计划](docs/plans/v0.0.2.md)。当前代码和默认命令均对应 Unity 版本；旧版历史可通过 Git 查看。
 
 ## 当前验证状态
 
@@ -17,12 +17,8 @@ v0.0.2 正在迁移到 Unity 3D。目标平台为抖音小游戏，浏览器 Web
 需要 Node.js 22+、.NET 10 SDK，以及 Unity `6000.0.85f2` 和 WebGL Build Support。Apple Silicon Mac 上的 Unity Editor 还需要 Rosetta 2；首次运行需由使用者处理相应条款、账号和许可证。版本选择与抖音转换器的兼容性仍需实测，详见计划。
 
 ```sh
-# v0.0.2：纯 C# 竞技规则和本地房间集成测试
-npm run test:v2
-
-# v0.0.1：保留的旧版测试和构建，不是 Unity 产物
+# 纯 C# 竞技规则、本地房间和 WebGL 通信桥测试
 npm test
-npm run build
 ```
 
 ## Unity 运行和浏览器构建
@@ -35,7 +31,7 @@ npm run build:unity:webgl
 npm run preview:unity
 ```
 
-构建目录分别为 `dist/unity-mac/Snake Club.app` 和 `dist/unity-webgl/`；浏览器预览默认监听 `http://127.0.0.1:8082`。其他系统或安装位置可设置 `UNITY_EDITOR` 为 Unity 编辑器可执行文件的绝对路径；`SNAKE_BUILD_OUTPUT` 可更改构建输出路径。构建命令不会自动生成抖音小游戏包。
+构建目录分别为 `dist/unity-mac/Snake Club.app` 和 `dist/unity-webgl/`；浏览器预览默认监听 `http://127.0.0.1:8082`。`npm run build` 和 `npm run preview` 分别等同于 WebGL 构建和预览命令。其他系统或安装位置可设置 `UNITY_EDITOR` 为 Unity 编辑器可执行文件的绝对路径；`SNAKE_BUILD_OUTPUT` 可更改构建输出路径。构建命令不会自动生成抖音小游戏包。
 
 ## 本地真人房间
 
