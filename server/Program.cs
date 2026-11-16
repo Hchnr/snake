@@ -3,10 +3,29 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using SnakeClub.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.IncludeFields = true);
+bool production = string.Equals(Environment.GetEnvironmentVariable("SNAKE_ENV"), "production", StringComparison.OrdinalIgnoreCase);
+string? rateValue = Environment.GetEnvironmentVariable("SNAKE_RATE_LIMIT_PER_MIN");
+if (!string.IsNullOrEmpty(rateValue) && (!int.TryParse(rateValue, out var configuredLimit) || configuredLimit < 1 || configuredLimit > 10000))
+    throw new InvalidOperationException("SNAKE_RATE_LIMIT_PER_MIN must be between 1 and 10000.");
+int rateLimit = string.IsNullOrEmpty(rateValue) ? (production ? 120 : 0) : int.Parse(rateValue);
+if (rateLimit > 0)
+{
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.OnRejected = async (context, cancellation) =>
+            await context.HttpContext.Response.WriteAsJsonAsync(new { ok = false, error = "请求过于频繁，请稍后再试" }, cancellation);
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
+            context.Request.Path == "/health" ? RateLimitPartition.GetNoLimiter("health") :
+            RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ =>
+                new FixedWindowRateLimiterOptions { PermitLimit = rateLimit, Window = TimeSpan.FromMinutes(1), QueueLimit = 0, AutoReplenishment = true }));
+    });
+}
 var allowedOrigins = (Environment.GetEnvironmentVariable("SNAKE_ALLOWED_ORIGINS") ?? "http://127.0.0.1:8082,http://localhost:8082").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 builder.Services.AddCors(options => options.AddPolicy("game", policy => policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
 string host = Environment.GetEnvironmentVariable("SNAKE_HOST") ?? "127.0.0.1";
@@ -15,9 +34,10 @@ builder.WebHost.UseUrls($"http://{host}:{port}");
 var app = builder.Build();
 var rooms = new RoomManager();
 app.UseCors("game");
+if (rateLimit > 0) app.UseRateLimiter();
 GameApi.Map(app, builder.Environment.ContentRootPath);
 app.UseWebSockets();
-app.MapGet("/health", () => Results.Json(new { ok = true, service = "snake-club", version = "0.0.3" }));
+app.MapGet("/health", () => Results.Json(new { ok = true, service = "snake-club", version = "0.0.3.1" }));
 app.Map("/ws", async context =>
 {
     if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }

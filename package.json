@@ -11,6 +11,7 @@
     "test:v2": "sh scripts/test-v2.sh",
     "test:v3": "sh scripts/test-v3.sh",
     "test:unity": "python3 scripts/test-unity.py",
+    "test:unity:play": "python3 scripts/test-unity-play.py",
     "server:v2": "dotnet run --project server/Snake.Server.csproj",
     "server:v3": "dotnet run --project server/Snake.Server.csproj",
     "build:unity:webgl": "sh scripts/unity-build.sh webgl",

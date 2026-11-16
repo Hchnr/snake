@@ -2,7 +2,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const root = path.resolve(__dirname, '../dist/unity-webgl');
+const root = path.resolve(process.env.SNAKE_PREVIEW_ROOT || path.join(__dirname, '../dist/unity-webgl'));
 const port = Number(process.env.SNAKE_PREVIEW_PORT || 8082);
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascript', '.json': 'application/json', '.wasm': 'application/wasm', '.data': 'application/octet-stream' };
 

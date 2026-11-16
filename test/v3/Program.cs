@@ -5,7 +5,8 @@ if (args.Length >= 2 && args[0] == "replay")
 {
     int seed = int.Parse(args[1]);
     int variant = args.Length > 2 ? int.Parse(args[2]) : 0;
-    var match = new DailyMatch(seed);
+    string rules = args.Length > 3 ? args[3] : DailyMatch.RulesVersion;
+    var match = new DailyMatch(seed, rules);
     var inputs = new List<byte>();
     while (!match.Finished)
     {
@@ -23,10 +24,15 @@ var cases = new (string name, Action run)[]
 {
     ("first seven active days grow linearly and later growth slows", GrowthCurve),
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
+    ("recommended talents allocate available points deterministically", TalentRecommendation),
     ("expedition rewards respect time and bonus limits", ExpeditionRewards),
     ("wall bounce grants a brief pulse with a cooldown", BouncePulse),
     ("daily replay reproduces states and published score formula", DailyReplay),
-    ("daily challenges use their own seed and are bounded", DailySeeds)
+    ("daily challenges use their own seed and are bounded", DailySeeds),
+    ("legacy daily replays preserve their original result", LegacyDailyReplay),
+    ("daily events are repeatable and start with nearby opponents", DailyEvents),
+    ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
+    ("depth rooms require the correct living player and objective", DepthGoals)
 };
 foreach (var test in cases)
 {
@@ -75,6 +81,14 @@ static void TalentBudget()
     p.selectedSkin = 3;
     Check(Progression.CaveBonusPercent(p) == 7 && Progression.TaskBonusPercent(p) == 3, "exploration bonuses incorrect");
 }
+static void TalentRecommendation()
+{
+    var profile = new PlayerProgress { tutorialComplete = true, experience = 700 };
+    Check(Progression.AllocateRecommended(profile) == 8, "recommended setup did not use eight available points");
+    Check(profile.talents.SequenceEqual(new[] { 1, 1, 1, 1, 1, 0, 1, 1, 1 }), "recommendation order or ranks changed");
+    Check(Progression.AvailablePoints(profile) == 0 && Progression.AllocateRecommended(profile) == 0, "recommendation spent unavailable points");
+}
+
 static void ExpeditionRewards()
 {
     Check(Progression.ExpeditionCoins(120, 0) == 60 && Progression.ExpeditionExperience(120) == 5, "2-hour rewards incorrect");
@@ -132,4 +146,72 @@ static void DailySeeds()
     Check(a.State.snakes.Count == 8 && a.State.fruits.Count == 200, "daily setup incorrect");
     Check(Point.Distance(a.State.snakes[0].segments[0], b.State.snakes[0].segments[0]) > .01f, "different seeds produced identical spawn");
     Check(a.State.snakes[0].segments.Count == 8 && !a.State.snakes[0].bot && a.State.snakes.Skip(1).All(s => s.bot), "daily player/AI setup incorrect");
+}
+
+static void LegacyDailyReplay()
+{
+    var match = new DailyMatch(1, DailyMatch.LegacyRulesVersion);
+    while (!match.Finished)
+    {
+        int tick = match.State.tick;
+        match.Step((byte)((tick / 100 * 29) & 255), tick % 173 >= 140);
+    }
+    Check(match.State.tick == 1200 && match.Score == 90, "daily-1 replay changed from its recorded result");
+    Check(match.State.eventKind == "", "legacy replay unexpectedly has a new event");
+}
+
+static void DailyEvents()
+{
+    var observed = new HashSet<string>();
+    bool sawGiant = false;
+    for (int seed = 1; seed <= 36 && observed.Count < 3; seed++)
+    {
+        var a = new DailyMatch(seed); var b = new DailyMatch(seed);
+        Point player = a.State.snakes[0].segments[0];
+        Check(a.State.snakes.Skip(1).Count(s => Point.Distance(player, s.segments[0]) <= 22) >= 1, "no opponent was spawned nearby");
+        while (!a.Finished && a.State.tick < 315)
+        {
+            byte direction = (byte)((a.State.tick / 100 * 29) & 255);
+            a.Step(direction, false); b.Step(direction, false);
+            Check(a.State.eventKind == b.State.eventKind && a.State.eventStatus == b.State.eventStatus && a.Score == b.Score,
+                "event replay differs with identical seed and inputs");
+            if (a.State.tick == 300 && a.State.eventKind == "bounty" && a.State.eventStatus == "active")
+            {
+                var target = a.State.snakes.Find(s => s.id == a.State.eventTarget);
+                Check(target != null && target.alive && target.segments.Count >= 20, "bounty target is not a giant snake");
+                sawGiant = true;
+            }
+        }
+        if (a.State.tick >= 300 && a.State.eventStatus != "waiting") observed.Add(a.State.eventKind);
+    }
+    Check(observed.SetEquals(new[] { "bounty", "star", "fruit" }), "not all three daily events were observed");
+    Check(sawGiant, "no active giant bounty was observed");
+}
+
+static void SkinIdentities()
+{
+    Check(SkinCatalog.OwnedSkinCount == 4 && SkinCatalog.IndexOf("lanlight") == 0 && SkinCatalog.IndexOf("crystal") == 3,
+        "original inventory IDs changed");
+    Check(SkinCatalog.IndexOf("reference-wenda") == 4 && SkinCatalog.Get(4).ReferencePreview && SkinCatalog.Get(5).ReferencePreview,
+        "reference previews must remain distinct from owned skins");
+    Check(SkinCatalog.IndexOf("missing") == -1, "unknown identity should not map to a skin");
+}
+
+static void DepthGoals()
+{
+    var profile = new PlayerProgress { tutorialComplete = true };
+    Check(!DepthChallenge.IsUnlocked(profile) && DepthChallenge.CompletedMatches(profile) == 1, "old profile migration did not preserve tutorial progress");
+    profile.completedMatches = 3;
+    Check(DepthChallenge.IsUnlocked(profile), "depth did not unlock after three matches");
+    var world = new ArenaState();
+    var player = new SnakeState { id = "you", alive = true };
+    var boss = new SnakeState { id = "bot-0", alive = true };
+    world.snakes.Add(player); world.snakes.Add(boss);
+    Check(!DepthChallenge.GoalReached(1, world, "you"), "empty first room completed");
+    player.kills = 1; Check(DepthChallenge.GoalReached(1, world, "you"), "first room kill not recognized");
+    player.starPoints = 1; Check(DepthChallenge.GoalReached(2, world, "you"), "star room not recognized");
+    boss.alive = false; boss.eliminatedBy = "another-bot";
+    Check(!DepthChallenge.GoalReached(3, world, "you"), "another AI's kill incorrectly completed the boss room");
+    boss.eliminatedBy = "you"; Check(DepthChallenge.GoalReached(3, world, "you"), "player's boss kill not recognized");
+    player.alive = false; Check(!DepthChallenge.GoalReached(3, world, "you"), "dead player completed the room");
 }

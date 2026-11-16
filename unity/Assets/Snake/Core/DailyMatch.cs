@@ -11,7 +11,8 @@ namespace SnakeClub.Core
         public const int TickRate = 20;
         public const int MaxTicks = 60 * TickRate;
         public const int MaxScore = 1540;
-        public const string RulesVersion = "daily-1";
+        public const string LegacyRulesVersion = "daily-1";
+        public const string RulesVersion = "daily-2";
         private const int Unit = 1000;
         private const int Edge = 109280;
         private const int Spacing = 900;
@@ -26,6 +27,14 @@ namespace SnakeClub.Core
         private int starHolder = -1;
         private int starTicks;
         private int peak = Arena.StartingLength;
+        private readonly bool legacy;
+        private readonly int eventType;
+        private bool eventActive, eventDone;
+        private int eventTarget = -1;
+        private SimPoint eventCenter;
+        private const int EventStart = 15 * TickRate;
+        private const int EventEnd = 40 * TickRate;
+        private const int EventRadius = 14000;
 
         private static readonly int[] QuarterSin = {
             0,245,491,736,980,1224,1467,1710,1951,2191,2430,2667,2903,3137,3369,3599,
@@ -56,8 +65,13 @@ namespace SnakeClub.Core
         public int Score => Math.Min(MaxScore, 10 * (peak - Arena.StartingLength) + 100 * snakes[0].kills + State.tick / TickRate + 30 * snakes[0].stars);
         public int PeakLength => peak;
 
-        public DailyMatch(int seed)
+        public DailyMatch(int seed, string rulesVersion = RulesVersion)
         {
+            if (rulesVersion != RulesVersion && rulesVersion != LegacyRulesVersion)
+                throw new ArgumentException("Unknown daily challenge rules", nameof(rulesVersion));
+            legacy = rulesVersion == LegacyRulesVersion;
+            uint selection = unchecked((uint)seed);
+            eventType = (int)((selection ^ (selection >> 16)) % 3);
             random = unchecked((uint)seed);
             if (random == 0) random = 0x6d2b79f5;
             for (int i = 0; i < Arena.FruitCount; i++) { fruit.Add(NewFruit()); fruitColor.Add(Next(4)); }
@@ -71,6 +85,7 @@ namespace SnakeClub.Core
         {
             if (Finished) return;
             State.tick++;
+            if (!legacy && State.tick == EventStart) StartEvent();
             for (int i = 0; i < snakes.Count; i++)
             {
                 var snake = snakes[i];
@@ -112,7 +127,7 @@ namespace SnakeClub.Core
             }
             ResolveCollisions();
             CollectFruit();
-            UpdateStar();
+            if (legacy) UpdateStar(); else UpdateEvent();
             peak = Math.Max(peak, snakes[0].segments.Count);
             int alive = 0;
             foreach (var snake in snakes) if (snake.alive) alive++;
@@ -129,7 +144,14 @@ namespace SnakeClub.Core
             SimPoint head = new SimPoint();
             for (int attempt = 0; attempt < 80; attempt++)
             {
-                head = new SimPoint(Next(72001) - 36000, Next(72001) - 36000);
+                if (!legacy && index > 0 && index <= 2)
+                {
+                    int direction = Next(256);
+                    int radius = (index == 1 ? 13500 : 17500) + Next(4001);
+                    var player = snakes[0].segments[0];
+                    head = new SimPoint(player.x + Cos(direction) * radius / 10000, player.y + Sin(direction) * radius / 10000);
+                }
+                else head = new SimPoint(Next(72001) - 36000, Next(72001) - 36000);
                 bool clear = true;
                 foreach (var other in snakes)
                     if (Distance(head.x - other.segments[0].x, head.y - other.segments[0].y) < 12000) { clear = false; break; }
@@ -171,6 +193,8 @@ namespace SnakeClub.Core
                 AddVector(ref vx, ref vy, target.segments[0].x - head.x, target.segments[0].y - head.y, weight);
             }
             if (starActive && starHolder < 0) AddVector(ref vx, ref vy, star.x - head.x, star.y - head.y, 800);
+            if (!legacy && eventActive && eventType == 2 && Dist(head, eventCenter) < 60000)
+                AddVector(ref vx, ref vy, eventCenter.x - head.x, eventCenter.y - head.y, 1800);
             if (nearestDist > 10000)
             {
                 int closest = -1, distance = 18000;
@@ -216,7 +240,15 @@ namespace SnakeClub.Core
                 if (winner < 0 || !snakes[winner].alive) continue;
                 snakes[winner].kills++;
                 Grow(snakes[winner], Math.Max(1, snakes[i].segments.Count / 2));
+                if (!legacy && eventActive && winner == 0)
+                {
+                    if (eventType == 0 && i == eventTarget) snakes[0].stars = 2;
+                    else if (eventType == 2 && Dist(snakes[0].segments[0], eventCenter) <= EventRadius)
+                        snakes[0].stars = Math.Min(2, snakes[0].stars + 1);
+                }
             }
+            if (!legacy && eventActive && eventType == 0 && eventTarget >= 0 && !snakes[eventTarget].alive)
+                FinishEvent();
         }
 
         private void CollectFruit()
@@ -252,6 +284,70 @@ namespace SnakeClub.Core
                     if (snakes[i].alive && Dist(snakes[i].segments[0], star) <= 1500) { starHolder = i; break; }
         }
 
+        private void StartEvent()
+        {
+            eventActive = true;
+            var player = snakes[0].segments[0];
+            if (eventType == 0)
+            {
+                var candidates = new List<int>();
+                for (int i = 1; i < snakes.Count; i++) if (snakes[i].alive) candidates.Add(i);
+                if (candidates.Count == 0) { FinishEvent(); return; }
+                eventTarget = candidates[Next(candidates.Count)];
+                // The bounty is visibly larger, not merely a marker on an
+                // ordinary opponent. This is part of the replayed simulation.
+                Grow(snakes[eventTarget], Math.Max(0, 20 - snakes[eventTarget].segments.Count));
+            }
+            else if (eventType == 1)
+            {
+                int angle = Next(256);
+                star = new SimPoint(ClampEdge(player.x + Cos(angle) * 9000 / 10000), ClampEdge(player.y + Sin(angle) * 9000 / 10000));
+                starActive = true; starHolder = -1; starTicks = 0;
+            }
+            else
+            {
+                int angle = snakes[0].angle;
+                eventCenter = new SimPoint(ClampEdge(player.x + Cos(angle) * 10000 / 10000), ClampEdge(player.y + Sin(angle) * 10000 / 10000));
+                // Relocate existing fruit rather than increasing the entity budget.
+                for (int i = 0; i < Math.Min(12, fruit.Count); i++)
+                {
+                    int direction = Next(256), radius = 2000 + Next(10001);
+                    fruit[i] = new SimPoint(ClampEdge(eventCenter.x + Cos(direction) * radius / 10000), ClampEdge(eventCenter.y + Sin(direction) * radius / 10000));
+                    fruitColor[i] = Next(4);
+                }
+            }
+        }
+
+        private void UpdateEvent()
+        {
+            if (!eventActive) return;
+            if (State.tick >= EventEnd) { FinishEvent(); return; }
+            if (eventType != 1 || !starActive) return;
+            if (starHolder >= 0)
+            {
+                var holder = snakes[starHolder];
+                star = holder.segments[0];
+                if (!holder.alive) { starHolder = -1; starTicks = 0; }
+                else if (++starTicks >= 8 * TickRate)
+                {
+                    holder.stars = Math.Min(2, holder.stars + 1);
+                    starTicks = 0;
+                    if (holder.stars >= 2) FinishEvent();
+                }
+            }
+            if (starActive && starHolder < 0)
+                for (int i = 0; i < snakes.Count; i++)
+                    if (snakes[i].alive && Dist(snakes[i].segments[0], star) <= 1500) { starHolder = i; break; }
+        }
+
+        private void FinishEvent()
+        {
+            eventActive = false; eventDone = true;
+            starActive = false; starHolder = -1; starTicks = 0;
+        }
+
+        private static int ClampEdge(int value) => Math.Max(-Edge + 2000, Math.Min(Edge - 2000, value));
+
         private void Grow(SimSnake snake, int count)
         {
             int target = Math.Min(Arena.MaximumLength, snake.segments.Count + count);
@@ -282,7 +378,16 @@ namespace SnakeClub.Core
             for (int i = 0; i < fruit.Count; i++) State.fruits.Add(new FruitState { position = ToPoint(fruit[i]), color = fruitColor[i] });
             State.starVisible = starActive; State.starPosition = ToPoint(star);
             State.starHolder = starHolder < 0 ? "" : snakes[starHolder].id;
-            State.starProgress = starTicks / (float)(10 * TickRate);
+            State.starProgress = starTicks / (float)((legacy ? 10 : 8) * TickRate);
+            if (!legacy)
+            {
+                State.eventKind = eventType == 0 ? "bounty" : eventType == 1 ? "star" : "fruit";
+                State.eventStatus = eventActive ? "active" : eventDone ? "ended" : "waiting";
+                State.eventTarget = eventActive && eventTarget >= 0 ? snakes[eventTarget].id : "";
+                State.eventPosition = ToPoint(eventCenter);
+                State.eventRadius = eventActive && eventType == 2 ? EventRadius / (float)Unit : 0;
+                State.eventRemaining = eventActive ? Math.Max(0, (EventEnd - State.tick) / (float)TickRate) : 0;
+            }
         }
 
         private SimPoint NewFruit() => new SimPoint(Next(216001) - 108000, Next(216001) - 108000);
