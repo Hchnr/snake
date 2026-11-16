@@ -3,6 +3,30 @@ dist/
 node_modules/
 coverage/
 
+# Unity generated files and local builds
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj.user
+*.sln
+*.unityproj
+*.pidb
+*.pdb
+*.mdb
+/unity/*.csproj
+/unity/*.slnx
+# Official Douyin SDK tools are installed locally, including their local state.
+/unity/Assets/Plugins/ByteGame/
+/unity/Assets/Plugins/ByteGame.meta
+
+# .NET output
+**/bin/
+**/obj/
+
 # Local editor and OS files
 .DS_Store
 .idea/

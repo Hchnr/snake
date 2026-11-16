@@ -1,82 +1,58 @@
-# 贪吃蛇 · Snake Club
+# 蛇蛇竞技场 · Snake Club
 
-一个无需后端的竖屏贪吃蛇小游戏。抖音小游戏为优先适配平台，微信小游戏复用同一套玩法和画面；本地浏览器预览用于开发调试。
+v0.0.2 正在迁移到 Unity 3D。目标平台为抖音小游戏，浏览器 WebGL 用于开发验证。玩法以蛇与蛇对抗为核心：地图中有果实，击败对手可直接成长；撞墙会反弹，不会因此淘汰。手机使用虚拟摇杆与加速按钮，桌面支持方向键、WASD 和空格加速。
 
-## 玩法
+- **PvE**：本机单人对抗 AI，无需网络或服务器。
+- **PvP**：通过房间号邀请真人，房间不添加 AI。
+- **混合**：真人与 AI 在同一房间对战。
 
-与电脑蛇同场对战：吃果实得分并增长，让对手撞上你的身体可获得额外分数和成长；撞墙或撞上蛇身出局，蛇头相撞双方出局。电脑蛇会在安全位置重生，填满棋盘获胜。滑动屏幕或点击屏幕方向键控制；可暂停、继续、重开，并通过平台分享按钮邀请朋友。最高分保存在当前平台的本地缓存，不跨设备或平台同步。浏览器预览额外支持方向键 / WASD，空格或 Enter 开始、暂停、继续和重开。
+详细规则和开发顺序见 [v0.0.2 计划](docs/plans/v0.0.2.md)。v0.0.1 的 JavaScript 源码和构建脚本保留在原位置，不能把旧构建产物当作 Unity 版本。旧版也支持电脑蛇，但仍使用撞墙出局等旧规则，详见 [旧版电脑蛇计划](docs/plans/snake-arena.md)。
 
-## 快速开始
+## 当前验证状态
 
-需要 Node.js 18 或更高版本；没有第三方依赖，不需要 `npm install`。
+竞技规则和本地 WebSocket 房间服务已有自动化测试。本机已安装并激活 Unity Editor，安装 WebGL 组件和 Rosetta 2；macOS 与浏览器 WebGL 版本已成功构建，桌面版首屏已实际显示。抖音官方 BGDT 工具已导入，TTSDK 安装、官方转换和抖音真机验证仍待完成，因此当前仓库**尚未生成可发布的抖音 Unity 包**。游戏完整交互、真机表现、联机稳定性及平台接口仍需实测。
+
+## 本地工具与测试
+
+需要 Node.js 22+、.NET 10 SDK，以及 Unity `6000.0.85f2` 和 WebGL Build Support。Apple Silicon Mac 上的 Unity Editor 还需要 Rosetta 2；首次运行需由使用者处理相应条款、账号和许可证。版本选择与抖音转换器的兼容性仍需实测，详见计划。
 
 ```sh
+# v0.0.2：纯 C# 竞技规则和本地房间集成测试
+npm run test:v2
+
+# v0.0.1：保留的旧版测试和构建，不是 Unity 产物
 npm test
 npm run build
 ```
 
-构建结果：
+## Unity 运行和浏览器构建
 
-| 目录 | 用途 |
-| --- | --- |
-| `dist/douyin` | 抖音小游戏开发者工具工程，优先验证 |
-| `dist/wechat` | 微信开发者工具小游戏工程 |
-| `dist/browser` | 本地浏览器预览 |
-
-### 抖音小游戏
-
-1. 在抖音开放平台准备小游戏账号和 AppID，安装并登录抖音开发者工具。仅调试时可按开发者工具的提示使用测试号。
-2. 在开发者工具中选择导入**小游戏**，项目目录选择 `dist/douyin`；按提示填写真实或测试 AppID。
-3. 编译后检查画面、触摸、切后台恢复、本地最高分和分享，并使用开发者工具的预览功能进行真机测试。
-4. 在支持的宿主中，点击游戏内“侧边栏福利”，跳转首页侧边栏，再从侧边栏返回并领取薄荷配色。上线前按[官方技术指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/open-ability/Introduction-for-tech)在模拟器和真机验证完整复访链路；该配色奖励保存在本机。
-
-构建时也可通过环境变量指定 AppID：
+在 Unity Hub 中以指定 Editor 打开 `unity/`。首次打开时编辑器脚本会创建 `Assets/Scenes/Arena.unity` 和必需材质；打开该场景后进入 Play。也可在 macOS 通过以下命令构建：
 
 ```sh
-SNAKE_DOUYIN_APPID=你的抖音小游戏AppID npm run build
+npm run build:unity:mac
+npm run build:unity:webgl
+npm run preview:unity
 ```
 
-### 微信小游戏
+构建目录分别为 `dist/unity-mac/Snake Club.app` 和 `dist/unity-webgl/`；浏览器预览默认监听 `http://127.0.0.1:8082`。其他系统或安装位置可设置 `UNITY_EDITOR` 为 Unity 编辑器可执行文件的绝对路径；`SNAKE_BUILD_OUTPUT` 可更改构建输出路径。构建命令不会自动生成抖音小游戏包。
 
-在微信开发者工具中选择导入**小游戏**，目录选择 `dist/wechat`，按提示填写微信小游戏 AppID，再分别进行模拟器和真机验证。默认使用 `touristappid` 作为开发工具占位配置；需要账号相关能力时应使用有权限的真实 AppID。
+## 本地真人房间
 
 ```sh
-SNAKE_WECHAT_APPID=你的微信小游戏AppID npm run build
+npm run server:v2
 ```
 
-重新构建会保留已存在的 `project.config.json` 中的 AppID 和其他本地项目设置，环境变量优先；源码和入口等生成文件会被覆盖，不应直接编辑。`dist/` 不纳入 Git。
+服务默认监听 `127.0.0.1:2567`，健康检查为 `http://127.0.0.1:2567/health`，客户端默认连接 `ws://127.0.0.1:2567/ws`。打开两个本机客户端，一个选择创建房间，另一个输入相同模式和房间号加入。只需要单机 PvE 时不必启动服务。
 
-### 浏览器预览
+可通过 `SNAKE_HOST` 和 `SNAKE_PORT` 配置监听地址及端口。客户端地址在 `unity/Assets/Resources/GameConfig.json` 中设置并随游戏构建，玩家只需输入房间号。其他设备访问时需配置其可访问的服务地址；公网发布还需要实际部署、TLS/WSS、抖音域名配置和必要的鉴权、运维。当前服务是本地开发原型，不包含生产级身份鉴权、持久化、扩容或反作弊，不应直接暴露到公网。
 
-```sh
-npm run build
-npm run preview
-```
+抖音官方支持自建后端或使用抖音云托管，但云托管的 WebSocket 网关文档明确标明不适用于小游戏；本项目没有假设该网关可用，具体云入口及连通性需要在实际环境中验证。
 
-访问 `http://127.0.0.1:8080`。服务仅监听本机；在 `cuihu-pwm-dev` 远程运行时，可在自己的电脑另开终端转发端口：
+## 抖音小游戏接入
 
-```sh
-ssh -L 8080:127.0.0.1:8080 cuihu-pwm-dev
-```
+Unity WebGL 构建完成后，仍需使用[抖音官方 Unity WebGL 转换工具](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/open-capacity/sc_webgl_overall)生成小游戏工程，再用抖音开发者工具和手机验证。抖音的[安装指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/install-sdk)要求先安装 BGDT 并登录，再通过 BGDT 安装 TTSDK；本机已导入官方 BGDT 3.0.271，尚未安装 TTSDK。官方 SDK 工具及其本地状态不纳入版本管理，可按官方指南重新安装。建议采用[Unity 新包体格式](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/game-engine/rd-to-SCgame/unity-game-access/install-connect/unity-new)；已有小游戏是否能切换引擎方案、实际权限、AppID、资源托管及网络配置以平台当前要求为准。不得将旧版 `dist/douyin` 或普通 WebGL 构建误标为新的 Unity 小游戏包。
 
-然后在本机浏览器打开上述地址。若开发者工具运行在本机而项目在远程，可将 `dist/douyin` 或 `dist/wechat` 拷贝到本机后再导入；修改代码后需重新构建并拷贝。
+## 字体许可
 
-## 目录
-
-```text
-src/core.js          纯游戏规则
-src/app.js           Canvas 画面、输入、游戏循环
-src/platform.js      抖音 / 微信平台适配
-src/main.js          小游戏入口
-src/browser.js       开发预览适配
-scripts/             构建和本地预览
-browser/             浏览器预览页面
-test/                自动化测试
-docs/plans/          版本计划
-```
-
-## 测试与接入边界
-
-`npm test` 覆盖游戏规则、边界条件、存储失败、生命周期、触摸、分享和抖音侧边栏复访，并通过模拟 `tt` / `wx` 运行构建后的平台入口。这些测试不能代替平台开发者工具、真实账号和手机上的验证；分享展示、侧边栏链路及上线审核以各平台实际结果为准。项目未包含登录、服务端、云存档、排行榜、广告、支付或审核发布流程。
-
-参考：[抖音小游戏开发指南](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/dev-guide/bytedance-mini-game)、[抖音小游戏分享逻辑](https://developer.open-douyin.com/docs/resource/zh-CN/mini-game/develop/guide/open-ability/forward/logic)、[微信小游戏开发文档](https://developers.weixin.qq.com/minigame/dev/guide/)。
+界面字体是 Noto Sans SC 的 400 字重和常用字符子集，原始字体来自 [Google Fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc)，以 SIL Open Font License 1.1 发布；许可文本位于 `unity/Assets/Resources/NotoSansSC-OFL.txt`。子集不包含所有生僻字。
