@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Collections;
+using System.Reflection;
 using SnakeClub.Core;
 
 if (args.Length >= 2 && args[0] == "replay")
@@ -30,9 +32,15 @@ var cases = new (string name, Action run)[]
     ("daily replay reproduces states and published score formula", DailyReplay),
     ("daily challenges use their own seed and are bounded", DailySeeds),
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
+    ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
+    ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
+    ("a starting-length player can actually close a loop", CapturePlayable),
+    ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
-    ("depth rooms require the correct living player and objective", DepthGoals)
+    ("depth rooms require the correct living player and objective", DepthGoals),
+    ("depth bonuses change growth and make rebound boosts free", DepthBonuses),
+    ("depth boss telegraphs attacks and loses shields before elimination", DepthBoss)
 };
 foreach (var test in cases)
 {
@@ -122,7 +130,7 @@ static void DailyReplay()
     foreach (int seed in new[] { 0, 1, -1, int.MinValue, int.MaxValue })
     {
         var a = new DailyMatch(seed); var b = new DailyMatch(seed);
-        int peak = Arena.StartingLength;
+        int peak = DailyMatch.CaptureStartingLength;
         while (!a.Finished && !b.Finished)
         {
             byte direction = (byte)((a.State.tick / 75 * 23 + seed) & 255);
@@ -135,9 +143,9 @@ static void DailyReplay()
             Check(a.Score == b.Score, "replay score differs");
         }
         var me = a.State.snakes[0];
-        int expected = 10 * (peak - Arena.StartingLength) + 100 * me.kills + a.State.tick / 20 + 30 * me.starPoints;
+        int expected = 10 * (peak - DailyMatch.CaptureStartingLength) + 100 * me.kills + a.State.tick / 20 + 30 * me.starPoints;
         Check(a.Finished && b.Finished && a.Score == expected, "daily score formula or completion incorrect");
-        Check(a.State.tick <= DailyMatch.MaxTicks && a.Score >= 0 && a.Score <= DailyMatch.MaxScore, "daily bounds exceeded");
+        Check(a.State.tick <= DailyMatch.MaxTicks && a.Score >= 0 && a.Score <= DailyMatch.CaptureMaxScore, "daily bounds exceeded");
     }
 }
 static void DailySeeds()
@@ -145,7 +153,14 @@ static void DailySeeds()
     var a = new DailyMatch(12345); var b = new DailyMatch(12346);
     Check(a.State.snakes.Count == 8 && a.State.fruits.Count == 200, "daily setup incorrect");
     Check(Point.Distance(a.State.snakes[0].segments[0], b.State.snakes[0].segments[0]) > .01f, "different seeds produced identical spawn");
-    Check(a.State.snakes[0].segments.Count == 8 && !a.State.snakes[0].bot && a.State.snakes.Skip(1).All(s => s.bot), "daily player/AI setup incorrect");
+    Check(a.State.snakes[0].segments.Count == 16 && !a.State.snakes[0].bot && a.State.snakes.Skip(1).All(s => s.bot), "daily player/AI setup incorrect");
+    for (int seed = 1; seed <= 80; seed++)
+    {
+        var match = new DailyMatch(seed);
+        var me = match.State.snakes[0].segments[0];
+        float nearest = match.State.snakes.Skip(1).Min(s => Point.Distance(me, s.segments[0]));
+        Check(nearest >= 8f && nearest <= 11.1f, "new daily spawn must show a nearby, non-overlapping opponent");
+    }
 }
 
 static void LegacyDailyReplay()
@@ -158,6 +173,94 @@ static void LegacyDailyReplay()
     }
     Check(match.State.tick == 1200 && match.Score == 90, "daily-1 replay changed from its recorded result");
     Check(match.State.eventKind == "", "legacy replay unexpectedly has a new event");
+}
+
+static void PreviousDailyReplay()
+{
+    var match = new DailyMatch(1, DailyMatch.PreviousRulesVersion);
+    while (!match.Finished)
+    {
+        int tick = match.State.tick;
+        match.Step((byte)((tick / 100 * 29) & 255), tick % 173 >= 140);
+    }
+    Check(match.State.tick == 1200 && match.Score == 90, "daily-2 replay changed from its recorded result");
+    Check(match.State.captureTick == -1, "daily-2 unexpectedly enabled capture");
+    Check(DailyMatch.MaxScoreFor(DailyMatch.PreviousRulesVersion) == 1540 && DailyMatch.MaxScoreFor(DailyMatch.RulesVersion) == 1460, "score bounds not versioned");
+}
+
+static void CaptureGeometryCases()
+{
+    var polygon = new List<CapturePoint> { new(0, 0), new(4000, 0), new(4000, 4000), new(0, 4000) };
+    Check(CaptureGeometry.Contains(polygon, new CapturePoint(2000, 2000)), "inside target was not captured");
+    Check(CaptureGeometry.Contains(polygon, new CapturePoint(0, 2000)), "boundary must count as inside");
+    Check(!CaptureGeometry.Contains(polygon, new CapturePoint(5000, 2000)), "outside target was captured");
+    polygon.Reverse();
+    Check(CaptureGeometry.Contains(polygon, new CapturePoint(2000, 2000)), "reverse winding changed capture");
+    var path = new List<CapturePoint> { new(3000, 1000), new(3000, 2000), new(3000, 3000), new(2000, 4000),
+        new(1000, 4000), new(0, 4000), new(0, 0), new(4000, 0) };
+    Check(CaptureGeometry.TryLoop(new CapturePoint(3000, -1000), path, out var loop), "crossing the visible body did not form a loop");
+    Check(CaptureGeometry.Contains(loop.polygon, new CapturePoint(1000, 1000)), "target inside closed loop was missed");
+    Check(!CaptureGeometry.TryLoop(new CapturePoint(3000, 1000), path, out _), "stationary head incorrectly closed a loop");
+    Check(!CaptureGeometry.TryLoop(new CapturePoint(2000, -1000), path.GetRange(0, 5), out _), "short path incorrectly formed a loop");
+}
+
+static void CapturePlayable()
+{
+    for (int turn = 1; turn <= 8; turn++) for (int seed = 1; seed <= 12; seed++)
+    {
+        var match = new DailyMatch(seed);
+        int initial = ((int)Math.Round(match.State.snakes[0].angle * 256 / (Math.PI * 2)) + 256) & 255;
+        while (!match.Finished && match.State.tick < 200 && match.State.captureTick < 0)
+            match.Step((byte)((initial + (match.State.tick + 1) * turn) & 255), false);
+        if (match.State.captureOwner == "you") return;
+    }
+    throw new Exception("no starting-length loop could be closed with a continuous turn");
+}
+
+static void CaptureResolution()
+{
+    var match = new DailyMatch(17);
+    var matchType = typeof(DailyMatch);
+    var pointType = matchType.GetNestedType("SimPoint", BindingFlags.NonPublic);
+    var snakes = (IList)matchType.GetField("snakes", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(match);
+    var snakeType = snakes[0].GetType();
+    var alive = snakeType.GetField("alive"); var shield = snakeType.GetField("shield");
+    var segments = snakeType.GetField("segments");
+    object PointAt(int x, int y) => Activator.CreateInstance(pointType, new object[] { x, y });
+    void SetPath(int index, params (int x, int y)[] points)
+    {
+        var path = (IList)segments.GetValue(snakes[index]); path.Clear();
+        foreach (var point in points) path.Add(PointAt(point.x, point.y));
+    }
+    for (int i = 0; i < snakes.Count; i++) { alive.SetValue(snakes[i], false); shield.SetValue(snakes[i], 0); }
+    alive.SetValue(snakes[0], true); alive.SetValue(snakes[1], true); alive.SetValue(snakes[2], true);
+    shield.SetValue(snakes[2], 1);
+    SetPath(0, (3000, 1000), (3000, 2000), (3000, 3000), (2000, 4000), (1000, 4000), (0, 4000), (0, 0), (4000, 0));
+    SetPath(1, (1000, 1000), (1100, 1000));
+    SetPath(2, (1500, 1500), (1600, 1500));
+    var previous = Array.CreateInstance(pointType, snakes.Count);
+    previous.SetValue(PointAt(3000, -1000), 0);
+    matchType.GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, new object[] { previous });
+    Check(!(bool)alive.GetValue(snakes[1]) && (bool)alive.GetValue(snakes[2]), "capture failed or ignored spawn protection");
+    Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 1 && ((IList)segments.GetValue(snakes[0])).Count == 9,
+        "capture did not credit and immediately grow the survivor");
+    Check(match.State.captureOwner == "you" && match.State.captureCount == 1 && match.State.capturePolygon.Count > 2,
+        "capture presentation is not derived from the resolved event");
+
+    // Both loops are evaluated from the same snapshot; mutual captures do not
+    // award growth to either eliminated owner.
+    match = new DailyMatch(18);
+    snakes = (IList)matchType.GetField("snakes", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(match);
+    for (int i = 0; i < snakes.Count; i++) { alive.SetValue(snakes[i], false); shield.SetValue(snakes[i], 0); }
+    alive.SetValue(snakes[0], true); alive.SetValue(snakes[1], true);
+    SetPath(0, (3000, 1000), (3000, 2000), (3000, 3000), (2000, 4000), (1000, 4000), (0, 4000), (0, 0), (4000, 0));
+    SetPath(1, (1000, 1000), (1000, 2000), (1000, 3000), (2000, 4000), (3000, 4000), (4000, 4000), (4000, 0), (0, 0));
+    previous = Array.CreateInstance(pointType, snakes.Count);
+    previous.SetValue(PointAt(3000, -1000), 0); previous.SetValue(PointAt(1000, -1000), 1);
+    matchType.GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, new object[] { previous });
+    Check(!(bool)alive.GetValue(snakes[0]) && !(bool)alive.GetValue(snakes[1]), "mutual captures must resolve simultaneously");
+    Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 0 && (int)snakeType.GetField("kills").GetValue(snakes[1]) == 0,
+        "an eliminated captor incorrectly received growth");
 }
 
 static void DailyEvents()
@@ -214,4 +317,81 @@ static void DepthGoals()
     Check(!DepthChallenge.GoalReached(3, world, "you"), "another AI's kill incorrectly completed the boss room");
     boss.eliminatedBy = "you"; Check(DepthChallenge.GoalReached(3, world, "you"), "player's boss kill not recognized");
     player.alive = false; Check(!DepthChallenge.GoalReached(3, world, "you"), "dead player completed the room");
+}
+
+static void DepthBonuses()
+{
+    var arena = new Arena(23, fruitCount: 0);
+    var victim = arena.AddSnake("victim", "victim", false);
+    var hunter = arena.AddSnake("hunter", "hunter", false);
+    void Place(SnakeState snake, Point head, Point direction)
+    {
+        snake.shield = 0; snake.angle = (float)Math.Atan2(direction.y, direction.x); snake.segments.Clear();
+        for (int i = 0; i < Arena.StartingLength; i++) snake.segments.Add(head - direction * (i * Arena.SegmentSpacing));
+        arena.SetInput(snake.id, direction, false);
+    }
+    Place(victim, new Point(3, 0), new Point(0, 1)); Place(hunter, new Point(0, 0), new Point(-1, 0));
+    arena.SetBonuses(hunter.id, new CombatBonuses { bonusGrowthPerKill = 3 });
+    arena.Start(); arena.Tick(.01f);
+    Check(!victim.alive && hunter.kills == 1 && hunter.segments.Count == 15, "depth growth bonus did not apply to a real elimination");
+
+    arena = new Arena(24, fruitCount: 0, enableCaptures: true);
+    var player = arena.AddSnake("you", "you", false);
+    var other = arena.AddSnake("other", "other", false);
+    Place(player, new Point(109.2f, 0), new Point(1, 0)); Place(other, new Point(-80, -80), new Point(1, 0));
+    arena.SetStartingLength(player.id, 16);
+    arena.SetBonuses(player.id, new CombatBonuses { reboundFreeSeconds = 3 }); arena.Start();
+    arena.SetInput(player.id, new Point(1, 0), true); arena.Tick(.05f);
+    arena.SetInput(player.id, new Point(-1, 0), true);
+    for (int i = 0; i < 48; i++) arena.Tick(.05f);
+    Check(player.alive && player.segments.Count == 16, "rebound boost consumed trail during the free window");
+
+    arena = new Arena(25, fruitCount: 0, enableCaptures: true);
+    player = arena.AddSnake("you", "you", false); other = arena.AddSnake("other", "other", false);
+    player.shield = other.shield = 0; player.segments.Clear(); other.segments.Clear();
+    foreach (var point in new[] { new Point(3, 1), new Point(3, 2), new Point(3, 3), new Point(2, 4),
+        new Point(1, 4), new Point(0, 4), new Point(0, 0), new Point(4, 0) }) player.segments.Add(point);
+    other.segments.Add(new Point(1, 1)); other.segments.Add(new Point(1.1f, 1));
+    arena.SetBonuses(player.id, new CombatBonuses { captureShieldSeconds = 2 }); arena.Start();
+    var heads = new Dictionary<string, Point> { [player.id] = new Point(3, -1), [other.id] = other.segments[0] };
+    typeof(Arena).GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(arena, new object[] { heads });
+    Check(!other.alive && player.shield == 2 && player.kills == 1, "capture shield did not activate after a real capture");
+}
+
+static void DepthBoss()
+{
+    var arena = new Arena(74, fruitCount: 0);
+    var player = arena.AddSnake("you", "you", false);
+    var boss = arena.AddSnake("bot-0", "boss", true);
+    void Place(SnakeState snake, Point head, Point direction)
+    {
+        snake.shield = 0; snake.angle = (float)Math.Atan2(direction.y, direction.x); snake.segments.Clear();
+        for (int i = 0; i < Arena.StartingLength; i++) snake.segments.Add(head - direction * (i * Arena.SegmentSpacing));
+        arena.SetInput(snake.id, direction, false);
+    }
+    Place(player, new Point(0, 0), new Point(-1, 0)); Place(boss, new Point(-40, -40), new Point(0, 1));
+    arena.ConfigureBoss(boss.id); arena.Start();
+    bool telegraphed = false, charged = false;
+    for (int i = 0; i < 105 && player.alive && boss.alive; i++)
+    {
+        arena.Tick(.05f); telegraphed |= boss.bossWindup > 0; charged |= boss.bossRushing;
+    }
+    Check(telegraphed && charged, "boss did not visibly wind up and charge");
+    Check(boss.bossShield == 3, "boss shield changed without a hit");
+
+    void Hit()
+    {
+        Place(player, new Point(0, 0), new Point(-1, 0)); Place(boss, new Point(3, 0), new Point(0, 1));
+        arena.Tick(.01f);
+    }
+    void WaitCooldown()
+    {
+        Place(player, new Point(0, 0), new Point(-1, 0)); Place(boss, new Point(-40, -40), new Point(0, 1));
+        for (int i = 0; i < 22; i++) arena.Tick(.05f);
+    }
+    Hit(); Check(boss.alive && boss.bossShield == 2 && player.kills == 0, "first hit must reduce shield, not eliminate");
+    Hit(); Check(boss.alive && boss.bossShield == 2, "hit cooldown did not prevent repeated shield damage");
+    WaitCooldown(); Hit(); Check(boss.alive && boss.bossShield == 1, "second shield hit did not register");
+    WaitCooldown(); Hit(); Check(!boss.alive && boss.bossShield == 0 && boss.eliminatedBy == player.id && player.kills == 1,
+        "final shield hit did not eliminate the boss and credit the player");
 }

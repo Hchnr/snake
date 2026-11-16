@@ -226,7 +226,7 @@ sealed class GameApi
     {
         string requested = context.Request.Query["rules"].ToString();
         if (string.IsNullOrEmpty(requested)) return DailyMatch.LegacyRulesVersion;
-        return requested == DailyMatch.LegacyRulesVersion || requested == DailyMatch.RulesVersion ? requested : null;
+        return DailyMatch.SupportsRules(requested) ? requested : null;
     }
 
     private IResult StartRun(PlayerProgress p, DateTimeOffset now, string mode, string? requestedRules = null)
@@ -270,7 +270,7 @@ sealed class GameApi
         var run = FindRun(p, request.runId, request.token, "daily", now);
         if (run == null) return Fail("挑战凭证无效或已过期");
         if (run.completed) return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin });
-        if (run.rules != DailyMatch.RulesVersion && run.rules != DailyMatch.LegacyRulesVersion) return Fail("挑战规则已更新，请重新开始");
+        if (!DailyMatch.SupportsRules(run.rules)) return Fail("挑战规则已更新，请重新开始");
         if (request.actions < 1) return Fail("未检测到操作，本局不发放账号奖励");
         byte[] recording;
         try { recording = Convert.FromBase64String(request.inputs ?? ""); } catch (FormatException) { return Fail("回放格式无效"); }
@@ -281,7 +281,7 @@ sealed class GameApi
             if (match.Finished || recording[i + 1] > 1) return Fail("回放内容无效");
             match.Step(recording[i], recording[i + 1] == 1);
         }
-        if (!match.Finished || match.Score != request.score || match.Score < 0 || match.Score > DailyMatch.MaxScore) return Fail("成绩与回放不一致");
+        if (!match.Finished || match.Score != request.score || match.Score < 0 || match.Score > DailyMatch.MaxScoreFor(run.rules)) return Fail("成绩与回放不一致");
         if (now.ToUnixTimeMilliseconds() - run.startedAt + 2000 < match.State.tick * 50L) return Fail("挑战时长无效");
         run.completed = true; run.score = match.Score; run.finishedAt = now.ToUnixTimeMilliseconds(); run.coins = p.dailyRewardedMatches < 20 ? 35 : 0;
         if (run.coins > 0) p.dailyRewardedMatches++;
@@ -415,7 +415,9 @@ sealed class GameData
 }
 sealed class RunRecord
 {
-    public string id = "", playerId = "", mode = "", date = "", rules = DailyMatch.RulesVersion;
+    // Records written before this field was persisted inherited daily-2 in the
+    // previous server. New runs always assign their requested version explicitly.
+    public string id = "", playerId = "", mode = "", date = "", rules = DailyMatch.PreviousRulesVersion;
     public int seed, score, coins, experience, questCoins, questExperience, trialSkin = -1, unlockedSkin = -1;
     public long startedAt, finishedAt, expiresAt;
     public bool completed;

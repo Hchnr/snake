@@ -50,7 +50,7 @@ namespace SnakeClub
         private bool firstRun;
         private bool depthMode, depthWon;
         private int depthRoom;
-        private float depthTurn, depthBoost, depthPickup;
+        private int depthShield, depthRebound, depthGrowth;
         private int controlActions;
         private Point direction = new Point(1, 0);
         private float stepTimer;
@@ -142,13 +142,14 @@ namespace SnakeClub
             room = "";
             playerId = "you";
             firstRun = !CurrentProfile.tutorialComplete;
-            arena = new Arena(unchecked((int)DateTime.UtcNow.Ticks), roundSeconds: depthMode ? 55f : firstRun ? 60f : 90f, nearbyOpponents: true);
+            arena = new Arena(unchecked((int)DateTime.UtcNow.Ticks), roundSeconds: depthMode ? 55f : firstRun ? 60f : 90f, nearbyOpponents: true, enableCaptures: true);
             arena.AddSnake(playerId, string.IsNullOrWhiteSpace(nameInput) ? "玩家" : nameInput.Trim(), false);
             for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
             if (depthMode && depthRoom == 2) arena.ConfigureStar(5f, playerId);
             if (depthMode && depthRoom == 3)
             {
                 arena.SetStartingLength("bot-0", 20);
+                arena.ConfigureBoss("bot-0");
                 arena.State.eventKind = "bounty"; arena.State.eventStatus = "active"; arena.State.eventTarget = "bot-0";
             }
             arena.Start();
@@ -164,7 +165,12 @@ namespace SnakeClub
             int skin = run != null && run.trialSkin > 0 ? run.trialSkin : CurrentProfile.selectedSkin;
             var matchProfile = new PlayerProgress { selectedSkin = skin, talents = CurrentProfile.talents };
             var bonuses = Progression.Bonuses(matchProfile);
-            if (depthMode) { bonuses.turn += depthTurn; bonuses.boostSaving += depthBoost; bonuses.pickup += depthPickup; bonuses.boostSavingCap = .20f; }
+            if (depthMode)
+            {
+                bonuses.captureShieldSeconds = Mathf.Min(4f, depthShield * 2f);
+                bonuses.reboundFreeSeconds = Mathf.Min(6f, depthRebound * 3f);
+                bonuses.bonusGrowthPerKill = Mathf.Min(6, depthGrowth * 3);
+            }
             arena.SetBonuses(playerId, bonuses);
             arenaRenderer.SelectedSkin = EffectiveSkin >= SkinCatalog.OwnedSkinCount ? EffectiveSkin : skin;
         }
@@ -247,6 +253,7 @@ namespace SnakeClub
         private void Update()
         {
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
+            bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
             bool resultVisible = inGame && !online && !depthMode && state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
             if (homeScreen != null)
             {
@@ -256,7 +263,7 @@ namespace SnakeClub
                     homeScreen.SetPage(frontPage == "skins", resultVisible);
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
-                        feedback.Enabled, EffectiveSkin, previewSkin, api.Config.allowReferenceSkinPreview, trial,
+                        feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
                         !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, mirrorControls, reducedEffects);
                     if (resultVisible)
                     {
@@ -272,7 +279,7 @@ namespace SnakeClub
             }
             if (homeAvatar != null)
             {
-                homeAvatar.Visible = homeVisible || resultVisible;
+                homeAvatar.Visible = homeVisible || resultVisible || caveVisible;
                 homeAvatar.ReducedEffects = reducedEffects;
                 if (homeAvatar.Visible) homeAvatar.Skin = homeVisible && frontPage == "skins" ? previewSkin :
                     resultVisible && activeRun != null && activeRun.trialSkin > 0 && EffectiveSkin < SkinCatalog.OwnedSkinCount ? activeRun.trialSkin : EffectiveSkin;
@@ -450,6 +457,8 @@ namespace SnakeClub
             if (state != null && state.eventStatus == "active")
             {
                 string eventHint = state.eventKind == "bounty" ? "巨蛇悬赏 · 围猎标记对手" : state.eventKind == "star" ? "星核争夺 · 携带得分" : "果潮混战 · 圈内淘汰得分";
+                var boss = state.snakes.Find(s => s.boss && s.alive);
+                if (boss != null) eventHint = boss.bossWindup > 0 ? "首领蓄力！躲开橙色方向线 · 护盾 " + boss.bossShield : "首领护盾 " + boss.bossShield + " · 拦截或收圈";
                 if (state.eventKind == "star" && state.starVisible)
                     eventHint = string.IsNullOrEmpty(state.starHolder) ? "星核出现 · 快去争夺" : state.starHolder == playerId ? "携带星核 · 坚持 " + Mathf.CeilToInt((1f - state.starProgress) * 8f) + " 秒" : "对手携带星核 · 去围猎";
                 Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
@@ -465,12 +474,17 @@ namespace SnakeClub
                 float flash = 1f + .10f * Mathf.Sin((killFlashUntil - Time.unscaledTime) * 14f);
                 Label(new Rect(250, 430, 580, 110), "围猎成功  ·  变长！", Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
             }
+            if (state != null && state.phase == "running" && state.captureOwner == playerId && state.captureTick >= 0 && state.tick - state.captureTick < 12)
+            {
+                string captureText = state.captureCount > 0 ? "收圈捕获 " + state.captureCount + " 个对手！" : "轨迹闭合！";
+                Label(new Rect(240, 520, 600, 90), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
+            }
             if (state != null && state.phase == "running") DrawNames(state);
             if (firstRun && !online && state != null && state.phase == "running" && state.tick < 600)
             {
                 int seconds = state.tick / 20;
-                string hint = seconds < 2 ? "" : seconds < 8 ? (controlActions > 0 ? "" : "拖动" + (mirrorControls ? "右侧" : "左侧") + "摇杆，控制灵蛇方向") :
-                    seconds < 16 ? "拾取果实，留意附近的 AI 对手" : seconds < 24 ? "撞墙不会失败，还会短暂加速" : "让对手撞上你的身体，淘汰后立即成长";
+                string hint = seconds < 2 ? "" : seconds < 8 ? (controlActions > 0 ? "" : "拖动" + (mirrorControls ? "右侧" : "左侧") + "摇杆，控制角色方向") :
+                    seconds < 16 ? "绕住对手，再回到自己的轨迹" : seconds < 24 ? "撞墙不会失败，还会短暂加速" : "让对手撞上你的轨迹，淘汰后立即成长";
                 if (!string.IsNullOrEmpty(hint))
                 {
                     Panel(new Rect(120, 550, 840, 100), new Color(.025f, .08f, .14f, .90f));
@@ -566,6 +580,7 @@ namespace SnakeClub
                 Vector2 position = ToVirtual(projected);
                 if (position.x < 90 || position.x > 990 || position.y < 260 || position.y > 1430) continue;
                 string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
+                if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
                 if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
                 Rect box = new Rect(position.x - 105, position.y - 68, 210, 48);
                 Panel(box, new Color(.03f, .07f, .12f, .78f));

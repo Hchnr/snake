@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using SnakeClub.Core;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -26,6 +27,7 @@ namespace SnakeClub
         private GameObject model, ornaments;
         private Transform head, tail;
         private Camera portrait;
+        private SpriteRenderer referenceCharacter;
         private RenderTexture texture;
         private Mesh bodyMesh, coneMesh;
         private Vector3[] vertices;
@@ -44,8 +46,10 @@ namespace SnakeClub
         {
             var oldCamera = transform.Find("Portrait Camera");
             var oldModel = transform.Find("Portrait Snake");
+            var oldReference = transform.Find("Full character reference");
             if (oldCamera != null) { oldCamera.gameObject.SetActive(false); Destroy(oldCamera.gameObject); }
             if (oldModel != null) { oldModel.gameObject.SetActive(false); Destroy(oldModel.gameObject); }
+            if (oldReference != null) { oldReference.gameObject.SetActive(false); Destroy(oldReference.gameObject); }
             texture = new RenderTexture(512, 512, 16, RenderTextureFormat.ARGB32) { name = "Character portrait", antiAliasing = 1 };
             texture.Create();
             var cameraObject = new GameObject("Portrait Camera");
@@ -60,6 +64,13 @@ namespace SnakeClub
             Vector3 origin = new Vector3(0, -1500, 0);
             cameraObject.transform.position = origin + new Vector3(0, 4.4f, -7.5f);
             cameraObject.transform.LookAt(origin + new Vector3(.45f, .75f, .35f));
+
+            var reference = new GameObject("Full character reference");
+            reference.layer = 31; reference.transform.SetParent(transform, false);
+            reference.transform.position = portrait.transform.position + portrait.transform.forward * 8f;
+            reference.transform.rotation = portrait.transform.rotation;
+            referenceCharacter = reference.AddComponent<SpriteRenderer>();
+            referenceCharacter.enabled = false;
 
             model = new GameObject("Portrait Snake"); model.transform.SetParent(transform, false); model.transform.position = origin;
             body = Material(Color.white, .48f); accent = Material(Color.white, .3f);
@@ -216,10 +227,19 @@ namespace SnakeClub
 
         private void ApplySkin(int index)
         {
-            skin = Mathf.Clamp(index, 0, Colors.Length - 1);
+            skin = Mathf.Clamp(index, 0, SkinCatalog.All.Length - 1);
             if (body == null || head == null) return;
-            body.color = Colors[skin]; accent.color = Accents[skin];
-            accent.EnableKeyword("_EMISSION"); accent.SetColor("_EmissionColor", Accents[skin] * .12f);
+            var reference = SkinVisual.Sprite(skin);
+            if (referenceCharacter != null)
+            {
+                referenceCharacter.sprite = reference;
+                referenceCharacter.enabled = reference != null;
+            }
+            model.SetActive(reference == null);
+            if (reference != null) return;
+            int visualSkin = Mathf.Clamp(skin, 0, Colors.Length - 1);
+            body.color = Colors[visualSkin]; accent.color = Accents[visualSkin];
+            accent.EnableKeyword("_EMISSION"); accent.SetColor("_EmissionColor", Accents[visualSkin] * .12f);
             if (ornaments != null) { ornaments.SetActive(false); Destroy(ornaments); }
             ornaments = new GameObject("Character details"); ornaments.layer = 31; ornaments.transform.SetParent(head, false);
             if (skin == 5)
@@ -255,6 +275,13 @@ namespace SnakeClub
         {
             if (!Visible || model == null || bodyMesh == null) return;
             float time = Time.unscaledTime;
+            if (referenceCharacter != null && referenceCharacter.enabled)
+            {
+                float motion = ReducedEffects ? 0f : Mathf.Sin(time * 2f);
+                referenceCharacter.transform.position = portrait.transform.position + portrait.transform.forward * 8f + portrait.transform.up * (motion * .055f);
+                referenceCharacter.transform.rotation = portrait.transform.rotation * Quaternion.Euler(0, 0, motion * 1.4f);
+                return;
+            }
             AnimateBody(time);
             head.localPosition = new Vector3(0, .94f + Mathf.Sin(time * 2.1f) * .045f, -.92f);
             head.localRotation = Quaternion.Euler(Mathf.Sin(time * 1.6f) * 3f, Mathf.Sin(time * .9f) * 9f, Mathf.Sin(time * 1.2f) * 3f);
