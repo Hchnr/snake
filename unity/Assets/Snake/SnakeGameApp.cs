@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace SnakeClub
 {
-    public sealed class SnakeGameApp : MonoBehaviour
+    public sealed partial class SnakeGameApp : MonoBehaviour
     {
         [Serializable] private sealed class Request
         {
@@ -27,9 +27,9 @@ namespace SnakeClub
             public bool fruitsIncluded = false;
             public ArenaState state = null;
         }
-        [Serializable] private sealed class GameConfig { public string serverUrl = ""; }
 
         private ArenaRenderer arenaRenderer;
+        private ArenaFeedback feedback;
         private RoomConnection connection;
         private Arena arena;
         private ArenaState state;
@@ -46,33 +46,71 @@ namespace SnakeClub
         private bool onlineMenu;
         private bool paused;
         private bool pointerBoost;
+        private bool firstRun;
+        private int controlActions;
         private Point direction = new Point(1, 0);
         private float stepTimer;
         private float sendTimer;
         private Texture2D rounded;
         private GUIStyle panelStyle;
         private Font uiFont;
+        [NonSerialized] private bool initializedInDomain;
 
         private void Awake()
         {
+            initializedInDomain = true;
             Application.targetFrameRate = 60;
             arenaRenderer = gameObject.AddComponent<ArenaRenderer>();
+            feedback = gameObject.AddComponent<ArenaFeedback>();
             connection = gameObject.AddComponent<RoomConnection>();
             connection.OnEvent = HandleSocket;
+            api = gameObject.AddComponent<GameApiClient>();
+            LoadConfiguration();
             uiFont = Resources.Load<Font>("NotoSansSC");
+            rounded = CreateRoundTexture();
+            Demo();
+        }
+
+        private void OnEnable()
+        {
+            if (!Application.isPlaying || initializedInDomain) return;
+            initializedInDomain = true;
+            arenaRenderer = GetComponent<ArenaRenderer>();
+            feedback = GetComponent<ArenaFeedback>();
+            connection = GetComponent<RoomConnection>();
+            api = GetComponent<GameApiClient>();
+            if (arenaRenderer == null) arenaRenderer = gameObject.AddComponent<ArenaRenderer>();
+            if (feedback == null) feedback = gameObject.AddComponent<ArenaFeedback>();
+            if (connection == null) connection = gameObject.AddComponent<RoomConnection>();
+            if (api == null) api = gameObject.AddComponent<GameApiClient>();
+            connection.OnEvent = HandleSocket;
+            LoadConfiguration();
+            uiFont = Resources.Load<Font>("NotoSansSC");
+            rounded = CreateRoundTexture(); panelStyle = null;
+            homeAvatar = GetComponent<HomeAvatar>();
+            inGame = false; online = false; paused = false; daily = null; activeRun = null;
+            connecting = false;
+            frontPage = "home";
+            Demo();
+            ConnectProfile();
+        }
+
+        private void LoadConfiguration()
+        {
             TextAsset configAsset = Resources.Load<TextAsset>("GameConfig");
             if (configAsset != null)
             {
                 try
                 {
-                    GameConfig config = JsonUtility.FromJson<GameConfig>(configAsset.text);
+                    GameConfiguration config = JsonUtility.FromJson<GameConfiguration>(configAsset.text);
+                    api.Configure(config);
                     if (config != null && !string.IsNullOrWhiteSpace(config.serverUrl)) serverInput = config.serverUrl;
                 }
                 catch (Exception) { Debug.LogWarning("GameConfig.json could not be read."); }
             }
-            rounded = CreateRoundTexture();
-            Demo();
         }
+
+        private void Start() => ConnectProfile();
 
         private void Demo()
         {
@@ -84,7 +122,7 @@ namespace SnakeClub
             stepTimer = 0;
         }
 
-        private void StartPve()
+        private void BeginPve(ApiReply run)
         {
             connection.Close();
             online = false;
@@ -100,6 +138,17 @@ namespace SnakeClub
             state = arena.State;
             stepTimer = 0;
             direction = new Point(1, 0);
+            controlActions = 0;
+            firstRun = !CurrentProfile.tutorialComplete;
+            daily = null;
+            activeRun = run;
+            activePlayerId = api.Profile != null ? api.Profile.playerId : "";
+            lastRewardId = "";
+            resultRecorded = false;
+            int skin = run != null && run.trialSkin > 0 ? run.trialSkin : CurrentProfile.selectedSkin;
+            var matchProfile = new PlayerProgress { selectedSkin = skin, talents = CurrentProfile.talents };
+            arena.SetBonuses(playerId, Progression.Bonuses(matchProfile));
+            arenaRenderer.SelectedSkin = skin;
         }
 
         private void StartOnline(string action)
@@ -168,11 +217,28 @@ namespace SnakeClub
             onlineMenu = false;
             paused = false;
             status = "";
+            daily = null;
+            activeRun = null;
+            frontPage = "home";
+            arenaRenderer.SelectedSkin = CurrentProfile.selectedSkin;
             Demo();
         }
 
         private void Update()
         {
+            if (inGame && homeAvatar != null) homeAvatar.Visible = false;
+            if (daily != null && inGame && !paused)
+            {
+                stepTimer += Mathf.Min(Time.deltaTime, .2f);
+                while (stepTimer >= .05f && !daily.Finished)
+                {
+                    byte heading = EncodeDirection(direction);
+                    daily.Step(heading, pointerBoost);
+                    dailyInputs.Add(heading); dailyInputs.Add(pointerBoost ? (byte)1 : (byte)0);
+                    stepTimer -= .05f;
+                }
+                state = daily.State;
+            }
             if (arena != null && !paused)
             {
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
@@ -184,6 +250,11 @@ namespace SnakeClub
                 }
                 if (!inGame && arena.State.phase == "ended") Demo();
                 state = arena.State;
+                if (inGame && !online && state.phase == "running")
+                {
+                    SnakeState ownSnake = state.snakes.Find(s => s.id == playerId);
+                    if (ownSnake != null && !ownSnake.alive) arena.EndRound();
+                }
             }
             if (inGame && !paused && state != null && state.phase == "running")
             {
@@ -198,6 +269,8 @@ namespace SnakeClub
                     }
                 }
             }
+            if (inGame && !online && state != null && state.phase == "ended" && !resultRecorded) RecordResult();
+            if (inGame && !paused) feedback.Observe(state, playerId);
             arenaRenderer.Draw(state, playerId);
         }
 
@@ -209,15 +282,17 @@ namespace SnakeClub
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) y++;
             if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) y--;
             pointerBoost = Input.GetKey(KeyCode.Space);
+            bool acted = x != 0 || y != 0 || pointerBoost;
             if (x != 0 || y != 0) direction = new Point(x, y).Normalized;
 
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch touch = Input.GetTouch(i);
                 if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled) continue;
-                ApplyPointer(ToVirtual(touch.position));
+                acted |= ApplyPointer(ToVirtual(touch.position));
             }
-            if (Input.touchCount == 0 && Input.GetMouseButton(0)) ApplyPointer(ToVirtual(Input.mousePosition));
+            if (Input.touchCount == 0 && Input.GetMouseButton(0)) acted |= ApplyPointer(ToVirtual(Input.mousePosition));
+            if (acted) controlActions++;
         }
 
         private Vector2 ToVirtual(Vector2 screen)
@@ -228,14 +303,15 @@ namespace SnakeClub
             return new Vector2((screen.x - left) / scale, ((Screen.height - screen.y) - top) / scale);
         }
 
-        private void ApplyPointer(Vector2 position)
+        private bool ApplyPointer(Vector2 position)
         {
             if (position.y > 1390 && position.x < 560)
             {
                 Vector2 delta = position - new Vector2(245, 1645);
-                if (delta.magnitude > 18) direction = new Point(delta.x, -delta.y).Normalized;
+                if (delta.magnitude > 18) { direction = new Point(delta.x, -delta.y).Normalized; return true; }
             }
-            if (position.y > 1450 && position.x > 700) pointerBoost = true;
+            if (position.y > 1450 && position.x > 700) { pointerBoost = true; return true; }
+            return false;
         }
 
         private void OnApplicationPause(bool isPaused)
@@ -252,11 +328,11 @@ namespace SnakeClub
             Matrix4x4 old = GUI.matrix;
             GUI.matrix = Matrix4x4.TRS(new Vector3(left, top, 0), Quaternion.identity, new Vector3(scale, scale, 1));
             if (uiFont != null) GUI.skin.font = uiFont;
-            if (!inGame) DrawMenu(); else DrawGame();
+            if (!inGame) DrawFront(); else DrawGame();
             GUI.matrix = old;
         }
 
-        private void DrawMenu()
+        private void DrawLegacyMenu()
         {
             Panel(new Rect(58, 180, 964, 1485), new Color(.035f, .065f, .12f, .93f));
             Label(new Rect(105, 235, 860, 50), "S N A K E   C L U B", 28, new Color(.36f, .95f, .78f), TextAnchor.MiddleCenter, true);
@@ -265,7 +341,7 @@ namespace SnakeClub
             if (!onlineMenu)
             {
                 Label(new Rect(135, 595, 810, 55), "选择对战方式", 38, Color.white, TextAnchor.MiddleLeft, true);
-                if (Button(new Rect(130, 690, 820, 155), "单人挑战   /   PvE", new Color(.10f, .60f, .49f))) StartPve();
+                if (Button(new Rect(130, 690, 820, 155), "单人挑战   /   PvE", new Color(.10f, .60f, .49f))) RequestPve();
                 Label(new Rect(160, 850, 760, 50), "离线对抗 AI，随时开始", 27, new Color(.62f, .74f, .82f), TextAnchor.MiddleLeft);
                 if (Button(new Rect(130, 950, 820, 155), "真人房间   /   PvP", new Color(.20f, .31f, .60f))) { mode = "pvp"; onlineMenu = true; status = ""; }
                 Label(new Rect(160, 1110, 760, 50), "通过房间号邀请真人对战", 27, new Color(.62f, .74f, .82f), TextAnchor.MiddleLeft);
@@ -292,15 +368,27 @@ namespace SnakeClub
         {
             Panel(new Rect(48, 50, 984, 188), new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
-            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : "单人挑战", 34, Color.white, TextAnchor.MiddleLeft, true);
+            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : daily != null ? "每日挑战" : "单人挑战", 34, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
-            else Label(new Rect(88, 135, 410, 52), "击败对手，生存到最后", 26, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
+            else Label(new Rect(88, 135, 410, 52), daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun != null && activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 26, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), 40, Color.white, TextAnchor.MiddleCenter, true);
-            Label(new Rect(720, 70, 250, 58), me == null ? "--" : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
-            Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills, 27, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
+            Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
+            Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + "  星核 " + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
 
             if (state != null) DrawMiniMap(state);
+            if (state != null && state.starVisible)
+            {
+                string starHint = string.IsNullOrEmpty(state.starHolder) ? "星核出现" : state.starHolder == playerId ? "携带星核 " + Mathf.CeilToInt((1f - state.starProgress) * 10f) + " 秒" : "对手携带星核";
+                Label(new Rect(275, 300, 490, 60), starHint, 25, new Color(1f, .85f, .48f), TextAnchor.MiddleCenter, true);
+            }
             if (state != null && state.phase == "running") DrawNames(state);
+            if (firstRun && !online && state != null && state.phase == "running" && state.tick < 600)
+            {
+                int seconds = state.tick / 20;
+                string hint = seconds < 8 ? "拖动左侧摇杆，控制灵蛇方向" : seconds < 16 ? "拾取果实，留意附近的 AI 对手" : seconds < 24 ? "撞墙不会失败，还会短暂加速" : "让对手撞上你的身体，淘汰后立即成长";
+                Panel(new Rect(120, 550, 840, 100), new Color(.025f, .08f, .14f, .90f));
+                Label(new Rect(145, 560, 790, 80), hint, 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+            }
             if (Button(new Rect(55, 285, 215, 76), online ? "退出" : (paused ? "继续" : "暂停"), new Color(.10f, .17f, .25f, .92f)))
             {
                 if (online) BackToMenu(); else paused = !paused;
@@ -328,16 +416,18 @@ namespace SnakeClub
 
         private void DrawResult(SnakeState me)
         {
-            Panel(new Rect(125, 610, 830, 620), new Color(.035f, .065f, .12f, .96f));
-            string result = state.winner == playerId ? "竞技胜利" : state.winner == "" ? "平局" : "对局结束";
+            Panel(new Rect(125, 610, 830, 690), new Color(.035f, .065f, .12f, .96f));
+            string result = daily != null ? "挑战结束" : state.winner == playerId ? "竞技胜利" : state.winner == "" ? "对局结束" : "对局结束";
             Label(new Rect(170, 665, 740, 100), result, 58, Color.white, TextAnchor.MiddleCenter, true);
-            Label(new Rect(170, 790, 740, 75), me == null ? "" : "长度 " + me.segments.Count + "     淘汰 " + me.kills, 34, new Color(.64f, .80f, .83f), TextAnchor.MiddleCenter);
-            if (Button(new Rect(230, 910, 620, 105), "再来一局", new Color(.10f, .60f, .49f)))
+            Label(new Rect(170, 790, 740, 75), daily != null ? "挑战得分 " + daily.Score : me == null ? "" : "长度 " + me.segments.Count + "     淘汰 " + me.kills, 34, new Color(.64f, .80f, .83f), TextAnchor.MiddleCenter);
+            if (!string.IsNullOrEmpty(resultNote)) Label(new Rect(170, 850, 740, 85), resultNote, 22, new Color(.72f, .82f, .87f), TextAnchor.MiddleCenter);
+            if (Button(new Rect(230, 950, 620, 105), "再来一局", new Color(.10f, .60f, .49f)))
             {
                 if (online) { Send(new Request { type = "restart" }); status = ""; }
-                else StartPve();
+                else if (daily != null) RequestDaily(); else RequestPve();
             }
-            if (Button(new Rect(230, 1050, 620, 95), "返回菜单", new Color(.17f, .25f, .34f))) BackToMenu();
+            if (Button(new Rect(230, 1080, 620, 95), "返回菜单", new Color(.17f, .25f, .34f))) BackToMenu();
+            DrawRewardOffer(new Rect(245, 1190, 590, 70));
         }
 
         private void DrawControls()
@@ -364,6 +454,14 @@ namespace SnakeClub
                 GUI.color = snake.id == playerId ? Color.white : ArenaRenderer.Palette[Mathf.Abs(snake.color % ArenaRenderer.Palette.Length)];
                 GUI.DrawTexture(new Rect(x - size / 2, y - size / 2, size, size), rounded);
                 GUI.color = previous;
+            }
+            if (world.starVisible)
+            {
+                Point p = world.starPosition;
+                float x = map.x + 15 + (p.x / world.halfSize + 1) * .5f * (map.width - 30);
+                float y = map.y + 15 + (1 - (p.y / world.halfSize + 1) * .5f) * (map.height - 30);
+                Color previous = GUI.color; GUI.color = new Color(1f, .84f, .32f);
+                GUI.DrawTexture(new Rect(x - 8, y - 8, 16, 16), rounded); GUI.color = previous;
             }
         }
 

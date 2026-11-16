@@ -6,13 +6,18 @@ using System.Text.Json.Serialization;
 using SnakeClub.Core;
 
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.IncludeFields = true);
+var allowedOrigins = (Environment.GetEnvironmentVariable("SNAKE_ALLOWED_ORIGINS") ?? "http://127.0.0.1:8082,http://localhost:8082").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+builder.Services.AddCors(options => options.AddPolicy("game", policy => policy.WithOrigins(allowedOrigins).AllowAnyHeader().AllowAnyMethod()));
 string host = Environment.GetEnvironmentVariable("SNAKE_HOST") ?? "127.0.0.1";
 string port = Environment.GetEnvironmentVariable("SNAKE_PORT") ?? "2567";
 builder.WebHost.UseUrls($"http://{host}:{port}");
 var app = builder.Build();
 var rooms = new RoomManager();
+app.UseCors("game");
+GameApi.Map(app, builder.Environment.ContentRootPath);
 app.UseWebSockets();
-app.MapGet("/health", () => Results.Json(new { ok = true, service = "snake-club", version = "0.0.2" }));
+app.MapGet("/health", () => Results.Json(new { ok = true, service = "snake-club", version = "0.0.3" }));
 app.Map("/ws", async context =>
 {
     if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
@@ -59,6 +64,10 @@ sealed class ArenaSnapshot
     public string phase;
     public string winner;
     public int tick;
+    public bool starVisible;
+    public Point starPosition;
+    public string starHolder;
+    public float starProgress;
     public List<SnakeState> snakes;
     public List<FruitState>? fruits;
 
@@ -69,6 +78,10 @@ sealed class ArenaSnapshot
         phase = source.phase;
         winner = source.winner;
         tick = source.tick;
+        starVisible = source.starVisible;
+        starPosition = source.starPosition;
+        starHolder = source.starHolder;
+        starProgress = source.starProgress;
         snakes = source.snakes;
         fruits = includeFruits ? source.fruits : null;
     }

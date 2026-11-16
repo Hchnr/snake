@@ -1,15 +1,18 @@
 {
   "name": "snake-club-minigame",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "private": true,
   "description": "抖音优先的 Unity 蛇蛇竞技游戏",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "sh scripts/test-v2.sh",
+    "test": "sh scripts/test-v2.sh && sh scripts/test-v3.sh",
     "build": "sh scripts/unity-build.sh webgl",
     "preview": "node scripts/preview-unity.js",
     "test:v2": "sh scripts/test-v2.sh",
+    "test:v3": "sh scripts/test-v3.sh",
+    "test:unity": "python3 scripts/test-unity.py",
     "server:v2": "dotnet run --project server/Snake.Server.csproj",
+    "server:v3": "dotnet run --project server/Snake.Server.csproj",
     "build:unity:webgl": "sh scripts/unity-build.sh webgl",
     "build:unity:mac": "sh scripts/unity-build.sh mac",
     "preview:unity": "node scripts/preview-unity.js"

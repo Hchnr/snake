@@ -1,3 +1,6 @@
 {
-  "serverUrl": "ws://127.0.0.1:2567/ws"
+  "serverUrl": "ws://127.0.0.1:2567/ws",
+  "apiUrl": "http://127.0.0.1:2568",
+  "allowDevLogin": true,
+  "rewardedAdUnitId": ""
 }

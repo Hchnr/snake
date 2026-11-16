@@ -48,7 +48,7 @@ namespace SnakeClub.Editor
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             PlayerSettings.productName = "Snake Club";
             PlayerSettings.companyName = "Snake Club";
-            PlayerSettings.bundleVersion = "0.0.2";
+            PlayerSettings.bundleVersion = "0.0.3";
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             PlayerSettings.runInBackground = true;
             var settings = new SerializedObject(AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/ProjectSettings.asset")[0]);
