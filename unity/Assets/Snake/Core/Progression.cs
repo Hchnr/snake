@@ -38,6 +38,23 @@ namespace SnakeClub.Core
         public ExpeditionState expedition;
     }
 
+    // Submission retries use monotonic elapsed time supplied by the client;
+    // stored run ownership is checked before any network request is sent.
+    public sealed class PendingRetrySchedule
+    {
+        public int Failures { get; private set; }
+        public double NextAttempt { get; private set; }
+        public bool Due(double now) => now >= NextAttempt;
+        public void Reset() { Failures = 0; NextAttempt = 0; }
+        public void Fail(double now)
+        {
+            Failures = Math.Min(Failures + 1, 6);
+            NextAttempt = now + Math.Min(60, 1 << Failures);
+        }
+        public static bool OwnedBy(string owner, string player) =>
+            !string.IsNullOrEmpty(owner) && !string.IsNullOrEmpty(player) && string.Equals(owner, player, StringComparison.Ordinal);
+    }
+
     public static class Progression
     {
         public static readonly string[] SkinNames = Array.ConvertAll(SkinCatalog.All, s => s.Name);

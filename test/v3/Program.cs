@@ -36,6 +36,7 @@ var cases = new (string name, Action run)[]
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
+    ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
@@ -59,6 +60,23 @@ static void Check(bool value, string message)
 {
     if (!value) throw new Exception(message);
 }
+static void PendingRetries()
+{
+    var retry = new PendingRetrySchedule();
+    Check(retry.Due(0), "initial settlement was delayed");
+    retry.Fail(100);
+    Check(!retry.Due(101.99) && retry.Due(102), "first retry timing incorrect");
+    retry.Fail(102);
+    Check(!retry.Due(105.99) && retry.Due(106), "backoff did not grow");
+    double now = 106;
+    for (int i = 0; i < 12; i++) { retry.Fail(now); Check(retry.NextAttempt - now <= 60, "retry exceeded one minute"); now = retry.NextAttempt; }
+    retry.Fail(now);
+    Check(retry.Failures == 6 && retry.NextAttempt - now == 60 && !retry.Due(now + 59), "retry cap incorrect");
+    retry.Reset(); Check(retry.Failures == 0 && retry.Due(0), "successful settlement did not reset backoff");
+    Check(PendingRetrySchedule.OwnedBy("player-a", "player-a"), "owner was not recognized");
+    Check(!PendingRetrySchedule.OwnedBy("player-a", "player-b") && !PendingRetrySchedule.OwnedBy("", "") && !PendingRetrySchedule.OwnedBy(null, "player-a"), "another or missing account could submit the result");
+}
+
 static void MusicBehavior()
 {
     Check(!MusicPolicy.ShouldPlay(true, false, true, false, false), "music started before user interaction");
