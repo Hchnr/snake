@@ -174,12 +174,13 @@ namespace SnakeClub
         {
             if (busy) return;
             depthMode = false;
-            activeFriendScore = !string.IsNullOrEmpty(friendDate) && friendDate == api.Date && friendRules == DailyMatch.RulesVersion ? friendScore : -1;
+            activeFriendScore = !string.IsNullOrEmpty(friendDate) && friendDate == api.Date && DailyMatch.SupportsFriendChallenge(friendRules) ? friendScore : -1;
             activeFriendDate = friendDate; activeFriendRules = friendRules;
+            string requestedRules = activeFriendScore >= 0 ? activeFriendRules : DailyMatch.RulesVersion;
             friendDate = ""; friendRules = "";
             if (!api.Connected) { BeginDaily(null); return; }
             busy = true;
-            api.Post("challenge/start?rules=" + DailyMatch.RulesVersion, new ApiRequest(), reply => { busy = false; BeginDaily(reply.ok ? reply : null); });
+            api.Post("challenge/start?rules=" + requestedRules, new ApiRequest(), reply => { busy = false; BeginDaily(reply.ok ? reply : null); });
         }
 
         private void StartDepth()
@@ -313,7 +314,7 @@ namespace SnakeClub
             {
                 bool retryable = !shared.ok && (shared.httpStatus == 0 || shared.httpStatus == 401 || shared.httpStatus == 429 || shared.httpStatus >= 500);
                 if (!incomingFriend.Complete(version, retryable, Time.unscaledTime)) return;
-                if (shared.ok && shared.date == api.Date && shared.rules == DailyMatch.RulesVersion)
+                if (shared.ok && shared.date == api.Date && DailyMatch.SupportsFriendChallenge(shared.rules))
                 {
                     friendDate = shared.date; friendRules = shared.rules; friendScore = shared.score;
                     frontNotice = "好友今日挑战 " + friendScore + " 分 · 点击接受挑战";

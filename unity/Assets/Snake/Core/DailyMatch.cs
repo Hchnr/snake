@@ -51,12 +51,14 @@ namespace SnakeClub.Core
         public const int MaxScore = 1540;
         public const string LegacyRulesVersion = "daily-1";
         public const string PreviousRulesVersion = "daily-2";
-        public const string RulesVersion = "daily-3";
+        public const string CaptureRulesVersion = "daily-3";
+        public const string RulesVersion = "daily-4";
         public const int CaptureStartingLength = 16;
         public const int CaptureMaxScore = 1460;
-        public static bool SupportsRules(string version) => version == LegacyRulesVersion || version == PreviousRulesVersion || version == RulesVersion;
-        public static int StartingLengthFor(string version) => version == RulesVersion ? CaptureStartingLength : Arena.StartingLength;
-        public static int MaxScoreFor(string version) => version == RulesVersion ? CaptureMaxScore : MaxScore;
+        public static bool SupportsRules(string version) => version == LegacyRulesVersion || version == PreviousRulesVersion || version == CaptureRulesVersion || version == RulesVersion;
+        public static bool SupportsFriendChallenge(string version) => version == CaptureRulesVersion || version == RulesVersion;
+        public static int StartingLengthFor(string version) => SupportsFriendChallenge(version) ? CaptureStartingLength : Arena.StartingLength;
+        public static int MaxScoreFor(string version) => SupportsFriendChallenge(version) ? CaptureMaxScore : MaxScore;
         private const int Unit = 1000;
         private const int Edge = 109280;
         private const int Spacing = 900;
@@ -78,7 +80,7 @@ namespace SnakeClub.Core
         private int starHolder = -1;
         private int starTicks;
         private int peak;
-        private readonly bool legacy, captures;
+        private readonly bool legacy, captures, pursueStarHolder;
         private readonly int startingLength, scoreLimit;
         private readonly int eventType;
         private bool eventActive, eventDone;
@@ -122,7 +124,8 @@ namespace SnakeClub.Core
             if (!SupportsRules(rulesVersion))
                 throw new ArgumentException("Unknown daily challenge rules", nameof(rulesVersion));
             legacy = rulesVersion == LegacyRulesVersion;
-            captures = rulesVersion == RulesVersion;
+            captures = SupportsFriendChallenge(rulesVersion);
+            pursueStarHolder = rulesVersion == RulesVersion;
             startingLength = StartingLengthFor(rulesVersion); scoreLimit = MaxScoreFor(rulesVersion); peak = startingLength;
             uint selection = unchecked((uint)seed);
             eventType = (int)((selection ^ (selection >> 16)) % 3);
@@ -251,6 +254,19 @@ namespace SnakeClub.Core
                 AddVector(ref vx, ref vy, target.segments[0].x - head.x, target.segments[0].y - head.y, weight);
             }
             if (starActive && starHolder < 0) AddVector(ref vx, ref vy, star.x - head.x, star.y - head.y, 800);
+            if (pursueStarHolder && eventActive && eventType == 1 && starActive && starHolder >= 0)
+            {
+                if (starHolder != index && snakes[starHolder].alive)
+                {
+                    var carrier = snakes[starHolder].segments[0];
+                    if (Dist(head, carrier) < 45000) AddVector(ref vx, ref vy, carrier.x - head.x, carrier.y - head.y, 2600);
+                }
+                else if (starHolder == index && nearest >= 0 && nearestDist < 18000)
+                {
+                    var threat = snakes[nearest].segments[0];
+                    AddVector(ref vx, ref vy, head.x - threat.x, head.y - threat.y, 2000);
+                }
+            }
             if (!legacy && eventActive && eventType == 2 && Dist(head, eventCenter) < 60000)
                 AddVector(ref vx, ref vy, eventCenter.x - head.x, eventCenter.y - head.y, 1800);
             if (nearestDist > 10000)

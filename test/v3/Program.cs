@@ -53,6 +53,7 @@ var cases = new (string name, Action run)[]
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
+    ("star carriers attract nearby AI without changing daily-3 replay", StarPursuitCases),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
     ("single-player events rotate, award real captures and end cleanly", LocalRotatingEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
@@ -593,6 +594,56 @@ static void EventOutcomeCases()
     notice.Reset(); world.phase = "running"; world.eventKind = "fruit"; world.eventStatus = "active"; notice.Observe(world, "missing");
     world.eventStatus = "ended"; notice.Observe(world, "missing");
     Check(notice.Current(world) == "", "unknown player was reported as earning no points");
+}
+
+static void StarPursuitCases()
+{
+    int DailyTarget(string rules, int holder)
+    {
+        var match = new DailyMatch(1, rules); // Seed 1 selects the star event.
+        var type = typeof(DailyMatch);
+        var snakes = (IList)type.GetField("snakes", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(match);
+        var snakeType = snakes[0].GetType(); var pointType = type.GetNestedType("SimPoint", BindingFlags.NonPublic);
+        object PointAt(int x, int y) => Activator.CreateInstance(pointType, new object[] { x, y });
+        for (int i = 0; i < snakes.Count; i++)
+        {
+            snakeType.GetField("alive").SetValue(snakes[i], i < 2);
+            var path = (IList)snakeType.GetField("segments").GetValue(snakes[i]); path.Clear();
+            int count = i == 0 ? (holder == 1 ? 12 : 20) : 16;
+            for (int j = 0; j < count; j++) path.Add(PointAt(i == 0 ? 10000 : 0, 0));
+        }
+        type.GetField("eventActive", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(match, holder >= 0);
+        type.GetField("starActive", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(match, holder >= 0);
+        type.GetField("starHolder", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(match, holder);
+        type.GetMethod("UpdateBot", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, new object[] { 1 });
+        return (int)snakeType.GetField("target").GetValue(snakes[1]);
+    }
+    bool Right(int angle) => angle < 64 || angle > 192;
+    Check(!Right(DailyTarget(DailyMatch.CaptureRulesVersion, 0)), "old daily-3 AI changed");
+    Check(!Right(DailyTarget(DailyMatch.RulesVersion, -1)), "inactive event changed AI behavior");
+    Check(Right(DailyTarget(DailyMatch.RulesVersion, 0)), "daily-4 AI did not pursue a nearby carrier");
+    Check(Right(DailyTarget(DailyMatch.CaptureRulesVersion, 1)) && !Right(DailyTarget(DailyMatch.RulesVersion, 1)), "daily-4 AI carrier did not evade a nearby threat");
+    Check(DailyMatch.StartingLengthFor(DailyMatch.CaptureRulesVersion) == 16 && DailyMatch.MaxScoreFor(DailyMatch.CaptureRulesVersion) == 1460, "daily-3 capture rules changed");
+    var old = new DailyMatch(1, DailyMatch.CaptureRulesVersion);
+    while (!old.Finished)
+    {
+        int tick = old.State.tick; old.Step((byte)((tick / 100 * 29) & 255), tick % 173 >= 140);
+    }
+    Check(old.Score == 100 && old.State.tick == 1200, "published daily-3 replay changed");
+
+    Point LocalTarget(bool carrier)
+    {
+        var arena = new Arena(27, fruitCount: 0, enableCaptures: true, rotatingEvents: true);
+        var player = arena.AddSnake("you", "you", false); var bot = arena.AddSnake("bot", "bot", true);
+        player.segments = Enumerable.Repeat(new Point(10, 0), 20).ToList();
+        bot.segments = Enumerable.Repeat(new Point(0, 0), 16).ToList();
+        arena.State.starVisible = carrier; arena.State.starHolder = carrier ? "you" : "";
+        var controls = (IDictionary)typeof(Arena).GetField("controls", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(arena);
+        object control = controls["bot"];
+        typeof(Arena).GetMethod("UpdateBot", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(arena, new[] { (object)bot, control, .1f });
+        return (Point)control.GetType().GetField("target").GetValue(control);
+    }
+    Check(LocalTarget(false).x < 0 && LocalTarget(true).x > 0, "practice AI did not pursue a nearby carrier");
 }
 
 static void DailyEvents()

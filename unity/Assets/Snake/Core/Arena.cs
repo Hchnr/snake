@@ -870,6 +870,17 @@ namespace SnakeClub.Core
             }
             if (State.starVisible && string.IsNullOrEmpty(State.starHolder))
                 desired += (State.starPosition - head).Normalized * 0.8f;
+            if (State.starVisible && !string.IsNullOrEmpty(State.starHolder))
+            {
+                var carrier = Find(State.starHolder);
+                if (carrier != null && carrier.alive && carrier.segments.Count > 0)
+                {
+                    if (carrier != snake && Point.Distance(head, carrier.segments[0]) < 45f)
+                        desired += (carrier.segments[0] - head).Normalized * 2.6f;
+                    else if (carrier == snake && nearest != null && nearestDistance < 18f)
+                        desired += (head - nearest.segments[0]).Normalized * 2f;
+                }
+            }
             if (rotatingEvents && State.eventStatus == "active" && State.eventKind == "fruit" && Point.Distance(head, State.eventPosition) < 60f)
                 desired += (State.eventPosition - head).Normalized * 1.8f;
             // Fruit gives the bots something to seek without replacing opponents

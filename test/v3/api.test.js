@@ -69,6 +69,7 @@ before(async () => {
   const newId = idFor('v3-new-rules');
   const missingId = idFor('v3-missing-rules');
   const receiptId = idFor('v3-receipt');
+  const pursuitId = idFor('v3-pursuit');
   const legacy = { id: 'legacy-run', playerId: legacyId, mode: 'daily', date: chinaDay(), rules: 'daily-1', seed: 1,
     startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   const current = { id: 'capture-run', playerId: newId, mode: 'daily', date: chinaDay(), rules: 'daily-3', seed: 1,
@@ -77,12 +78,14 @@ before(async () => {
     startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   fs.writeFileSync(dataFile, JSON.stringify({
     players: {
+      [pursuitId]: { playerId: pursuitId, displayName: '追逐测试', dailyKey: chinaDay() },
       [receiptId]: { playerId: receiptId, displayName: '回执测试', tutorialComplete: true, coins: 73, experience: 29, dailyKey: chinaDay() },
       [caveId]: { playerId: caveId, displayName: '洞穴测试', dailyKey: chinaDay(), expedition: { id: 'expedition-fixture', cave: 2, durationMinutes: 480, startedAt: Date.now() - 12 * 3600000, bonusPercent: 7 } },
       [oldProfileId]: { playerId: oldProfileId, displayName: '老玩家', tutorialComplete: true, experience: 345, coins: 777, ownedSkins: [0, 2], selectedSkin: 2,
         talents: [1, 0, 0, 0, 0, 0, 0, 0, 0], dailyKey: chinaDay(), expedition: { id: 'old-cave', cave: 1, durationMinutes: 240, startedAt: Date.now() - 10000, bonusPercent: 2 } }
     },
     runs: { [legacy.id]: legacy, [current.id]: current, [missing.id]: missing,
+      'pursuit-run': { id: 'pursuit-run', playerId: pursuitId, mode: 'daily', date: chinaDay(), rules: 'daily-4', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 },
       'receipt-pve': { id: 'receipt-pve', playerId: receiptId, mode: 'pve', date: chinaDay(), rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000, completed: true, coins: 35, experience: 20 },
       'receipt-daily': { id: 'receipt-daily', playerId: receiptId, mode: 'daily', date: '2000-01-01', rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000, completed: true, coins: 35, experience: 20, score: 123 },
       'receipt-pending': { id: 'receipt-pending', playerId: receiptId, mode: 'pve', date: chinaDay(), rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000, completed: false }
@@ -192,6 +195,25 @@ test('daily-3 capture replay verifies and is isolated from older leaderboards', 
   assert.equal(board.data.total, 1); assert.equal(board.data.rows[0].score, run.score);
   const previous = await request('challenge/leaderboard?rules=daily-2', { token: player.session });
   assert.equal(previous.data.total, 0);
+});
+
+test('daily-4 verifies, shares and keeps its leaderboard separate from daily-3', async () => {
+  const player = await login('v3-pursuit');
+  const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs['pursuit-run'];
+  const recording = replay(stored.seed, 0, stored.rules);
+  const result = await request('challenge/submit', { token: player.session, body: {
+    runId: stored.id, token: legacyToken(stored), inputs: recording.inputs, score: recording.score, actions: 10
+  }});
+  assert.equal(result.status, 200); assert.equal(result.data.verified, true);
+  const shared = await request('challenge/shared?token=' + encodeURIComponent(result.data.shareToken), { token: bob.session });
+  assert.equal(shared.status, 200); assert.equal(shared.data.rules, 'daily-4'); assert.equal(shared.data.score, recording.score);
+  const current = await request('challenge/leaderboard?rules=daily-4', { token: player.session });
+  const previous = await request('challenge/leaderboard?rules=daily-3', { token: player.session });
+  assert.equal(current.data.total, 1); assert.equal(current.data.rows[0].score, recording.score);
+  assert.equal(previous.data.rank, 0); assert.equal(previous.data.total, 1);
+  const oldRun = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs['capture-run'];
+  const oldShare = await request('challenge/share', { token: (await login('v3-new-rules')).session, body: { id: oldRun.id } });
+  assert.equal(oldShare.status, 200); assert.equal((await request('challenge/shared?token=' + encodeURIComponent(oldShare.data.shareToken), { token: player.session })).data.rules, 'daily-3');
 });
 
 test('old account inventory, talent and active expedition survive progress migration', async () => {

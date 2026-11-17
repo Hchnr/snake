@@ -291,7 +291,7 @@ namespace SnakeClub
                             (state.eventKind == "bounty" || state.eventKind == "star" || state.eventKind == "fruit"))
                             stats += "   ·   事件点 " + own.starPoints;
                         bool share = daily != null && activeRun != null && api.Connected && verifiedDaily &&
-                            activeRun.date == api.Date && activeRun.rules == DailyMatch.RulesVersion && !string.IsNullOrEmpty(verifiedShareToken);
+                            activeRun.date == api.Date && DailyMatch.SupportsFriendChallenge(activeRun.rules) && !string.IsNullOrEmpty(verifiedShareToken);
                         int adCoins = !string.IsNullOrEmpty(lastRewardId) && GamePlatform.HasRewardedAds(api) ? lastRewardCoins : 0;
                         string highlight = matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
                         string outcome = MatchOutcome.Explain(state, playerId);
