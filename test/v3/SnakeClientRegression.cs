@@ -204,9 +204,19 @@ namespace SnakeClub.Tests.Editor
                 Call("StartDepth");
                 Require((bool)Field("depthMode").GetValue(app) && Field("activeRun").GetValue(app) == null &&
                     !(bool)Field("busy").GetValue(app), "connected depth requested an ordinary PvE run");
-                Call("SelectDepthBonus", 1);
+                Call("SelectDepthBonus", 2);
                 Require((int)Field("depthRoom").GetValue(app) == 2 && Field("activeRun").GetValue(app) == null,
                     "next depth room requested an ordinary PvE run");
+                var depthArena = (Arena)Field("arena").GetValue(app);
+                Require(depthArena.Find("you").shield == 2 && depthArena.Find("bot-0").shield == Arena.SpawnShieldSeconds,
+                    "growth tradeoff was not applied only to the depth player in the next room");
+                Call("SelectDepthBonus", 2);
+                depthArena = (Arena)Field("arena").GetValue(app);
+                Require((int)Field("depthRoom").GetValue(app) == 3 && depthArena.Find("you").shield == 1,
+                    "stacked growth tradeoff was not applied in the next room");
+                Call("StartDepth");
+                depthArena = (Arena)Field("arena").GetValue(app);
+                Require(depthArena.Find("you").shield == Arena.SpawnShieldSeconds, "growth tradeoff leaked into a new depth run");
                 // Guard against a stale or accidentally supplied ordinary run as well.
                 Field("activeRun").SetValue(app, new ApiReply { runId = "stale", token = "stale" });
                 Field("activePlayerId").SetValue(app, profile.playerId);
