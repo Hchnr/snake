@@ -49,6 +49,7 @@ namespace SnakeClub
         private bool pointerBoost;
         private bool reducedEffects;
         private readonly DragSteering dragSteering = new DragSteering();
+        private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
         private bool firstRun;
         private bool depthMode, depthWon;
@@ -368,7 +369,7 @@ namespace SnakeClub
             bool acted = x != 0 || y != 0 || pointerBoost;
             if (x != 0 || y != 0) direction = new Point(x, y).Normalized;
 
-            int activeTouches = 0;
+            activeTouchIds.Clear();
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch touch = Input.GetTouch(i);
@@ -381,8 +382,9 @@ namespace SnakeClub
                     }
                     if (dragSteering.End(touch.fingerId)) suppressPointerUpFrame = Time.frameCount;
                 }
-                else activeTouches++;
+                else activeTouchIds.Add(touch.fingerId);
             }
+            dragSteering.ReconcileTouches(activeTouchIds);
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch touch = Input.GetTouch(i);
@@ -393,11 +395,12 @@ namespace SnakeClub
                 else if (dragSteering.Move(touch.fingerId, point, out Point next)) { direction = next; acted = true; }
             }
             // Holding a second finger adds an optional boost without reserving a screen area.
-            if (activeTouches > 1) { pointerBoost = true; acted = true; }
+            if (activeTouchIds.Count > 1) { pointerBoost = true; acted = true; }
             if (Input.touchCount == 0)
             {
                 Vector2 position = ToVirtual(Input.mousePosition);
                 Point point = new Point(position.x, position.y);
+                if (!Input.GetMouseButton(0) && !Input.GetMouseButtonUp(0) && dragSteering.IsTracking(-1)) dragSteering.Reset();
                 if (Input.GetMouseButtonDown(0)) dragSteering.Begin(-1, point);
                 if (Input.GetMouseButton(0) && dragSteering.Move(-1, point, out Point next)) { direction = next; acted = true; }
                 if (Input.GetMouseButtonUp(0))
@@ -446,7 +449,12 @@ namespace SnakeClub
         {
             if (rounded == null) return;
             if (inGame && Event.current.type == EventType.MouseUp && suppressPointerUpFrame == Time.frameCount)
+            {
+                // A drag may have started over an IMGUI button. Since its release
+                // is consumed, explicitly clear the button's captured pointer.
+                GUIUtility.hotControl = 0;
                 Event.current.Use();
+            }
             SafeUiMetrics(out float scale, out float left, out float top);
             Matrix4x4 old = GUI.matrix;
             GUI.matrix = Matrix4x4.TRS(new Vector3(left, top, 0), Quaternion.identity, new Vector3(scale, scale, 1));

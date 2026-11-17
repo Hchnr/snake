@@ -35,6 +35,7 @@ var cases = new (string name, Action run)[]
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
+    ("drag steering recovers missing touch ends and transfers control", TouchRecovery),
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
@@ -134,6 +135,26 @@ static void FullScreenDrag()
         Check(drag.Begin(8, origin) && !drag.End(8), "a tap was mistaken for a drag");
     }
 }
+static void TouchRecovery()
+{
+    var drag = new DragSteering(12);
+    drag.Begin(3, new Point(100, 100));
+    drag.ReconcileTouches(new[] { 3, 7 });
+    Check(drag.IsTracking(3), "second finger stole the steering pointer");
+    Check(drag.Move(3, new Point(130, 100), out var right) && right.x > .99f, "steering stopped while both fingers were present");
+    drag.ReconcileTouches(new[] { 7 }); // Host omitted finger 3's end event.
+    Check(!drag.Active && drag.Begin(7, new Point(200, 200)), "remaining finger could not take over");
+    Check(drag.Move(7, new Point(200, 170), out var up) && up.y > .99f, "new steering finger could not move");
+    drag.ReconcileTouches(Array.Empty<int>());
+    Check(!drag.Active && drag.Begin(-1, new Point(0, 0)), "missing last touch blocked mouse control");
+    drag.ReconcileTouches(Array.Empty<int>());
+    Check(drag.IsTracking(-1), "normal mouse drag was cancelled without touches");
+    drag.ReconcileTouches(new[] { 9 });
+    Check(!drag.Active && drag.Begin(9, new Point(0, 0)), "real touch could not replace mouse emulation");
+    Check(!drag.End(3) && drag.IsTracking(9), "late end from old finger interrupted control");
+    drag.Reset(); Check(!drag.Active && drag.Begin(4, new Point(0, 0)), "suspension reset prevented a new gesture");
+}
+
 static void CaveAlbum()
 {
     var profile = new PlayerProgress { caveFragments = new[] { 1, 3, 7 } };
