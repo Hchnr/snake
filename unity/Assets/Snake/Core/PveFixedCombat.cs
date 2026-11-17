@@ -132,9 +132,10 @@ namespace SnakeClub.Core
             {
                 workspace.captureOwner = fighters[shown].id;
                 workspace.capturePolygon.AddRange(loops[shown].polygon);
-                for (int i = 0; i < killer.Length; i++) if (killer[i] == shown) workspace.captureCount++;
             }
             Apply(fighters, killer, reason);
+            if (shown >= 0 && fighters[shown].alive)
+                for (int i = 0; i < killer.Length; i++) if (killer[i] == shown) workspace.captureCount++;
             Array.Clear(loops, 0, loops.Length);
         }
     }
