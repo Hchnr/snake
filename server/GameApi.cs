@@ -250,7 +250,7 @@ sealed class GameApi
     private IResult CreateFriendChallenge(PlayerProgress p, string? id, DateTimeOffset now)
     {
         if (string.IsNullOrEmpty(id) || !data.runs.TryGetValue(id, out var run) || run.playerId != p.playerId ||
-            run.mode != "daily" || !run.completed || run.date != Day(now) || run.rules != DailyMatch.RulesVersion ||
+            run.mode != "daily" || !run.completed || run.date != Day(now) || !DailyMatch.SupportsFriendChallenge(run.rules) ||
             run.score < 0 || run.score > DailyMatch.MaxScoreFor(run.rules)) return Fail("没有可分享的已验证今日成绩");
         string token = FriendChallengeToken(run);
         return Results.Json(new { ok = true, shareToken = token, date = run.date, rules = run.rules, score = run.score });
@@ -264,7 +264,7 @@ sealed class GameApi
         string? payload = Verify(token);
         var parts = payload?.Split(':');
         if (parts == null || parts.Length != 4 || parts[0] != "friend-v1" || parts[1] != Day(now) ||
-            parts[2] != DailyMatch.RulesVersion || !int.TryParse(parts[3], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int score) || score < 0 || score > DailyMatch.MaxScoreFor(parts[2]))
+            !DailyMatch.SupportsFriendChallenge(parts[2]) || !int.TryParse(parts[3], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out int score) || score < 0 || score > DailyMatch.MaxScoreFor(parts[2]))
             return Fail("好友挑战无效或已过期");
         return Results.Json(new { ok = true, date = parts[1], rules = parts[2], score });
     }
@@ -273,7 +273,7 @@ sealed class GameApi
     {
         var run = FindRun(p, request.runId, request.token, "daily", now);
         if (run == null) return Fail("挑战凭证无效或已过期");
-        if (run.completed) return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin, shareToken = run.date == Day(now) && run.rules == DailyMatch.RulesVersion ? FriendChallengeToken(run) : "" });
+        if (run.completed) return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin, shareToken = run.date == Day(now) && DailyMatch.SupportsFriendChallenge(run.rules) ? FriendChallengeToken(run) : "" });
         if (!DailyMatch.SupportsRules(run.rules)) return Fail("挑战规则已更新，请重新开始");
         if (request.actions < 1) return Fail("未检测到操作，本局不发放账号奖励");
         byte[] recording;
@@ -297,7 +297,7 @@ sealed class GameApi
             p.experience += run.questExperience; p.coins += run.questCoins;
         }
         if (run.coins > 0) data.rewards[run.id] = new RewardSource { playerId = p.playerId, kind = "match", baseCoins = run.coins };
-        return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin, shareToken = run.date == Day(now) && run.rules == DailyMatch.RulesVersion ? FriendChallengeToken(run) : "" });
+        return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin, shareToken = run.date == Day(now) && DailyMatch.SupportsFriendChallenge(run.rules) ? FriendChallengeToken(run) : "" });
     }
 
     private static void RecordCompletion(PlayerProgress p, RunRecord run)
