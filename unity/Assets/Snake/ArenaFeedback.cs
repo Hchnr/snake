@@ -10,7 +10,7 @@ namespace SnakeClub
     {
         private AudioSource output, musicOutput;
         private AudioClip homeMusic, battleMusic;
-        private bool interacted, musicPaused, homeAttempted, battleAttempted;
+        private bool interacted, musicPaused, homeAttempted, battleAttempted, homeGenerated, battleGenerated;
         private AudioClip growth, rebound, elimination, capture, star, finish;
         private int tick = -1, length, kills, stars;
         private int captureTick = -1;
@@ -18,10 +18,20 @@ namespace SnakeClub
         private float pulse;
         private bool ended;
         private float nextGrowth, nextHaptic;
+        public int MusicVolume
+        {
+            get => Mathf.Clamp(PlayerPrefs.GetInt("snake.v3.musicVolume", 100), 0, 100);
+            set { PlayerPrefs.SetInt("snake.v3.musicVolume", Mathf.Clamp(value, 0, 100)); PlayerPrefs.Save(); if (musicOutput != null) musicOutput.volume = .25f * MusicVolume / 100f; }
+        }
+        public int EffectsVolume
+        {
+            get => Mathf.Clamp(PlayerPrefs.GetInt("snake.v3.effectsVolume", 100), 0, 100);
+            set { PlayerPrefs.SetInt("snake.v3.effectsVolume", Mathf.Clamp(value, 0, 100)); PlayerPrefs.Save(); if (output != null) output.volume = .38f * EffectsVolume / 100f; }
+        }
         public bool MusicEnabled
         {
             get => PlayerPrefs.GetInt("snake.v3.music", 1) != 0;
-            set { PlayerPrefs.SetInt("snake.v3.music", value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt("snake.v3.music", value ? 1 : 0); PlayerPrefs.Save(); if (!value) SuspendMusic(); }
         }
         public bool HapticsEnabled
         {
@@ -31,7 +41,7 @@ namespace SnakeClub
         public bool Enabled
         {
             get => PlayerPrefs.GetInt("snake.v3.sound", 1) != 0;
-            set { PlayerPrefs.SetInt("snake.v3.sound", value ? 1 : 0); PlayerPrefs.Save(); }
+            set { PlayerPrefs.SetInt("snake.v3.sound", value ? 1 : 0); PlayerPrefs.Save(); if (output != null) output.mute = !value; }
         }
 
         private void Awake() => Initialize();
@@ -45,9 +55,9 @@ namespace SnakeClub
         {
             output = GetComponent<AudioSource>();
             if (output == null) output = gameObject.AddComponent<AudioSource>();
-            output.playOnAwake = false; output.spatialBlend = 0; output.volume = .38f;
+            output.playOnAwake = false; output.spatialBlend = 0; output.volume = .38f * EffectsVolume / 100f; output.mute = !Enabled;
             if (musicOutput == null) musicOutput = gameObject.AddComponent<AudioSource>();
-            musicOutput.playOnAwake = false; musicOutput.spatialBlend = 0; musicOutput.loop = true; musicOutput.volume = .25f;
+            musicOutput.playOnAwake = false; musicOutput.spatialBlend = 0; musicOutput.loop = true; musicOutput.volume = .25f * MusicVolume / 100f;
             growth = MakeClip("Growth", 700, 960, .07f);
             rebound = MakeClip("Rebound", 300, 580, .16f);
             elimination = MakeClip("Elimination", 440, 880, .20f);
@@ -112,12 +122,23 @@ namespace SnakeClub
                 if (battle) battleAttempted = true; else homeAttempted = true;
                 try
                 {
-                    float[] samples = MusicComposer.Create(battle);
-                    desired = AudioClip.Create(battle ? "Original battle loop" : "Original home loop", samples.Length, 1, MusicComposer.SampleRate, false);
-                    if (desired != null && !desired.SetData(samples, 0)) { Destroy(desired); desired = null; }
+                    // Resources clips must be cleared for the game's actual distribution rights.
+                    try { desired = Resources.Load<AudioClip>(battle ? "Music/Battle" : "Music/Home"); }
+                    catch (Exception) { desired = null; }
+                    if (desired == null)
+                    {
+                        float[] samples = MusicComposer.Create(battle);
+                        desired = AudioClip.Create(battle ? "Original battle loop" : "Original home loop", samples.Length, 1, MusicComposer.SampleRate, false);
+                        if (battle) battleGenerated = desired != null; else homeGenerated = desired != null;
+                        if (desired != null && !desired.SetData(samples, 0))
+                        {
+                            Destroy(desired); desired = null;
+                            if (battle) battleGenerated = false; else homeGenerated = false;
+                        }
+                    }
                     if (battle) battleMusic = desired; else homeMusic = desired;
                 }
-                catch (Exception) { if (desired != null) Destroy(desired); desired = null; }
+                catch (Exception) { if (desired != null && (battle ? battleGenerated : homeGenerated)) Destroy(desired); desired = null; }
                 if (desired == null) { musicOutput.Stop(); musicOutput.clip = null; musicPaused = false; return; }
             }
             if (musicOutput.clip != desired)
@@ -154,7 +175,7 @@ namespace SnakeClub
 
         private void OnDestroy()
         {
-            if (homeMusic != null) Destroy(homeMusic); if (battleMusic != null) Destroy(battleMusic);
+            if (homeGenerated && homeMusic != null) Destroy(homeMusic); if (battleGenerated && battleMusic != null) Destroy(battleMusic);
             if (growth != null) Destroy(growth); if (rebound != null) Destroy(rebound);
             if (elimination != null) Destroy(elimination); if (capture != null) Destroy(capture); if (star != null) Destroy(star); if (finish != null) Destroy(finish);
         }

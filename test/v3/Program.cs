@@ -82,6 +82,8 @@ static void PendingRetries()
 
 static void MusicBehavior()
 {
+    Check(AudioLevels.Next(100) == 75 && AudioLevels.Next(75) == 50 && AudioLevels.Next(50) == 25 && AudioLevels.Next(25) == 0 && AudioLevels.Next(0) == 100, "volume controls did not cycle through their levels");
+    Check(AudioLevels.Next(1000) == 75 && AudioLevels.Next(-4) == 100, "invalid stored volume was not clamped");
     Check(!MusicPolicy.ShouldPlay(true, false, true, false, false), "music started before user interaction");
     Check(MusicPolicy.ShouldPlay(true, true, true, false, false), "music did not start after interaction");
     Check(!MusicPolicy.ShouldPlay(false, true, true, false, false), "music ignored its independent setting");

@@ -166,6 +166,16 @@ namespace SnakeClub.Core
         }
     }
 
+    public static class AudioLevels
+    {
+        // Five explicit levels make the setting usable without a tiny slider.
+        public static int Next(int value)
+        {
+            value = Math.Max(0, Math.Min(100, value));
+            return value <= 0 ? 100 : Math.Max(0, ((value - 1) / 25) * 25);
+        }
+    }
+
     public static class MusicPolicy
     {
         public static bool ShouldPlay(bool enabled, bool interacted, bool focused, bool paused, bool adShowing) =>

@@ -19,7 +19,7 @@ namespace SnakeClub
         private RawImage background, portrait, skinPortrait, resultPortrait;
         private Text level, coins, notice, primaryText, primaryHint, caveText, soundText;
         private Text skinName, skinDescription, skinActionText, skinNotice, skinTrialText;
-        private Text resultTitle, resultStats, resultHighlight, resultDetails, resultAdText, settingsSound, settingsEffects, settingsHaptics, settingsMusic;
+        private Text resultTitle, resultStats, resultHighlight, resultDetails, resultAdText, settingsSound, settingsEffects, settingsHaptics, settingsMusic, settingsMusicVolume, settingsEffectsVolume;
         private readonly Image[] skinCards = new Image[SkinCatalog.All.Length];
         private readonly RawImage[] skinThumbnails = new RawImage[SkinCatalog.All.Length];
         private readonly Text[] skinStates = new Text[SkinCatalog.All.Length];
@@ -32,7 +32,7 @@ namespace SnakeClub
         private Font font;
         private Action onStart, onSkins, onCaves, onMore, onSound;
         private Action onSkinBack, onSkinTrial;
-        private Action onResultRetry, onResultMenu, onResultShare, onResultAd, onReconnect, onEffects, onHaptics, onMusic;
+        private Action onResultRetry, onResultMenu, onResultShare, onResultAd, onReconnect, onEffects, onHaptics, onMusic, onMusicVolume, onEffectsVolume;
         private Action<int> onSkinSelect, onSkinEquip;
         private int selectedPreview, skinPageIndex;
         private Rect lastSafe;
@@ -132,7 +132,8 @@ namespace SnakeClub
         }
 
         public void SetupReconnect(Action reconnectAction) => onReconnect = reconnectAction;
-        public void SetupPreferences(Action effects, Action haptics, Action music) { onEffects = effects; onHaptics = haptics; onMusic = music; }
+        public void SetupPreferences(Action effects, Action haptics, Action music, Action musicVolume, Action effectsVolume)
+        { onEffects = effects; onHaptics = haptics; onMusic = music; onMusicVolume = musicVolume; onEffectsVolume = effectsVolume; }
 
         public void SetPage(bool skins, bool results = false)
         {
@@ -150,7 +151,7 @@ namespace SnakeClub
 
         public void SetState(PlayerProgress profile, Texture character, string message, bool busy, bool connected, bool sound,
             int equipped, int preview, bool referencesEnabled, bool trialAvailable, bool friendChallenge = false,
-            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true)
+            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100)
         {
             if (canvas == null || profile == null) return;
             reducedEffects = reduce;
@@ -165,6 +166,8 @@ namespace SnakeClub
             Set(soundText, sound ? "音效：开" : "音效：关");
             Set(settingsSound, sound ? "音效：开" : "音效：关");
             Set(settingsMusic, music ? "音乐：开" : "音乐：关");
+            Set(settingsMusicVolume, "音量 " + musicVolume + "%");
+            Set(settingsEffectsVolume, "音量 " + effectsVolume + "%");
             hapticsButton.interactable = hapticsSupported;
             Set(settingsHaptics, !hapticsSupported ? "震动：当前平台不可用" : haptics ? "震动：开" : "震动：关");
             Set(settingsEffects, reducedEffects ? "画面特效：简洁" : "画面特效：丰富");
@@ -222,10 +225,14 @@ namespace SnakeClub
             veil.raycastTarget = true;
             Panel("Settings panel", settingsModal, new Rect(130, 390, 820, 1080), new Color(.035f, .13f, .19f, .98f));
             MakeText("Settings title", settingsModal, new Rect(180, 430, 720, 90), "游戏设置", 47, Color.white, TextAnchor.MiddleCenter, true);
-            var sound = MakeButton("Settings sound", settingsModal, new Rect(220, 550, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onSound?.Invoke());
-            settingsSound = MakeText("Settings sound label", sound.transform, new Rect(0, 0, 640, 105), "音效：开", 28, Color.white, TextAnchor.MiddleCenter, true);
-            var musicButton = MakeButton("Settings music", settingsModal, new Rect(220, 670, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onMusic?.Invoke());
-            settingsMusic = MakeText("Settings music label", musicButton.transform, new Rect(0, 0, 640, 105), "音乐：开", 28, Color.white, TextAnchor.MiddleCenter, true);
+            var sound = MakeButton("Settings sound", settingsModal, new Rect(220, 550, 300, 105), new Color(.12f, .35f, .40f, .98f), () => onSound?.Invoke());
+            settingsSound = MakeText("Settings sound label", sound.transform, new Rect(0, 0, 300, 105), "音效：开", 28, Color.white, TextAnchor.MiddleCenter, true);
+            var musicButton = MakeButton("Settings music", settingsModal, new Rect(220, 670, 300, 105), new Color(.12f, .35f, .40f, .98f), () => onMusic?.Invoke());
+            settingsMusic = MakeText("Settings music label", musicButton.transform, new Rect(0, 0, 300, 105), "音乐：开", 28, Color.white, TextAnchor.MiddleCenter, true);
+            var soundVolume = MakeButton("Settings effects volume", settingsModal, new Rect(540, 550, 320, 105), new Color(.09f, .24f, .30f, .98f), () => onEffectsVolume?.Invoke());
+            settingsEffectsVolume = MakeText("Settings effects volume label", soundVolume.transform, new Rect(0, 0, 320, 105), "音量 100%", 25, Color.white, TextAnchor.MiddleCenter, true);
+            var musicVolumeButton = MakeButton("Settings music volume", settingsModal, new Rect(540, 670, 320, 105), new Color(.09f, .24f, .30f, .98f), () => onMusicVolume?.Invoke());
+            settingsMusicVolume = MakeText("Settings music volume label", musicVolumeButton.transform, new Rect(0, 0, 320, 105), "音量 100%", 25, Color.white, TextAnchor.MiddleCenter, true);
             hapticsButton = MakeButton("Settings haptics", settingsModal, new Rect(220, 790, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onHaptics?.Invoke());
             settingsHaptics = MakeText("Settings haptics label", hapticsButton.transform, new Rect(0, 0, 640, 105), "震动：关", 28, Color.white, TextAnchor.MiddleCenter, true);
             MakeText("Settings controls label", settingsModal, new Rect(220, 1070, 640, 105), "控制：全屏拖动 · 双指加速", 28, Color.white, TextAnchor.MiddleCenter, true);
