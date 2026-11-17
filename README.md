@@ -59,6 +59,20 @@ SNAKE_PORT=2568 SNAKE_DEV_AUTH=1 npm run server:v3
 SNAKE_PORT=2568 SNAKE_DEV_AUTH=1 SNAKE_SQLITE_FILE=server/data/snake.sqlite npm run server:v3
 ```
 
+### SQLite 备份与恢复演练
+
+在线备份使用 SQLite Backup API 读取一致性快照，包含尚未 checkpoint 的 WAL 数据；工具检查数据库完整性和游戏表结构，并以仅当前用户可读写的权限创建新文件，拒绝覆盖已有文件。目标目录须预先创建并限制访问，正式备份还需要异地加密保存、保留策略和监控。
+
+```bash
+python3 scripts/backup-sqlite.py /path/to/game.sqlite /secure/backups/game-2026-11-17.sqlite
+```
+
+恢复时先停止所有指向目标数据库的服务，保留原数据库及其 `-wal`、`-shm` 文件；使用该工具将备份写入一个**新的路径**，将测试服务的 `SNAKE_SQLITE_FILE` 指向该路径，用原有 `SNAKE_SESSION_KEY` 校验账号、资产和排行榜，再根据运维切换流程上线。不要把快照直接覆盖正在使用的数据库，或把旧 WAL 文件混入恢复路径。测试套件会在源服务运行时备份并启动隔离副本，但这不能代替生产环境定期恢复演练。
+
+```bash
+python3 scripts/backup-sqlite.py /secure/backups/game-2026-11-17.sqlite /safe/restore/game.sqlite
+```
+
 `SNAKE_RATE_LIMIT_PER_MIN` 可设置单进程、按直接连接 IP 的每分钟请求上限，`/health` 除外；反向代理环境需另外设计可信来源与全局限流。`SNAKE_ENV=production` 要求指定 SQLite 和至少 32 字符的稳定 `SNAKE_SESSION_KEY`，并禁止开发登录和开发广告模拟；这些启动检查不代表服务已具备生产部署条件。
 
 客户端 API 地址与开发登录开关位于 `unity/Assets/Resources/GameConfig.json`；默认地址只适用于同一台电脑。公开服务需要配置手机可访问的 HTTPS 地址、抖音域名白名单和平台身份鉴权。抖音 `AppID`、`AppSecret` 只通过服务端环境变量 `SNAKE_DOUYIN_APPID` 与 `SNAKE_DOUYIN_SECRET` 提供，**不要提交密钥或写进客户端**。`SNAKE_DEV_ADS=1` 仅供显式本地开发模拟，不能用于生产发奖。
