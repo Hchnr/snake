@@ -84,6 +84,8 @@ python3 scripts/backup-sqlite.py /secure/backups/game-2026-11-17.sqlite /safe/re
 
 `SNAKE_RATE_LIMIT_PER_MIN` 可设置单进程、按直接连接 IP 的每分钟请求上限，`/health` 除外；反向代理环境需另外设计可信来源与全局限流。`SNAKE_ENV=production` 要求指定 SQLite 和至少 32 字符的稳定 `SNAKE_SESSION_KEY`，并禁止开发登录和开发广告模拟；这些启动检查不代表服务已具备生产部署条件。
 
+普通 PvE 当前仅凭客户端上报的时长和操作次数结算，不能证明对局真实。因此生产模式暂不签发新的普通 PvE 对局，也不结算未完成的旧普通 PvE 对局；已完成的对局仍可凭原凭证查询回执。客户端会退回无账号奖励的练习，开发环境保留原有联调用途。只有完成规则版本化、可信回放和目标平台验证后才可重新开放正式奖励；这一保护不代表其他功能已满足发布要求。
+
 客户端 API 地址与开发登录开关位于 `unity/Assets/Resources/GameConfig.json`；默认地址只适用于同一台电脑。公开服务需要配置手机可访问的 HTTPS 地址、抖音域名白名单和平台身份鉴权。抖音 `AppID`、`AppSecret` 只通过服务端环境变量 `SNAKE_DOUYIN_APPID` 与 `SNAKE_DOUYIN_SECRET` 提供，**不要提交密钥或写进客户端**。`SNAKE_DEV_ADS=1` 仅供显式本地开发模拟，不能用于生产发奖。
 
 ## Unity 工程与抖音适配
