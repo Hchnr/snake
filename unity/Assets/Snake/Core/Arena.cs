@@ -274,6 +274,35 @@ namespace SnakeClub.Core
         }
     }
 
+    // Shows only an observed transition caused by the local player. A dead
+    // owner cannot receive a kill in the simulation, so suppress that case.
+    public sealed class EliminationFeedback
+    {
+        private readonly HashSet<string> living = new HashSet<string>();
+        private int lastTick = -1, untilTick = -1;
+        private string text = "";
+        public void Reset() { living.Clear(); lastTick = -1; untilTick = -1; text = ""; }
+        public void Observe(ArenaState world, string playerId)
+        {
+            if (world == null || string.IsNullOrEmpty(playerId)) return;
+            if (world.tick < lastTick) Reset();
+            lastTick = world.tick;
+            var player = world.snakes.Find(s => s.id == playerId);
+            foreach (var snake in world.snakes)
+            {
+                if (string.IsNullOrEmpty(snake.id)) continue;
+                if (snake.alive) { living.Add(snake.id); continue; }
+                if (!living.Remove(snake.id) || snake.id == playerId || snake.eliminatedBy != playerId || player == null || !player.alive) continue;
+                string action = snake.eliminationReason == "capture" ? "收圈捕获" : snake.eliminationReason == "trail" ? "轨迹拦截" : snake.eliminationReason == "head" ? "正面胜出" : "";
+                if (action.Length == 0) continue;
+                string name = string.IsNullOrEmpty(snake.name) ? "对手" : snake.name;
+                if (name.Length > 12) name = name.Substring(0, 12) + "…";
+                text = action + " · " + name; untilTick = world.tick + 40;
+            }
+        }
+        public string Current(ArenaState world) => world != null && world.phase == "running" && world.tick <= untilTick ? text : "";
+    }
+
     // The UI may indicate an off-screen objective, but never invents one.
     public static class EventTargetIndicator
     {

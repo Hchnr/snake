@@ -51,6 +51,7 @@ namespace SnakeClub
         private readonly DragSteering dragSteering = new DragSteering();
         private readonly MatchHighlights matchHighlights = new MatchHighlights();
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
+        private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
         private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
         private bool firstRun, tutorialHints = true, hasSteered, tutorialClosedLoop, tutorialRebounded;
@@ -162,7 +163,7 @@ namespace SnakeClub
             }
             arena.Start();
             state = arena.State;
-            matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset();
+            matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             stepTimer = 0;
             direction = new Point(1, 0);
             controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
@@ -324,7 +325,7 @@ namespace SnakeClub
                 {
                     byte heading = EncodeDirection(direction);
                     daily.Step(heading, pointerBoost);
-                    matchHighlights.Observe(daily.State, playerId); ObserveTutorial(daily.State); eventOutcome.Observe(daily.State, playerId);
+                    matchHighlights.Observe(daily.State, playerId); ObserveTutorial(daily.State); eventOutcome.Observe(daily.State, playerId); eliminationFeedback.Observe(daily.State, playerId);
                     dailyInputs.Add(heading); dailyInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                     stepTimer -= .05f;
                 }
@@ -337,7 +338,7 @@ namespace SnakeClub
                 {
                     if (inGame) arena.SetInput(playerId, direction, pointerBoost);
                     arena.Tick(.05f);
-                    if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); }
+                    if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); eliminationFeedback.Observe(arena.State, playerId); }
                     if (inGame && depthMode && arena.State.phase == "running" &&
                         DepthChallenge.Evaluate(depthRoom, arena.State, playerId) != DepthChallenge.RoomStatus.InProgress) arena.EndRound();
                     stepTimer -= .05f;
@@ -579,6 +580,12 @@ namespace SnakeClub
             {
                 string captureText = state.captureCount > 0 ? "收圈捕获 " + state.captureCount + " 个对手！" : "轨迹闭合！";
                 Label(new Rect(240, 520, 600, 90), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
+            }
+            string elimination = eliminationFeedback.Current(state);
+            if (!string.IsNullOrEmpty(elimination))
+            {
+                Panel(new Rect(300, 1080, 480, 72), new Color(.035f, .09f, .13f, .86f));
+                Label(new Rect(315, 1085, 450, 62), elimination, 24, new Color(.94f, .96f, .78f), TextAnchor.MiddleCenter, true);
             }
             if (!paused && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
