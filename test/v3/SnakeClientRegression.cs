@@ -25,6 +25,7 @@ namespace SnakeClub.Tests.Editor
                 Debug.Log("PASS Unity fixed PvE preview requires explicit offline configuration");
                 TestFixedPvePreviewFlow();
                 TestPracticeTutorialAccess();
+                TestBackgroundSimulation();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");
@@ -149,6 +150,37 @@ namespace SnakeClub.Tests.Editor
             finally { UnityEngine.Object.DestroyImmediate(owner); }
         }
 
+        private static void TestBackgroundSimulation()
+        {
+            var root = new GameObject("Background simulation regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                Field("api").SetValue(app, root.AddComponent<GameApiClient>());
+                Field("arenaRenderer").SetValue(app, root.AddComponent<ArenaRenderer>());
+                Field("connection").SetValue(app, root.AddComponent<RoomConnection>());
+                Field("feedback").SetValue(app, root.AddComponent<ArenaFeedback>());
+                Call("BeginPve", new object[] { null });
+                var arena = (Arena)Field("arena").GetValue(app);
+                Field("platformVisible").SetValue(app, false); Field("paused").SetValue(app, false); Field("stepTimer").SetValue(app, .19f);
+                Call("Update");
+                Require(arena.State.tick == 0 && ((System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app)).Count == 0,
+                    "ordinary PvE advanced while platform was hidden");
+                Field("platformVisible").SetValue(app, true); Call("BeginDaily", new object[] { null });
+                var daily = (DailyMatch)Field("daily").GetValue(app);
+                Field("adShowing").SetValue(app, true); Field("stepTimer").SetValue(app, .19f);
+                Call("Update");
+                Require(daily.State.tick == 0 && ((System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app)).Count == 0,
+                    "daily challenge advanced while ad was displayed");
+                Debug.Log("PASS Unity ordinary and daily simulations stop when suspended");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
         private static void TestPracticeTutorialAccess()
         {
             var root = new GameObject("Practice account regression");
@@ -245,6 +277,28 @@ namespace SnakeClub.Tests.Editor
                 Field("paused").SetValue(app, true); Call("AdvanceFixedPve", .2f);
                 Require(world.Tick == 4 && inputs.Count == 8, "paused preview advanced or recorded input");
                 Field("paused").SetValue(app, false);
+                var visibilityMethod = type.GetMethod("OnPlatformVisibilityChanged", flags);
+                var visibilityHandler = (Action<bool>)Delegate.CreateDelegate(typeof(Action<bool>), app, visibilityMethod);
+                api.PlatformVisibilityChanged += visibilityHandler;
+                var notify = typeof(GameApiClient).GetMethod("NotifyPlatformVisibility", flags);
+                notify.Invoke(api, new object[] { false });
+                Require(!(bool)Field("platformVisible").GetValue(app) && (bool)Field("paused").GetValue(app) && !(bool)Field("pointerBoost").GetValue(app),
+                    "platform hide did not suspend the offline game and input");
+                Field("paused").SetValue(app, false); Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 4 && inputs.Count == 8, "platform-hidden preview advanced or recorded input");
+                Field("paused").SetValue(app, true);
+                notify.Invoke(api, new object[] { true });
+                Require((bool)Field("paused").GetValue(app), "platform show resumed the game without player action");
+                Field("paused").SetValue(app, false);
+                Field("adShowing").SetValue(app, true); Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 4 && inputs.Count == 8, "preview advanced during an ad");
+                Field("adShowing").SetValue(app, false); Field("appPaused").SetValue(app, true); Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 4 && inputs.Count == 8, "application-paused preview advanced");
+                Field("appPaused").SetValue(app, false); Field("appFocused").SetValue(app, false); Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 4 && inputs.Count == 8, "unfocused preview advanced");
+                Field("appFocused").SetValue(app, true); Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 8 && inputs.Count == 16, "visible preview failed to resume after suspension");
+                api.PlatformVisibilityChanged -= visibilityHandler;
                 Field("controlActions").SetValue(app, 1);
                 var profile = (PlayerProgress)Field("practiceProfile").GetValue(app);
                 int previousMatches = profile.completedMatches;
