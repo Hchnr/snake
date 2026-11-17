@@ -11,6 +11,8 @@ const chrome = spawn(process.argv[2], [
 ], { stdio: 'ignore' });
 let ws;
 let finished = false;
+const reloadOnMarker = process.argv[4] === '--reload-on-marker';
+let reloaded = false;
 function done(code, message) {
   if (finished) return;
   finished = true;
@@ -48,7 +50,15 @@ setTimeout(() => done(1, 'Timed out waiting for WebGL vector'), 210000).unref();
     const event = JSON.parse(e.data);
     if (event.method === 'Runtime.consoleAPICalled') {
       const text = event.params.args.map(a => a.value || a.description || '').join(' ');
-      if (text.includes('SNAKE_FIXED_VECTOR ')) done(0, text.slice(text.indexOf('SNAKE_FIXED_VECTOR ') + 19));
+      if (reloadOnMarker && text.includes('SNAKE_PENDING_RELOAD') && !reloaded) {
+        reloaded = true;
+        // Allow the asynchronous WebGL PlayerPrefs flush to reach IndexedDB.
+        setTimeout(() => send('Page.reload'), 500);
+      }
+      if (text.includes('SNAKE_FIXED_VECTOR ')) {
+        if (reloadOnMarker && !reloaded) done(1, 'Recovery finished before the requested reload');
+        else done(0, text.slice(text.indexOf('SNAKE_FIXED_VECTOR ') + 19));
+      }
     }
     if (event.method === 'Runtime.exceptionThrown') done(1, 'Browser exception: ' + event.params.exceptionDetails.text);
   };
