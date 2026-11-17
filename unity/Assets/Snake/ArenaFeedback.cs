@@ -14,7 +14,12 @@ namespace SnakeClub
         private int bossShield = -1;
         private float pulse;
         private bool ended;
-        private float nextGrowth;
+        private float nextGrowth, nextHaptic;
+        public bool HapticsEnabled
+        {
+            get => PlayerPrefs.GetInt("snake.v3.haptics", 0) != 0;
+            set { PlayerPrefs.SetInt("snake.v3.haptics", value ? 1 : 0); PlayerPrefs.Save(); }
+        }
         public bool Enabled
         {
             get => PlayerPrefs.GetInt("snake.v3.sound", 1) != 0;
@@ -52,6 +57,17 @@ namespace SnakeClub
                 length = snake.segments.Count; kills = snake.kills; stars = snake.starPoints;
                 bossShield = boss != null ? boss.bossShield : -1;
                 pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick; tick = state.tick; return;
+            }
+            bool eliminationOccurred = snake.kills > kills;
+            bool captureOccurred = state.captureOwner == playerId && state.captureCount > 0 && state.captureTick >= 0 && state.captureTick != captureTick;
+            bool reboundOccurred = snake.rebound > 0 && pulse <= 0;
+            bool starOccurred = snake.starPoints > stars;
+            bool bossHit = boss != null && bossShield >= 0 && boss.bossShield < bossShield;
+            if (HapticsEnabled && GamePlatform.SupportsHaptics && Time.unscaledTime >= nextHaptic &&
+                (eliminationOccurred || captureOccurred || reboundOccurred || starOccurred || bossHit))
+            {
+                GamePlatform.VibrateShort();
+                nextHaptic = Time.unscaledTime + .5f;
             }
             if (Enabled)
             {

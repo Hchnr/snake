@@ -45,7 +45,8 @@ namespace SnakeClub
                 index => previewSkin = index, EquipPreviewSkin, TrialPreviewSkin);
             homeScreen.SetupReconnect(ConnectProfile);
             homeScreen.SetupPreferences(
-                () => { reducedEffects = !reducedEffects; PlayerPrefs.SetInt("snake.v031.reducedEffects", reducedEffects ? 1 : 0); PlayerPrefs.Save(); });
+                () => { reducedEffects = !reducedEffects; PlayerPrefs.SetInt("snake.v031.reducedEffects", reducedEffects ? 1 : 0); PlayerPrefs.Save(); },
+                () => feedback.HapticsEnabled = !feedback.HapticsEnabled);
             homeScreen.SetupResults(
                 () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
                 () => GamePlatform.ShareChallenge(api.Date, message => { if (!string.IsNullOrEmpty(message)) resultNote = message; }),
