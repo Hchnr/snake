@@ -73,6 +73,7 @@ var cases = new (string name, Action run)[]
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
     ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
+    ("integer PvE world replays AI and fruit deterministically", PveFixedWorldCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
@@ -991,6 +992,30 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveFixedWorldCases()
+{
+    foreach (int seed in new[] { 0, 1, 12345, int.MaxValue })
+    {
+        var profile = new PlayerProgress { selectedSkin = 2, talents = new[] { 1, 2, 0, 1, 0, 0, 0, 0, 0 } };
+        var a = new PveFixedWorld(seed, true, profile); var b = new PveFixedWorld(seed, true, profile);
+        Check(a.Fighters.Count == 8 && a.Fruit.Count == Arena.FruitCount, "missing opponents or fruit");
+        for (int i = 0; i < 1200 && !a.Finished; i++)
+        {
+            a.Step((byte)(i * 13), i % 30 > 20); b.Step((byte)(i * 13), i % 30 > 20);
+            Check(a.Tick == b.Tick && a.Finished == b.Finished && a.Winner == b.Winner, "world outcome differed");
+            for (int j = 0; j < a.Fighters.Count; j++)
+            {
+                var x = a.Fighters[j]; var y = b.Fighters[j];
+                Check(x.alive == y.alive && x.kills == y.kills && x.motion.Length == y.motion.Length && x.motion.X == y.motion.X && x.motion.Y == y.motion.Y, "world fighter differed");
+            }
+            for (int j = 0; j < a.Fruit.Count; j++)
+                Check(a.Fruit[j].position.x == b.Fruit[j].position.x && a.Fruit[j].position.y == b.Fruit[j].position.y && a.Fruit[j].color == b.Fruit[j].color, "world fruit differed");
+        }
+        Check(a.Finished && a.Tick <= 1200, "first-run match did not finish");
+        int ended = a.Tick; a.Step(0, false); Check(a.Tick == ended, "ended match continued");
+    }
 }
 
 static void PveFixedCombatCases()
