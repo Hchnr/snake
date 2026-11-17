@@ -18,10 +18,23 @@ namespace SnakeClub.Core
         public const int TickRate = 20;
         private uint random;
         private readonly int maxTicks;
+        private readonly int eventType;
+        private int eventTarget = -1, starHolder = -1, starTicks;
+        private CapturePoint eventCenter, star;
+        private bool eventActive, eventDone;
+        public string EventKind => !eventActive && !eventDone ? "" : eventType == 0 ? "bounty" : eventType == 1 ? "star" : "fruit";
+        public string EventStatus => eventActive ? "active" : eventDone ? "ended" : "";
+        public string EventTarget => eventActive && eventTarget >= 0 ? fighters[eventTarget].id : "";
+        public CapturePoint EventCenter => eventCenter;
+        public CapturePoint StarPosition => star;
+        public string StarHolder => eventActive && starHolder >= 0 ? fighters[starHolder].id : "";
+        public int StarTicks => starTicks;
+        public int EventTicksRemaining => eventActive ? Math.Max(0, 800 - Tick) : 0;
         private readonly PveFixedBonuses playerBonuses;
         private readonly PveFixedFighter[] fighters = new PveFixedFighter[8];
         private readonly int[] botTimer = new int[8];
         private readonly byte[] botDirection = new byte[8];
+        private readonly bool[] previouslyAlive = new bool[8];
         private readonly List<PveFixedFruit> fruit = new List<PveFixedFruit>(Arena.FruitCount);
         public IReadOnlyList<PveFixedFighter> Fighters => fighters;
         public IReadOnlyList<PveFixedFruit> Fruit => fruit;
@@ -32,6 +45,7 @@ namespace SnakeClub.Core
         {
             random = unchecked((uint)seed); if (random == 0) random = 0x6d2b79f5;
             maxTicks = (firstRun ? 60 : 90) * TickRate;
+            uint selection = unchecked((uint)seed); eventType = (int)((selection ^ (selection >> 16)) % 3);
             playerBonuses = PveFixedBonuses.From(profile);
             for (int i = 0; i < Arena.FruitCount; i++) fruit.Add(NewFruit());
             for (int i = 0; i < fighters.Length; i++)
@@ -88,6 +102,18 @@ namespace SnakeClub.Core
                 vx += (long)(fighters[nearest].motion.X - self.motion.X) * sign;
                 vy += (long)(fighters[nearest].motion.Y - self.motion.Y) * sign;
             }
+            if (eventActive && eventType == 1)
+            {
+                if (starHolder >= 0 && starHolder != index && fighters[starHolder].alive)
+                {
+                    long dx = fighters[starHolder].motion.X - self.motion.X, dy = fighters[starHolder].motion.Y - self.motion.Y;
+                    if (dx * dx + dy * dy < 45000L * 45000L) { vx += dx * 4; vy += dy * 4; }
+                }
+                else if (starHolder == index && nearest >= 0 && closest < 18000L * 18000L)
+                { vx += (long)(self.motion.X - fighters[nearest].motion.X) * 4; vy += (long)(self.motion.Y - fighters[nearest].motion.Y) * 4; }
+                else if (starHolder < 0 && DistanceSquared(star.x - self.motion.X, star.y - self.motion.Y) < 45000L * 45000L)
+                { vx += (long)(star.x - self.motion.X) * 2; vy += (long)(star.y - self.motion.Y) * 2; }
+            }
             if (Math.Abs(self.motion.X) > 95000) vx -= (long)self.motion.X * 4;
             if (Math.Abs(self.motion.Y) > 95000) vy -= (long)self.motion.Y * 4;
             byte wander = (byte)Next(256);
@@ -100,10 +126,73 @@ namespace SnakeClub.Core
             }
             return botDirection[index] = (byte)heading;
         }
+        private static int ClampEvent(int value) => Math.Max(-107280, Math.Min(107280, value));
+        private void StartEvent()
+        {
+            eventActive = true;
+            var player = fighters[0].motion;
+            if (eventType == 0)
+            {
+                var candidates = new List<int>();
+                for (int i = 1; i < fighters.Length; i++) if (fighters[i].alive) candidates.Add(i);
+                if (candidates.Count == 0) { EndEvent(); return; }
+                eventTarget = candidates[Next(candidates.Count)];
+                fighters[eventTarget].motion.Grow(Math.Max(0, 20 - fighters[eventTarget].motion.Length));
+            }
+            else if (eventType == 1)
+            {
+                byte direction = (byte)Next(256);
+                star = new CapturePoint(ClampEvent(player.X + PveFixedMotion.DirectionX(direction) * 9000 / 10000),
+                    ClampEvent(player.Y + PveFixedMotion.DirectionY(direction) * 9000 / 10000));
+                starHolder = -1; starTicks = 0;
+            }
+            else
+            {
+                byte direction = (byte)(player.Angle >> 8);
+                eventCenter = new CapturePoint(ClampEvent(player.X + PveFixedMotion.DirectionX(direction)),
+                    ClampEvent(player.Y + PveFixedMotion.DirectionY(direction)));
+                for (int i = 0; i < Math.Min(12, fruit.Count); i++)
+                {
+                    byte angle = (byte)Next(256); int radius = 2000 + Next(10001);
+                    fruit[i] = new PveFixedFruit(new CapturePoint(ClampEvent(eventCenter.x + PveFixedMotion.DirectionX(angle) * radius / 10000),
+                        ClampEvent(eventCenter.y + PveFixedMotion.DirectionY(angle) * radius / 10000)), Next(4));
+                }
+            }
+        }
+        private void EndEvent() { eventActive = false; eventDone = true; eventTarget = -1; starHolder = -1; starTicks = 0; }
+        public static void AwardEventElimination(PveFixedFighter owner, PveFixedFighter victim, string kind, string target, CapturePoint center)
+        {
+            if (owner == null || victim == null || !victim.credited || victim.eliminatedBy != owner.id) return;
+            int points = kind == "bounty" && victim.id == target ? 2 : kind == "fruit" &&
+                DistanceSquared(owner.motion.X - center.x, owner.motion.Y - center.y) <= 14000L * 14000L ? 1 : 0;
+            owner.eventPoints = Math.Min(2, owner.eventPoints + points);
+        }
+        private void UpdateEvent()
+        {
+            if (!eventActive) return;
+            if (Tick >= 800 || (eventType == 0 && (eventTarget < 0 || !fighters[eventTarget].alive))) { EndEvent(); return; }
+            if (eventType != 1) return;
+            if (starHolder >= 0)
+            {
+                var holder = fighters[starHolder]; star = holder.motion.Segments[0];
+                if (!holder.alive) { starHolder = -1; starTicks = 0; }
+                else if (++starTicks >= 8 * TickRate)
+                {
+                    holder.eventPoints = Math.Min(2, holder.eventPoints + 1); starTicks = 0;
+                    if (holder.eventPoints >= 2) { EndEvent(); return; }
+                }
+            }
+            if (starHolder < 0)
+                for (int i = 0; i < fighters.Length; i++)
+                    if (fighters[i].alive && DistanceSquared(fighters[i].motion.X - star.x, fighters[i].motion.Y - star.y) <= 1500L * 1500L)
+                    { starHolder = i; break; }
+        }
         public void Step(byte heading, bool boost)
         {
             if (Finished) return;
             Tick++;
+            if (Tick == 15 * TickRate && !eventDone) StartEvent();
+            for (int i = 0; i < fighters.Length; i++) previouslyAlive[i] = fighters[i].alive;
             for (int i = 0; i < fighters.Length; i++)
             {
                 var fighter = fighters[i]; if (!fighter.alive) continue;
@@ -112,6 +201,12 @@ namespace SnakeClub.Core
                     i == 0 ? playerBonuses : new PveFixedBonuses());
             }
             PveFixedCombat.Resolve(fighters);
+            if (eventActive)
+                for (int i = 0; i < fighters.Length; i++)
+                    if (previouslyAlive[i] && !fighters[i].alive && fighters[i].credited)
+                        for (int j = 0; j < fighters.Length; j++)
+                            if (fighters[j].id == fighters[i].eliminatedBy)
+                            { AwardEventElimination(fighters[j], fighters[i], EventKind, EventTarget, eventCenter); break; }
             for (int i = 0; i < fruit.Count; i++)
                 for (int j = 0; j < fighters.Length; j++)
                 {
@@ -120,6 +215,7 @@ namespace SnakeClub.Core
                     if (DistanceSquared(fighter.motion.X - fruit[i].position.x, fighter.motion.Y - fruit[i].position.y) > (long)radius * radius) continue;
                     fighter.motion.Grow(1); fruit[i] = NewFruit(); break;
                 }
+            UpdateEvent();
             int living = 0, best = -1; bool tied = false;
             for (int i = 0; i < fighters.Length; i++)
             {
@@ -130,7 +226,7 @@ namespace SnakeClub.Core
                 else if (fighters[i].motion.Length == fighters[best].motion.Length && fighters[i].kills == fighters[best].kills) tied = true;
             }
             if (!fighters[0].alive || living <= 1 || Tick >= maxTicks)
-            { Finished = true; Winner = best >= 0 && !tied ? fighters[best].id : ""; }
+            { Finished = true; Winner = best >= 0 && !tied ? fighters[best].id : ""; if (eventActive) EndEvent(); }
         }
     }
 }
