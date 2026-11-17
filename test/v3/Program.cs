@@ -241,6 +241,14 @@ static void PlatformLoginCases()
 
 static void IndependentSettlementRetries()
 {
+    foreach (string error in new[] { "对局凭证无效或已过期", "挑战凭证无效或已过期", "挑战规则已更新，请重新开始", "未检测到操作，本局不发放账号奖励", "回放格式无效", "回放长度无效", "回放内容无效", "成绩与回放不一致" })
+    {
+        Check(SettlementFailure.IsTerminal(400, error), "known permanent settlement rejection was retained: " + error);
+        foreach (int status in new[] { 0, 401, 429, 500, 503 })
+            Check(!SettlementFailure.IsTerminal(status, error), "retryable HTTP status discarded a saved run: " + status);
+    }
+    foreach (string error in new[] { "回放服务暂不可用", "对局时长无效", "挑战时长无效", "凭证无效或已过期，请稍后重试", "", null })
+        Check(!SettlementFailure.IsTerminal(400, error), "unknown or potentially transient failure discarded a saved run");
     var schedule = new PendingSettlementSchedule();
     Check(schedule.Due("alice", "old", 0) && schedule.Due("alice", "new", 0), "new runs were delayed");
     schedule.Fail("alice", "old", 0);

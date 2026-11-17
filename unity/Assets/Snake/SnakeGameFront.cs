@@ -417,7 +417,7 @@ namespace SnakeClub
             api.Post(challenge ? "challenge/submit" : "match/finish", new ApiRequest { runId = entry.runId, token = entry.token, inputs = entry.inputs, score = entry.score, seconds = entry.seconds, actions = entry.actions }, reply =>
             {
                 flushing = false;
-                bool terminal = !string.IsNullOrEmpty(reply.error) && (reply.error.Contains("凭证无效或已过期") || reply.error.Contains("未检测到操作") || reply.error.Contains("回放") || reply.error.Contains("成绩与") || reply.error.Contains("规则已更新") || reply.error.Contains("对局时长无效"));
+                bool terminal = SettlementFailure.IsTerminal(reply.httpStatus, reply.error);
                 if (reply.ok || terminal)
                 {
                     settlementRetry.Remove(entry.playerId, entry.runId);
