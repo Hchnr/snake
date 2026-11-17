@@ -43,6 +43,7 @@ namespace SnakeClub
         private struct ExitPose { public Vector3 position, scale; }
         private readonly Dictionary<string, LineRenderer[]> characterTrails = new Dictionary<string, LineRenderer[]>();
         private readonly Dictionary<string, LineRenderer> opponentMarkers = new Dictionary<string, LineRenderer>();
+        private readonly Dictionary<string, LineRenderer> protectionMarkers = new Dictionary<string, LineRenderer>();
         private readonly List<Transform> crystals = new List<Transform>();
         private Material[] bodyMaterials;
         private Material[] fruitMaterials;
@@ -174,7 +175,7 @@ namespace SnakeClub
             var previous = transform.Find("Arena Runtime");
             if (previous != null) { previous.gameObject.SetActive(false); Destroy(previous.gameObject); }
             var runtime = new GameObject("Arena Runtime");
-            runtime.transform.SetParent(transform, false); runtimeRoot = runtime.transform; characters.Clear(); characterTrails.Clear(); opponentMarkers.Clear();
+            runtime.transform.SetParent(transform, false); runtimeRoot = runtime.transform; characters.Clear(); characterTrails.Clear(); opponentMarkers.Clear(); protectionMarkers.Clear();
             RenderSettings.ambientLight = new Color(.44f, .48f, .61f);
             RenderSettings.fog = true;
             RenderSettings.fogColor = new Color(.025f, .045f, .09f);
@@ -375,6 +376,7 @@ namespace SnakeClub
             foreach (var character in characters.Values) if (character != null) character.enabled = false;
             foreach (var pair in characterTrails.Values) foreach (var line in pair) if (line != null) line.enabled = false;
             foreach (var ring in opponentMarkers.Values) if (ring != null) ring.enabled = false;
+            foreach (var ring in protectionMarkers.Values) if (ring != null) ring.enabled = false;
             int playerVisual = SkinVisual.ResolveIndex(SelectedSkin);
             VisualFallback = playerVisual != SelectedSkin;
             bool characterMode = playerVisual >= 0;
@@ -484,6 +486,10 @@ namespace SnakeClub
                 Vector3 forward = new Vector3(Mathf.Cos(snake.angle), 0, Mathf.Sin(snake.angle));
                 Vector3 side = new Vector3(-forward.z, 0, forward.x);
                 Vector3 center = positions[0];
+                Point actualHead = snake.segments[0];
+                Vector3 collisionCenter = new Vector3(actualHead.x, .20f, actualHead.y);
+                if (snake.id != playerId) DrawOpponentMarker(snake.id, collisionCenter, Palette[color]);
+                if (snake.shield > 0) DrawProtectionMarker(snake.id, collisionCenter);
                 if (snake.boss && snake.bossWindup > 0)
                 {
                     Vector3 aim = new Vector3(snake.bossAim.x, 0, snake.bossAim.y);
@@ -494,7 +500,6 @@ namespace SnakeClub
                 if (characterSprite != null)
                 {
                     DrawCharacterTrail(snake.id, positions, Palette[color]);
-                    if (snake.id != playerId) DrawOpponentMarker(snake.id, center, Palette[color]);
                     if (!characters.TryGetValue(snake.id, out var character) || character == null)
                     {
                         var item = new GameObject("Full character " + snake.id); item.transform.SetParent(runtimeRoot, false);
@@ -578,8 +583,7 @@ namespace SnakeClub
                     for (int i = 0; i < marker.positionCount; i++)
                     {
                         float angle = i * Mathf.PI * 2 / marker.positionCount;
-                        float radius = characterSprite != null ? Arena.CollisionRadius : 1.35f;
-                        marker.SetPosition(i, center + new Vector3(Mathf.Cos(angle) * radius, -.52f, Mathf.Sin(angle) * radius));
+                        marker.SetPosition(i, collisionCenter + new Vector3(Mathf.Cos(angle) * Arena.CollisionRadius, 0, Mathf.Sin(angle) * Arena.CollisionRadius));
                     }
                 }
             }
@@ -717,6 +721,17 @@ namespace SnakeClub
             ring.enabled = true; ring.widthMultiplier = .075f;
             ring.startColor = ring.endColor = Color.Lerp(color, Color.white, .55f);
             PlaceRing(ring, new Vector3(center.x, .20f, center.z), Arena.CollisionRadius);
+        }
+
+        private void DrawProtectionMarker(string id, Vector3 center)
+        {
+            if (!protectionMarkers.TryGetValue(id, out var ring) || ring == null)
+            {
+                ring = MakeEffectRing("Protection " + id, new Color(.40f, .88f, 1f, 1f));
+                protectionMarkers[id] = ring;
+            }
+            ring.enabled = true; ring.widthMultiplier = .13f;
+            PlaceRing(ring, center + Vector3.up * .03f, 1.12f);
         }
 
         private void DrawCharacterTrail(string id, List<Vector3> positions, Color color)

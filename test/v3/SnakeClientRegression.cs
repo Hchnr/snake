@@ -146,6 +146,22 @@ namespace SnakeClub.Tests.Editor
                 Require(world != null && (bool)Field("inGame").GetValue(app) && Field("activeRun").GetValue(app) == null, "main button did not start isolated fixed PvE");
                 var state = Field("state").GetValue(app) as ArenaState;
                 Require(state != null && state.phase == "running" && state.snakes.Count == 8, "preview did not project playable state");
+                var rendererFlags = BindingFlags.Instance | BindingFlags.NonPublic;
+                // Editor batch tests do not invoke MonoBehaviour.Awake on AddComponent.
+                typeof(ArenaRenderer).GetMethod("Initialize", rendererFlags).Invoke(renderer, null);
+                renderer.Draw(state, "you");
+                var protections = (System.Collections.Generic.Dictionary<string, LineRenderer>)typeof(ArenaRenderer).GetField("protectionMarkers", rendererFlags).GetValue(renderer);
+                var marker = (LineRenderer)typeof(ArenaRenderer).GetField("marker", rendererFlags).GetValue(renderer);
+                var head = state.snakes[0].segments[0];
+                var marked = marker.GetPosition(0);
+                Require(marker.enabled && Mathf.Abs(marked.x - head.x - Arena.CollisionRadius) < .001f && Mathf.Abs(marked.z - head.y) < .001f,
+                    "player collision marker did not match the real head and collision radius");
+                Require(protections.ContainsKey("you") && protections["you"].enabled && protections.ContainsKey("bot-1") && protections["bot-1"].enabled,
+                    "protected player or opponent lacked a protection marker");
+                state.snakes[0].shield = 0; state.snakes[1].shield = 0;
+                renderer.Draw(state, "you");
+                Require(!protections["you"].enabled && !protections["bot-1"].enabled, "expired protection remained visible");
+                state.snakes[0].shield = 4; state.snakes[1].shield = 3;
                 Field("direction").SetValue(app, new Point(0, 1));
                 Field("pointerBoost").SetValue(app, true);
                 Call("AdvanceFixedPve", .2f);
