@@ -150,6 +150,7 @@ namespace SnakeClub.Tests.Editor
                 Field("pointerBoost").SetValue(app, true);
                 Call("AdvanceFixedPve", .2f);
                 Require(world.Tick == 4 && state.tick == 4 && world.Fighters[0].motion.Boosting, "preview did not advance using input");
+                Require((bool)Field("tutorialBoosted").GetValue(app), "actual boost was not observed for the tutorial");
                 var inputs = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
                 Require(inputs.Count == 8 && inputs[0] == 64 && inputs[1] == 1 && inputs[6] == 64 && inputs[7] == 1,
                     "preview did not record the actual per-tick controls");

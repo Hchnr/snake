@@ -182,12 +182,13 @@ namespace SnakeClub.Core
             return false;
         }
 
-        public static string Select(int tick, bool steered, bool closedLoop, bool rebounded, int kills, bool nearTrail = false)
+        public static string Select(int tick, bool steered, bool closedLoop, bool rebounded, int kills, bool nearTrail = false, bool boosted = false)
         {
             int seconds = Math.Max(0, tick) / 20;
             if (seconds < 2 || seconds >= 30) return "";
             if (!steered) return "在屏幕任意位置拖动，控制方向";
             if (!closedLoop && nearTrail) return "绕回自己的轨迹，尝试闭合";
+            if (seconds >= 5 && seconds < 8 && !boosted) return "第二根手指按住加速，会消耗长度";
             if (seconds >= 8 && seconds < 16 && !closedLoop) return "绕住对手，再回到自己的轨迹";
             if (seconds >= 16 && seconds < 24 && !rebounded) return "撞墙不会失败，还会短暂加速";
             if (seconds >= 24 && kills <= 0) return "让对手撞上你的轨迹，淘汰后立即成长";

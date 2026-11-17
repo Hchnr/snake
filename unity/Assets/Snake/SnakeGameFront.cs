@@ -263,7 +263,7 @@ namespace SnakeClub
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; firstRun = !CurrentProfile.tutorialComplete;
-            hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
+            hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false; tutorialBoosted = false;
             resultNote = run == null ? "离线练习不计入排行榜" : "挑战完成后验证成绩";
             arenaRenderer.SelectedSkin = EffectiveSkin;
         }

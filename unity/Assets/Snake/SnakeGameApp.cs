@@ -55,7 +55,7 @@ namespace SnakeClub
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
         private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
-        private bool firstRun, tutorialHints = true, hasSteered, tutorialClosedLoop, tutorialRebounded;
+        private bool firstRun, tutorialHints = true, hasSteered, tutorialClosedLoop, tutorialRebounded, tutorialBoosted;
         private bool depthMode, depthWon;
         private int depthRoom;
         private int depthShield, depthRebound, depthGrowth;
@@ -175,7 +175,7 @@ namespace SnakeClub
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             stepTimer = 0;
             direction = new Point(1, 0);
-            controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
+            controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false; tutorialBoosted = false;
             daily = null;
             runInputs.Clear();
             activeRun = run;
@@ -206,7 +206,7 @@ namespace SnakeClub
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
-            controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
+            controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false; tutorialBoosted = false;
             activeRun = null; activePlayerId = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
             verifiedDaily = false; verifiedShareToken = "";
             resultNote = "整数规则试玩 · 不计账号奖励或排行";
@@ -499,6 +499,7 @@ namespace SnakeClub
             if (world.captureTick >= 0 && world.captureOwner == playerId) tutorialClosedLoop = true;
             var own = world.snakes.Find(s => s.id == playerId);
             if (own != null && own.rebound > 0) tutorialRebounded = true;
+            if (own != null && own.boosting) tutorialBoosted = true;
         }
 
         private static void SafeUiMetrics(out float scale, out float left, out float top)
@@ -649,7 +650,7 @@ namespace SnakeClub
             if (state != null && state.phase == "running") { DrawNames(state); DrawEventTargetEdge(state); }
             if (firstRun && tutorialHints && !online && !paused && state != null && state.phase == "running")
             {
-                string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills, FirstRunHints.ApproachingOwnTrail(me));
+                string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills, FirstRunHints.ApproachingOwnTrail(me), tutorialBoosted);
                 if (!string.IsNullOrEmpty(hint))
                 {
                     Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));

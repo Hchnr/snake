@@ -357,7 +357,11 @@ static void FirstRunHintsCases()
     Check(FirstRunHints.Select(39, false, false, false, 0) == "", "hint appeared before two seconds");
     Check(FirstRunHints.Select(40, false, false, false, 0).Contains("拖动"), "movement hint was missing");
     Check(FirstRunHints.Select(400, false, false, false, 0).Contains("拖动"), "timer advanced the tutorial without steering");
-    Check(FirstRunHints.Select(100, true, false, false, 0) == "", "movement hint did not disappear after steering");
+    Check(FirstRunHints.Select(80, true, false, false, 0) == "", "movement hint did not disappear after steering");
+    Check(FirstRunHints.Select(100, true, false, false, 0).Contains("第二根手指"), "boost hint missing");
+    Check(FirstRunHints.Select(100, true, false, false, 0, false, true) == "", "boost hint remained after actual boost");
+    Check(FirstRunHints.Select(100, true, false, false, 0, true).Contains("闭合"), "nearby loop did not take priority");
+    Check(FirstRunHints.Select(160, true, false, false, 0).Contains("轨迹"), "boost hint outlasted its window");
     Check(FirstRunHints.Select(180, true, false, false, 0).Contains("轨迹"), "loop hint missing");
     Check(FirstRunHints.Select(180, true, true, false, 0) == "", "loop hint ignored an actual loop");
     Check(FirstRunHints.Select(340, true, false, false, 0).Contains("撞墙"), "rebound hint missing");
