@@ -38,7 +38,7 @@ namespace SnakeClub
         private Rect lastSafe;
         private Vector2Int lastSize;
         private float resultOpenedAt;
-        private bool reducedEffects;
+        private bool reducedEffects, resultWon;
 
         public bool Visible
         {
@@ -144,7 +144,7 @@ namespace SnakeClub
             if (resultPage.gameObject.activeSelf != results)
             {
                 resultPage.gameObject.SetActive(results);
-                if (results) resultOpenedAt = Time.unscaledTime;
+                if (results) { resultOpenedAt = Time.unscaledTime; resultWon = false; }
             }
             if (background.enabled == results) background.enabled = !results;
         }
@@ -246,9 +246,13 @@ namespace SnakeClub
             settingsModal.gameObject.SetActive(false);
         }
 
-        public void SetResult(string title, string stats, string details, bool busy, bool canShare, int adCoins, string highlight = "")
+        public void SetResult(string title, string stats, string details, bool busy, bool canShare, int adCoins, string highlight = "", bool won = false)
         {
             if (resultPage == null) return;
+            resultWon = won;
+            bool showSpark = won && !reducedEffects;
+            foreach (var spark in resultSparks)
+                if (spark != null && spark.gameObject.activeSelf != showSpark) spark.gameObject.SetActive(showSpark);
             Set(resultTitle, title); Set(resultStats, stats); Set(resultHighlight, highlight ?? ""); Set(resultDetails, details ?? "");
             resultRetry.interactable = !busy;
             if (resultShare.gameObject.activeSelf != canShare) resultShare.gameObject.SetActive(canShare);
@@ -436,15 +440,16 @@ namespace SnakeClub
             if (resultPage != null && resultPage.gameObject.activeSelf)
             {
                 float entrance = Mathf.Clamp01((time - resultOpenedAt) / .35f);
-                float size = Mathf.Lerp(.90f, 1f, 1f - (1f - entrance) * (1f - entrance));
+                float size = reducedEffects ? 1f : Mathf.Lerp(.90f, 1f, 1f - (1f - entrance) * (1f - entrance));
                 resultCard.localScale = new Vector3(size, size, 1);
                 float pulse = reducedEffects ? 1f : 1f + .015f * Mathf.Sin(time * 3f);
                 resultRetryRect.localScale = new Vector3(pulse, pulse, 1);
                 for (int i = 0; i < resultSparks.Count; i++)
                 {
                     var spark = resultSparks[i];
-                    if (spark.gameObject.activeSelf == reducedEffects) spark.gameObject.SetActive(!reducedEffects);
-                    if (reducedEffects) continue;
+                    bool showSpark = resultWon && !reducedEffects;
+                    if (spark.gameObject.activeSelf != showSpark) spark.gameObject.SetActive(showSpark);
+                    if (!showSpark) continue;
                     var color = spark.color; color.a = .35f + .55f * (.5f + .5f * Mathf.Sin(time * 3f + i)); spark.color = color;
                     spark.rectTransform.anchoredPosition = resultSparkOrigins[i] + new Vector2(Mathf.Sin(time + i) * 14f, Mathf.Cos(time * 1.4f + i) * 19f);
                     spark.rectTransform.localRotation = Quaternion.Euler(0, 0, time * (20 + i * 2));

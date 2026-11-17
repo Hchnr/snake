@@ -48,6 +48,7 @@ var cases = new (string name, Action run)[]
     ("settlement retry delays do not block other runs or accounts", IndependentSettlementRetries),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
+    ("result celebration only follows a real win and respects reduced effects", ResultMotionCases),
     ("character motion follows real turns, boost and reduced effects", CharacterMotionCases),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("match outcomes explain actual collision and capture results", MatchOutcomeCases),
@@ -498,6 +499,27 @@ static void PreviousDailyReplay()
     Check(match.State.tick == 1200 && match.Score == 90, "daily-2 replay changed from its recorded result");
     Check(match.State.captureTick == -1, "daily-2 unexpectedly enabled capture");
     Check(DailyMatch.MaxScoreFor(DailyMatch.PreviousRulesVersion) == 1540 && DailyMatch.MaxScoreFor(DailyMatch.RulesVersion) == 1460, "score bounds not versioned");
+}
+
+static void ResultMotionCases()
+{
+    var world = new ArenaState { phase = "running", winner = "you" };
+    var player = new SnakeState { id = "you", alive = true }; world.snakes.Add(player);
+    Check(!MatchOutcome.IsVictory(world, "you"), "ongoing match was called a victory");
+    world.phase = "ended"; Check(MatchOutcome.IsVictory(world, "you"), "actual winner not recognized");
+    player.alive = false; Check(!MatchOutcome.IsVictory(world, "you"), "eliminated player was called a winner");
+    player.alive = true; world.winner = "other";
+    Check(!MatchOutcome.IsVictory(world, "you") && !MatchOutcome.IsVictory(world, ""), "wrong player was called a winner");
+    var neutral = ResultMotion.Sample(false, false, .25f);
+    Check(neutral.Lift == 0 && neutral.Tilt == 0, "ordinary result played a victory pose");
+    var win = ResultMotion.Sample(true, false, .25f);
+    Check(win.Lift > 0 && win.Lift <= .16f && Math.Abs(win.Tilt) <= 4, "victory pose is missing or unbounded");
+    var reduced = ResultMotion.Sample(true, true, .25f);
+    Check(reduced.Lift == 0 && reduced.Tilt == 0, "reduced effects played a victory pose");
+    var end = ResultMotion.Sample(true, false, 1f);
+    Check(end.Lift == 0 && end.Tilt == 0, "celebration did not finish");
+    var invalid = ResultMotion.Sample(true, false, float.NaN);
+    Check(invalid.Lift == 0 && invalid.Tilt == 0, "invalid time produced a pose");
 }
 
 static void CharacterMotionCases()

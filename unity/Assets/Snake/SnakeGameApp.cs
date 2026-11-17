@@ -274,6 +274,7 @@ namespace SnakeClub
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
             bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
             bool resultVisible = inGame && !online && !depthMode && state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
+            bool resultWon = resultVisible && MatchOutcome.IsVictory(state, playerId);
             if (homeScreen != null)
             {
                 homeScreen.Visible = homeVisible || resultVisible;
@@ -299,7 +300,7 @@ namespace SnakeClub
                         string highlight = matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
                         string outcome = MatchOutcome.Explain(state, playerId);
                         string details = string.IsNullOrEmpty(outcome) ? resultNote : outcome + "\n" + resultNote;
-                        homeScreen.SetResult(title, stats, details, busy, share, adCoins, highlight);
+                        homeScreen.SetResult(title, stats, details, busy, share, adCoins, highlight, resultWon);
                     }
                 }
             }
@@ -307,6 +308,7 @@ namespace SnakeClub
             {
                 homeAvatar.Visible = homeVisible || resultVisible || caveVisible;
                 homeAvatar.ReducedEffects = reducedEffects;
+                homeAvatar.SetResult(resultVisible, resultWon);
                 if (homeAvatar.Visible) homeAvatar.Skin = homeVisible && frontPage == "skins" ? previewSkin :
                     resultVisible && activeRun != null && activeRun.trialSkin > 0 && EffectiveSkin < SkinCatalog.OwnedSkinCount ? activeRun.trialSkin : EffectiveSkin;
             }
