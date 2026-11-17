@@ -111,7 +111,18 @@ namespace SnakeClub.Tests.Editor
                 screen.SetPage(false); Require(!screen.ArenaPreview, "arena preview remained active after leaving the wardrobe");
                 FindButton("Start hunt").onClick.Invoke();
                 Require(started == 1, "main hunt action is not wired");
-                screen.SetPage(false, true); screen.SetResult("挑战结束", "得分 100", "成绩已验证", false, true, 0);
+                screen.SetPage(false, true); screen.SetResult("挑战结束", "得分 100", "撞上对手轨迹，被淘汰", "成绩已验证 · 金币 +35", false, true, 0);
+                Text FindText(string name)
+                {
+                    foreach (var text in owner.GetComponentsInChildren<Text>(true)) if (text.name == name) return text;
+                    throw new Exception("UI text not found: " + name);
+                }
+                Require(FindText("Result outcome").text == "撞上对手轨迹，被淘汰" && FindText("Result details").text == "成绩已验证 · 金币 +35",
+                    "result outcome and reward status were not presented independently");
+                screen.SetResult("围猎结束", "最长 16 · 淘汰 0", "本局已出局", "离线练习 · 不计账号奖励", false, false, 0);
+                Require(FindText("Result details").text.Contains("不计账号奖励") && !FindButton("Result share").gameObject.activeSelf,
+                    "practice results retained verified rewards or sharing");
+                screen.SetResult("挑战结束", "得分 100", "", "正在结算…", false, true, 0);
                 FindButton("Result retry").onClick.Invoke();
                 Require(retried == 1 && FindButton("Result share").gameObject.activeSelf, "result actions are not wired");
                 Debug.Log("PASS Unity home, character preview and result actions are wired");
