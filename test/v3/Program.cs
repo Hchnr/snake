@@ -43,6 +43,7 @@ var cases = new (string name, Action run)[]
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("drag steering recovers missing touch ends and transfers control", TouchRecovery),
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
+    ("settlement retry delays do not block other runs or accounts", IndependentSettlementRetries),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
@@ -161,6 +162,22 @@ static void PlatformLoginCases()
     failures = 0;
     PlatformLoginFlow.Start((ok, bad) => ok("code", ""), deadline => { }, (code, anonymous) => throw new Exception("request error"), Fail);
     Check(failures == 1 && message.Contains("请求失败"), "exchange startup exception did not complete login");
+}
+
+static void IndependentSettlementRetries()
+{
+    var schedule = new PendingSettlementSchedule();
+    Check(schedule.Due("alice", "old", 0) && schedule.Due("alice", "new", 0), "new runs were delayed");
+    schedule.Fail("alice", "old", 0);
+    Check(!schedule.Due("alice", "old", 1) && schedule.Due("alice", "new", 1), "failed run blocked a later settlement");
+    Check(schedule.Due("bob", "old", 1), "one account delayed a different account");
+    schedule.Fail("alice", "new", 1);
+    Check(schedule.Due("alice", "old", 2) && !schedule.Due("alice", "new", 2), "separate retry schedules were mixed");
+    schedule.Fail("alice", "old", 2);
+    Check(!schedule.Due("alice", "old", 5) && schedule.Due("alice", "old", 6), "per-run exponential backoff failed");
+    schedule.Remove("alice", "old");
+    Check(schedule.Due("alice", "old", 2) && !schedule.Due("alice", "new", 2), "completed run was not independently cleared");
+    Check(!schedule.Due("", "run", 0) && !schedule.Due("alice", "", 0), "missing owner or run id was scheduled");
 }
 
 static void PendingRetries()
