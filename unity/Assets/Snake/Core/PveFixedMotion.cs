@@ -1,5 +1,6 @@
 #nullable disable
 using System;
+using System.Collections.Generic;
 
 namespace SnakeClub.Core
 {
@@ -15,18 +16,26 @@ namespace SnakeClub.Core
             9239,9330,9415,9495,9569,9638,9700,9757,9808,9853,9892,9925,9952,9973,9988,9997,10000
         };
         public const int Edge = 109280, MinimumLength = 5;
-        private const int TurnStep = 1982;
+        private const int TurnStep = 1982, Spacing = 900;
+        private readonly List<CapturePoint> segments = new List<CapturePoint>(Arena.MaximumLength);
+        public IReadOnlyList<CapturePoint> Segments => segments;
+        public CapturePoint PreviousHead { get; private set; }
         public int X { get; private set; }
         public int Y { get; private set; }
         public int Angle { get; private set; }
-        public int Length { get; private set; }
+        public int Length => segments.Count;
         public int ReboundTicks { get; private set; }
         public int ReboundCooldown { get; private set; }
         private long boostDebt;
         public PveFixedMotion(int x, int y, int angle, int length)
         {
             X = Clamp(x, -Edge, Edge); Y = Clamp(y, -Edge, Edge);
-            Angle = angle & 65535; Length = Clamp(length, MinimumLength, Arena.MaximumLength);
+            Angle = angle & 65535;
+            int initialLength = Clamp(length, MinimumLength, Arena.MaximumLength);
+            for (int i = 0; i < initialLength; i++)
+                segments.Add(new CapturePoint(X - (int)((long)Sin(Angle + 16384) * i * Spacing / 10000),
+                    Y - (int)((long)Sin(Angle) * i * Spacing / 10000)));
+            PreviousHead = segments[0];
         }
         private static int Clamp(int value, int min, int max) => Math.Max(min, Math.Min(max, value));
         private static int Sin8(int angle)
@@ -44,8 +53,34 @@ namespace SnakeClub.Core
             int a = Sin8(lower), b = Sin8(lower + 1);
             return a + (b - a) * fraction / 256;
         }
+        // Integer square root gives the same segment relaxation in each runtime.
+        private static int Distance(int x, int y)
+        {
+            ulong n = (ulong)((long)x * x + (long)y * y), result = 0, bit = 1UL << 62;
+            while (bit > n) bit >>= 2;
+            while (bit != 0) { if (n >= result + bit) { n -= result + bit; result = (result >> 1) + bit; } else result >>= 1; bit >>= 2; }
+            return (int)result;
+        }
+        public void Grow(int amount)
+        {
+            int count = Math.Min(Arena.MaximumLength - Length, Math.Max(0, amount));
+            for (int i = 0; i < count; i++)
+            {
+                var tail = segments[Length - 1]; var previous = segments[Length - 2];
+                int dx = tail.x - previous.x, dy = tail.y - previous.y;
+                int distance = Distance(dx, dy);
+                if (distance == 0) { dx = 1; dy = 0; distance = 1; }
+                segments.Add(new CapturePoint(tail.x + (int)((long)dx * Spacing / distance),
+                    tail.y + (int)((long)dy * Spacing / distance)));
+            }
+        }
+        // Detects geometry only: cooldowns, immunity and victim resolution
+        // belong to the future match rules, not to this movement primitive.
+        public bool TryCapture(out CaptureLoop loop) => CaptureGeometry.TryLoop(PreviousHead, segments, out loop);
+
         public void Step(byte target, bool boost, PveFixedBonuses bonuses)
         {
+            PreviousHead = segments[0];
             if (ReboundTicks > 0) ReboundTicks--;
             if (ReboundCooldown > 0) ReboundCooldown--;
             int extraTurn = bonuses.turn;
@@ -64,12 +99,20 @@ namespace SnakeClub.Core
             if (y > Edge) { y = Edge - (y - Edge); Angle = (-Angle) & 65535; bounced = true; }
             else if (y < -Edge) { y = -Edge + (-Edge - y); Angle = (-Angle) & 65535; bounced = true; }
             X = Clamp(x, -Edge, Edge); Y = Clamp(y, -Edge, Edge);
+            segments[0] = new CapturePoint(X, Y);
+            for (int i = 1; i < segments.Count; i++)
+            {
+                var a = segments[i - 1]; var b = segments[i];
+                int dx = a.x - b.x, dy = a.y - b.y, length = Distance(dx, dy);
+                if (length > Spacing) segments[i] = new CapturePoint(a.x - (int)((long)dx * Spacing / length),
+                    a.y - (int)((long)dy * Spacing / length));
+            }
             if (bounced && ReboundCooldown == 0) { ReboundTicks = 16; ReboundCooldown = 160; }
             if (boosting)
             {
                 int saving = Clamp(bonuses.boostSaving + (Length <= 12 ? bonuses.shortBoostSaving : 0), 0, 700);
                 boostDebt += 200L * (10000 - saving);
-                if (boostDebt >= 100000000L && Length > MinimumLength) { Length--; boostDebt -= 100000000L; }
+                if (boostDebt >= 100000000L && Length > MinimumLength) { segments.RemoveAt(Length - 1); boostDebt -= 100000000L; }
             }
         }
     }

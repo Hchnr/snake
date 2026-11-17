@@ -997,6 +997,23 @@ static void PveFixedMotionCases()
     var noBonus = new PveFixedBonuses();
     var straight = new PveFixedMotion(0, 0, 0, 16); straight.Step(0, false, noBonus);
     Check(straight.X == 300 && straight.Y == 0 && straight.Angle == 0, "straight movement differs");
+    Check(straight.PreviousHead.x == 0 && straight.Segments[0].x == 300 && straight.Segments[1].x == -600, "body did not follow the real head");
+    int oldLength = straight.Length; var oldTail = straight.Segments[oldLength - 1];
+    straight.Grow(2);
+    Check(straight.Length == oldLength + 2 && straight.Segments[oldLength].x < oldTail.x, "growth did not extend the tail");
+    straight.Grow(int.MaxValue); Check(straight.Length == Arena.MaximumLength, "growth cap was not enforced");
+    Check(!straight.TryCapture(out _), "straight trail produced a loop");
+    bool closed = false;
+    for (int turn = 1; turn <= 8 && !closed; turn++)
+    {
+        var looping = new PveFixedMotion(0, 0, 0, 16);
+        for (int i = 1; i <= 200 && !closed; i++)
+        {
+            looping.Step((byte)(i * turn), false, noBonus);
+            closed = looping.TryCapture(out _);
+        }
+    }
+    Check(closed, "starting-length player could not form a valid loop");
     var slower = new PveFixedMotion(0, 0, 0, 16); var faster = new PveFixedMotion(0, 0, 0, 16);
     slower.Step(64, false, noBonus); faster.Step(64, false, new PveFixedBonuses { turn = 100 });
     Check(faster.Angle > slower.Angle && slower.Angle > 0, "small turn bonus was lost to rounding");
@@ -1014,6 +1031,7 @@ static void PveFixedMotionCases()
     var a = new PveFixedMotion(123, -456, 13, 16); var b = new PveFixedMotion(123, -456, 13, 16);
     for (int i = 0; i < 1000; i++) { a.Step((byte)(i * 7), i % 3 == 0, bonuses); b.Step((byte)(i * 7), i % 3 == 0, bonuses); }
     Check(a.X == b.X && a.Y == b.Y && a.Angle == b.Angle && a.Length == b.Length, "integer motion is not repeatable");
+    for (int i = 0; i < a.Length; i++) Check(a.Segments[i].x == b.Segments[i].x && a.Segments[i].y == b.Segments[i].y, "integer trails differ");
 }
 
 static void PveConfigCases()

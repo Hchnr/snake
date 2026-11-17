@@ -60,7 +60,10 @@ namespace SnakeClub.Tests
                 for (int i = 0; i < 1800; i++)
                 {
                     fixedMotion.Step((byte)(i * 17 + seed), i % 100 >= 35, fixedBonuses);
+                    if (i % 180 == 0) fixedMotion.Grow(1);
                     Add(fixedMotion.X); Add(fixedMotion.Y); Add(fixedMotion.Angle); Add(fixedMotion.Length); Add(fixedMotion.ReboundTicks);
+                    foreach (var point in fixedMotion.Segments) { Add(point.x); Add(point.y); }
+                    Add(fixedMotion.TryCapture(out var loop) ? (int)(loop.doubleArea % int.MaxValue) : 0);
                 }
             }
             string fixedHash = hash.ToString("x16");
