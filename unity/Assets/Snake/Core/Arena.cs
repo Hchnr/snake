@@ -1075,6 +1075,24 @@ namespace SnakeClub.Core
             snake.bossAim = aim; snake.bossWindup = control.bossWindup; control.target = aim;
         }
 
+        internal static Point HeadAvoidance(SnakeState snake, SnakeState other)
+        {
+            if (snake == null || other == null || !snake.alive || !other.alive || snake.shield > 1f || other.shield > 1f ||
+                snake.segments.Count == 0 || other.segments.Count < snake.segments.Count) return new Point();
+            Point away = snake.segments[0] - other.segments[0]; float distance = away.Length;
+            return distance > .01f && distance < 7f ? away.Normalized * ((7f - distance) * 1.6f) : new Point();
+        }
+
+        internal static Point PlayerPursuit(SnakeState snake, SnakeState player, bool starEvent)
+        {
+            if (snake == null || player == null || !snake.alive || !player.alive || player.bot ||
+                (snake.id != "bot-0" && snake.id != "bot-1") || starEvent ||
+                snake.segments.Count == 0 || player.segments.Count == 0) return new Point();
+            Point toward = player.segments[0] - snake.segments[0]; float distance = toward.Length;
+            return distance < 50f && (distance > 12f || snake.segments.Count >= player.segments.Count)
+                ? toward.Normalized * 4.2f : new Point();
+        }
+
         private void UpdateBot(SnakeState snake, Control control, float dt)
         {
             control.aiTimer -= dt;
@@ -1091,6 +1109,7 @@ namespace SnakeClub.Core
                 if (other == snake || !other.alive) continue;
                 float distance = Point.Distance(head, other.segments[0]);
                 if (distance < nearestDistance) { nearest = other; nearestDistance = distance; }
+                if (rotatingEvents) desired += HeadAvoidance(snake, other);
                 for (int i = 2; i < other.segments.Count; i += 2)
                 {
                     Point away = head - other.segments[i];
@@ -1102,6 +1121,13 @@ namespace SnakeClub.Core
             {
                 Point toward = (nearest.segments[0] - head).Normalized;
                 desired += toward * (snake.segments.Count >= nearest.segments.Count || nearestDistance > 12f ? 1.4f : -1.8f);
+            }
+            // Two ordinary PvE opponents keep the player in their search,
+            // using only the current position. Event pursuit can override it.
+            if (rotatingEvents && (snake.id == "bot-0" || snake.id == "bot-1"))
+            {
+                var quarry = State.snakes.Find(s => !s.bot && s.alive);
+                desired += PlayerPursuit(snake, quarry, State.eventStatus == "active" && State.eventKind == "star");
             }
             if (State.starVisible && string.IsNullOrEmpty(State.starHolder))
                 desired += (State.starPosition - head).Normalized * 0.8f;

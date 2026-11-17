@@ -69,6 +69,7 @@ var cases = new (string name, Action run)[]
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("local arena reuses collision buffers without stale outcomes", ArenaBufferReuse),
     ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
+    ("ordinary PvE bots avoid head threats and pursue visible players", ArenaBotEncounterCases),
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1286,6 +1287,26 @@ static void PveConfigCases()
     Check(saved.talents[0] == 1, "match changed stored snapshot");
     Check(PveStartConfig.Capture(profile, -1).skin == 1, "equipped skin not preserved");
     Check(!new PveStartConfig().Supported, "unknown snapshot version accepted");
+}
+
+static void ArenaBotEncounterCases()
+{
+    var hunter = new SnakeState { id = "bot-0", bot = true, segments = Enumerable.Repeat(new Point(0, 0), 16).ToList() };
+    var player = new SnakeState { id = "you", segments = Enumerable.Repeat(new Point(4, 0), 16).ToList() };
+    Check(Arena.HeadAvoidance(hunter, player).x < 0, "equal-length head was not avoided");
+    player.shield = 1.1f;
+    Check(Arena.HeadAvoidance(hunter, player).Length == 0, "long-protected head treated as dangerous");
+    player.shield = 1f;
+    Check(Arena.HeadAvoidance(hunter, player).x < 0, "bot did not anticipate expiring protection");
+    player.shield = 0; player.segments.RemoveAt(15);
+    Check(Arena.HeadAvoidance(hunter, player).Length == 0, "shorter head was avoided");
+    player.segments.Add(new Point(4, 0));
+    Check(Arena.PlayerPursuit(hunter, player, false).x > 0, "hunter did not pursue current player position");
+    Check(Arena.PlayerPursuit(hunter, player, true).Length == 0, "player pursuit overrode star event");
+    hunter.id = "bot-2";
+    Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
+    hunter.id = "bot-0"; player.alive = false;
+    Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
 }
 
 static void PveRecordingCases()
