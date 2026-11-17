@@ -768,6 +768,7 @@ namespace SnakeClub
                 string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
                 if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
                 if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
+                if (snake.shield > 0) label += " · 保护";
                 Rect box = new Rect(position.x - 105, position.y - 68, 210, 48);
                 Panel(box, new Color(.03f, .07f, .12f, .78f));
                 Label(box, label, 23, Color.white, TextAnchor.MiddleCenter, true);
