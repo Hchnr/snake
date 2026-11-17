@@ -530,7 +530,7 @@ namespace SnakeClub.Core
         public float nearWallTurn, shortBoostSaving, reboundTurn;
         public float boostSavingCap = .07f;
         // Temporary depth-mode effects; never used by the normalized daily rules.
-        public float captureShieldSeconds, reboundFreeSeconds;
+        public float captureShieldSeconds, reboundFreeSeconds, boostCostPenalty;
         public int bonusGrowthPerKill;
     }
 
@@ -770,7 +770,8 @@ namespace SnakeClub.Core
                 if (snake.boosting && !freeBoost)
                 {
                     float saving = control.bonuses.boostSaving + (snake.segments.Count <= 12 ? control.bonuses.shortBoostSaving : 0);
-                    control.boostDebt += dt * 0.4f * (1f - Clamp(saving, 0, Clamp(control.bonuses.boostSavingCap, 0, .20f)));
+                    control.boostDebt += dt * 0.4f * (1f - Clamp(saving, 0, Clamp(control.bonuses.boostSavingCap, 0, .20f))) *
+                        (1f + Clamp(control.bonuses.boostCostPenalty, 0, .5f));
                     if (control.boostDebt >= 1f && snake.segments.Count > MinimumLength)
                     {
                         snake.segments.RemoveAt(snake.segments.Count - 1);

@@ -1559,9 +1559,9 @@ static void DepthRoomFlow()
     Check(DepthChallenge.BonusChoice(0, 1, 0, 0).Contains("2 → 4 秒"), "stacked capture shield preview is incorrect");
     Check(DepthChallenge.BonusChoice(1, 0, 0, 0).Contains("0 → 3 秒"), "rebound preview is incorrect");
     Check(DepthChallenge.BonusChoice(2, 0, 0, 2).Contains("6 → 6 节"), "capped growth preview is incorrect");
-    Check(DepthChallenge.SpawnProtection(0) == 3 && DepthChallenge.SpawnProtection(1) == 2 && DepthChallenge.SpawnProtection(2) == 1 && DepthChallenge.SpawnProtection(99) == 1 && DepthChallenge.SpawnProtection(-1) == 3, "growth protection tradeoff did not respect its bounds");
-    Check(DepthChallenge.BonusChoice(2, 0, 0, 0).Contains("出生保护 3 → 2 秒") && DepthChallenge.BonusChoice(2, 0, 0, 1).Contains("出生保护 2 → 1 秒"), "growth choice did not disclose its cost");
-    Check(summary.Contains("出生保护 1 秒"), "build summary omitted the protection tradeoff");
+    Check(DepthChallenge.GrowthBoostPenalty(0) == 0 && DepthChallenge.GrowthBoostPenalty(1) == .25f && DepthChallenge.GrowthBoostPenalty(2) == .5f && DepthChallenge.GrowthBoostPenalty(99) == .5f && DepthChallenge.GrowthBoostPenalty(-1) == 0, "growth boost cost did not respect its bounds");
+    Check(DepthChallenge.BonusChoice(2, 0, 0, 0).Contains("加速消耗 +0% → +25%") && DepthChallenge.BonusChoice(2, 0, 0, 1).Contains("加速消耗 +25% → +50%"), "growth choice did not disclose its cost");
+    Check(summary.Contains("加速消耗 +50%"), "build summary omitted the boost cost");
     string capped = DepthChallenge.BonusSummary(int.MaxValue, -1, int.MaxValue);
     Check(capped.Contains("护盾 4 秒") && capped.Contains("加速 0 秒") && capped.Contains("增长 6 节"), "bonus summary did not enforce limits");
     var hintWorld = new ArenaState { phase = "running" };
@@ -1596,6 +1596,19 @@ static void DepthRoomFlow()
 
 static void DepthBonuses()
 {
+    int BoostLength(float penalty)
+    {
+        var trial = new Arena(19, fruitCount: 0, enableCaptures: true);
+        var snake = trial.AddSnake("you", "you", false);
+        var dummy = trial.AddSnake("other", "other", false);
+        snake.shield = dummy.shield = 100;
+        trial.SetBonuses(snake.id, new CombatBonuses { boostCostPenalty = penalty });
+        trial.Start(); trial.SetInput(snake.id, new Point(1, 0), true);
+        for (int i = 0; i < 200; i++) trial.Tick(.05f);
+        return snake.segments.Count;
+    }
+    int normalLength = BoostLength(0), higherLength = BoostLength(.25f), highestLength = BoostLength(.5f);
+    Check(normalLength > higherLength && higherLength > highestLength, "growth penalty did not increase paid boost consumption");
     var arena = new Arena(23, fruitCount: 0);
     var victim = arena.AddSnake("victim", "victim", false);
     var hunter = arena.AddSnake("hunter", "hunter", false);
@@ -1615,7 +1628,7 @@ static void DepthBonuses()
     var other = arena.AddSnake("other", "other", false);
     Place(player, new Point(109.2f, 0), new Point(1, 0)); Place(other, new Point(-80, -80), new Point(1, 0));
     arena.SetStartingLength(player.id, 16);
-    arena.SetBonuses(player.id, new CombatBonuses { reboundFreeSeconds = 3 }); arena.Start();
+    arena.SetBonuses(player.id, new CombatBonuses { reboundFreeSeconds = 3, boostCostPenalty = .5f }); arena.Start();
     arena.SetInput(player.id, new Point(1, 0), false); arena.Tick(.05f);
     Check(player.reboundBoostReady && !player.reboundBoostWaitRelease && player.reboundBoostTime == 0, "rebound did not store a charge");
     Check(DepthChallenge.ReboundBoostHint(player).Contains("下次加速"), "stored rebound charge was not explained");
