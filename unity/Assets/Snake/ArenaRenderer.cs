@@ -34,6 +34,10 @@ namespace SnakeClub
         private readonly List<Matrix4x4> trailPulses = new List<Matrix4x4>();
         private readonly Dictionary<string, List<Vector3>> smoothed = new Dictionary<string, List<Vector3>>();
         private readonly Dictionary<string, SpriteRenderer> characters = new Dictionary<string, SpriteRenderer>();
+        private readonly EliminationTransition eliminations = new EliminationTransition();
+        private readonly Dictionary<string, ExitPose> exitPoses = new Dictionary<string, ExitPose>();
+        private int presentationTick = -1;
+        private struct ExitPose { public Vector3 position, scale; }
         private readonly Dictionary<string, LineRenderer[]> characterTrails = new Dictionary<string, LineRenderer[]>();
         private readonly Dictionary<string, LineRenderer> opponentMarkers = new Dictionary<string, LineRenderer>();
         private readonly List<Transform> crystals = new List<Transform>();
@@ -75,7 +79,7 @@ namespace SnakeClub
             {
                 if (view == null || view.enabled == value) return;
                 view.enabled = value;
-                if (!value) cameraReady = false;
+                if (!value) { cameraReady = false; eliminations.Reset(); exitPoses.Clear(); presentationTick = -1; }
             }
         }
 
@@ -300,6 +304,8 @@ namespace SnakeClub
         public void Draw(ArenaState state, string playerId)
         {
             if (state == null) return;
+            if (state.tick < presentationTick) { eliminations.Reset(); exitPoses.Clear(); }
+            presentationTick = state.tick;
             foreach (var list in bodies) list.Clear();
             foreach (var list in links) list.Clear();
             foreach (var list in horns) list.Clear();
@@ -359,7 +365,24 @@ namespace SnakeClub
                 }
             foreach (var snake in state.snakes)
             {
-                if (!snake.alive || snake.segments.Count == 0) continue;
+                if (!snake.alive)
+                {
+                    if (eliminations.ObserveDead(snake.id, Time.time, out float progress, out bool started) &&
+                        characters.TryGetValue(snake.id, out var departing) && departing != null)
+                    {
+                        if (started) exitPoses[snake.id] = new ExitPose { position = departing.transform.position, scale = departing.transform.localScale };
+                        if (!ReducedEffects && exitPoses.TryGetValue(snake.id, out var pose))
+                        {
+                            departing.enabled = true;
+                            departing.transform.position = pose.position + view.transform.up * (.35f * progress);
+                            departing.transform.localScale = pose.scale * (1f - .16f * progress);
+                            departing.color = new Color(1f, 1f, 1f, 1f - progress);
+                        }
+                    }
+                    else exitPoses.Remove(snake.id);
+                    continue;
+                }
+                if (snake.segments.Count == 0) continue;
                 int visualSkin = playerVisual >= 0 ? playerVisual : SelectedSkin;
                 if (snake.id != playerId)
                 {
@@ -428,7 +451,8 @@ namespace SnakeClub
                         character = item.AddComponent<SpriteRenderer>(); character.sortingOrder = 10;
                         characters[snake.id] = character;
                     }
-                    character.sprite = characterSprite; character.enabled = true;
+                    eliminations.ObserveAlive(snake.id); exitPoses.Remove(snake.id);
+                    character.sprite = characterSprite; character.color = Color.white; character.enabled = true;
                     float characterScale = snake.boosting ? 1.46f : 1.35f;
                     float bob = ReducedEffects ? 0 : .06f * Mathf.Sin(Time.time * 4f + snake.color);
                     // Anchor the bottom of the camera-facing sprite at the real
