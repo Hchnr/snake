@@ -38,6 +38,8 @@ namespace SnakeClub
         private readonly EliminationTransition eliminations = new EliminationTransition();
         private readonly Dictionary<string, ExitPose> exitPoses = new Dictionary<string, ExitPose>();
         private int presentationTick = -1;
+        private readonly ArenaVisualClock visualClock = new ArenaVisualClock();
+        private int visualFrame = -1;
         private struct ExitPose { public Vector3 position, scale; }
         private readonly Dictionary<string, LineRenderer[]> characterTrails = new Dictionary<string, LineRenderer[]>();
         private readonly Dictionary<string, LineRenderer> opponentMarkers = new Dictionary<string, LineRenderer>();
@@ -344,6 +346,11 @@ namespace SnakeClub
         public void Draw(ArenaState state, string playerId)
         {
             if (state == null) return;
+            if (visualFrame != Time.frameCount)
+            {
+                visualFrame = Time.frameCount;
+                visualClock.Advance(Time.deltaTime, MotionPaused);
+            }
             if (state.tick < presentationTick) { eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); }
             presentationTick = state.tick;
             foreach (var list in bodies) list.Clear();
@@ -360,15 +367,15 @@ namespace SnakeClub
             if (state.tick < lastTick) { shownCaptureTick = -1; captureStarted = -10f; reboundStarted = -10f; previousRebound = 0; }
             if (state.captureTick >= 0 && state.captureTick != shownCaptureTick && state.capturePolygon != null && state.capturePolygon.Count > 2)
             {
-                shownCaptureTick = state.captureTick; captureStarted = Time.time;
+                shownCaptureTick = state.captureTick; captureStarted = visualClock.Time;
                 BuildCaptureSweep(state.capturePolygon, state.captureCount > 0);
                 captureOutline.positionCount = state.capturePolygon.Count;
                 for (int i = 0; i < state.capturePolygon.Count; i++)
                     captureOutline.SetPosition(i, new Vector3(state.capturePolygon[i].x, .20f, state.capturePolygon[i].y));
             }
-            captureOutline.enabled = Time.time - captureStarted < .55f;
-            if (captureOutline.enabled) captureOutline.widthMultiplier = .24f * (1f - (Time.time - captureStarted) / .55f);
-            float captureAge = Time.time - captureStarted;
+            captureOutline.enabled = visualClock.Time - captureStarted < .55f;
+            if (captureOutline.enabled) captureOutline.widthMultiplier = ReducedEffects ? .24f : .24f * (1f - (visualClock.Time - captureStarted) / .55f);
+            float captureAge = visualClock.Time - captureStarted;
             captureSweepRenderer.enabled = !ReducedEffects && captureAge >= 0f && captureAge < .25f && sweepRows.Count > 0;
             if (captureSweepRenderer.enabled) UpdateCaptureSweep(captureAge / .25f);
             captureFlare.enabled = !ReducedEffects && captureAge >= 0f && captureAge < .4f && state.capturePolygon != null && state.capturePolygon.Count > 0;
@@ -384,12 +391,12 @@ namespace SnakeClub
             {
                 Point p = focus.segments[0];
                 Vector3 target = new Vector3(p.x, 29, p.y - 10.5f);
-                view.transform.position = cameraReady ? Vector3.Lerp(view.transform.position, target, 1f - Mathf.Exp(-5f * Time.deltaTime)) : target;
-                view.orthographicSize = Mathf.Lerp(view.orthographicSize, focus.boosting ? 22f : 20f, 1f - Mathf.Exp(-2.5f * Time.deltaTime));
+                view.transform.position = cameraReady ? Vector3.Lerp(view.transform.position, target, 1f - Mathf.Exp(-5f * (MotionPaused ? 0f : Time.deltaTime))) : target;
+                view.orthographicSize = Mathf.Lerp(view.orthographicSize, focus.boosting ? 22f : 20f, 1f - Mathf.Exp(-2.5f * (MotionPaused ? 0f : Time.deltaTime)));
                 cameraReady = true;
             }
             for (int i = 0; i < crystals.Count; i++)
-                if (crystals[i] != null) crystals[i].Rotate(Vector3.up, Time.deltaTime * (5f + i % 5), Space.World);
+                if (!ReducedEffects && !MotionPaused && crystals[i] != null) crystals[i].Rotate(Vector3.up, Time.deltaTime * (5f + i % 5), Space.World);
             marker.enabled = false;
             directionArrow.enabled = false;
             dangerArrow.enabled = false;
@@ -406,7 +413,7 @@ namespace SnakeClub
             {
                 if (!snake.alive)
                 {
-                    if (eliminations.ObserveDead(snake.id, Time.time, out float progress, out bool started) &&
+                    if (eliminations.ObserveDead(snake.id, visualClock.Time, out float progress, out bool started) &&
                         characters.TryGetValue(snake.id, out var departing) && departing != null)
                     {
                         if (started) exitPoses[snake.id] = new ExitPose { position = departing.transform.position, scale = departing.transform.localScale };
@@ -441,9 +448,9 @@ namespace SnakeClub
                 for (int i = snake.segments.Count - 1; i >= 0; i--)
                 {
                     Point p = snake.segments[i];
-                    Vector3 target = new Vector3(p.x, .72f + .045f * Mathf.Sin(Time.time * 7f - i * .55f), p.y);
+                    Vector3 target = new Vector3(p.x, .72f + (ReducedEffects ? 0f : .045f * Mathf.Sin(visualClock.Time * 7f - i * .55f)), p.y);
                     positions[i] = characterMode || Vector3.Distance(positions[i], target) > 8f ? target :
-                        Vector3.Lerp(positions[i], target, 1f - Mathf.Exp(-16f * Time.deltaTime));
+                        Vector3.Lerp(positions[i], target, 1f - Mathf.Exp(-16f * (MotionPaused ? 0f : Time.deltaTime)));
                     float taper = characterSprite != null ? .80f : i == 0 ? 1.65f : Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((snake.segments.Count - i) / 6f));
                     if (characterSprite == null) list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * taper));
                     if (characterSprite == null && snake.id == playerId && i > 0 && i % (SelectedSkin == 1 ? 3 : 2) == 0)
@@ -468,7 +475,7 @@ namespace SnakeClub
                     Vector3 aim = new Vector3(snake.bossAim.x, 0, snake.bossAim.y);
                     bossWarning.enabled = true; bossWarning.SetPosition(0, center + Vector3.down * .42f);
                     bossWarning.SetPosition(1, center + aim * 10f + Vector3.down * .42f);
-                    bossWarning.widthMultiplier = .14f + .08f * (.5f + .5f * Mathf.Sin(Time.time * 12f));
+                    bossWarning.widthMultiplier = ReducedEffects ? .18f : .14f + .08f * (.5f + .5f * Mathf.Sin(visualClock.Time * 12f));
                 }
                 if (characterSprite != null)
                 {
@@ -487,7 +494,7 @@ namespace SnakeClub
                     motion.Update(state.tick, snake.angle, snake.boosting, Time.deltaTime, ReducedEffects,
                         !MotionPaused && state.phase == "running");
                     float characterScale = 1.35f * motion.Scale;
-                    float bob = ReducedEffects || MotionPaused ? 0 : .06f * Mathf.Sin(Time.time * 4f + snake.color);
+                    float bob = ReducedEffects ? 0 : .06f * Mathf.Sin(visualClock.Time * 4f + snake.color);
                     // Anchor the bottom of the camera-facing sprite at the real
                     // head position, leaving the collision marker visible.
                     character.transform.position = center + view.transform.up * (2f * characterScale + bob);
@@ -509,8 +516,8 @@ namespace SnakeClub
                             horns[color].Add(Matrix4x4.TRS(center + side * (.48f * sign) + Vector3.up * .54f,
                                 Quaternion.Euler(0, 0, sign * 15f), new Vector3(.31f, shape == 4 ? .85f : .55f, .28f)));
                     if (state.tick < lastTick) { lastKills = snake.kills; burstStarted = -10f; }
-                    if (lastTick >= 0 && snake.kills > lastKills) { burstStarted = Time.time; burstPosition = center; }
-                    if (snake.rebound > 0 && previousRebound <= 0) { reboundStarted = Time.time; reboundPosition = center; }
+                    if (lastTick >= 0 && snake.kills > lastKills) { burstStarted = visualClock.Time; burstPosition = center; }
+                    if (snake.rebound > 0 && previousRebound <= 0) { reboundStarted = visualClock.Time; reboundPosition = center; }
                     previousRebound = snake.rebound;
                     lastKills = snake.kills; lastTick = state.tick;
                 }
@@ -528,8 +535,8 @@ namespace SnakeClub
                         Vector3 back = (tail - positions[positions.Count - 2]).normalized;
                         for (int i = 1; i <= 5; i++)
                         {
-                            float size = .29f * (1f - i / 6f) * (1f + .12f * Mathf.Sin(Time.time * 4f + i));
-                            Vector3 glow = tail + back * (i * .35f) + Vector3.up * (.12f + .04f * Mathf.Sin(Time.time * 3f + i));
+                            float size = .29f * (1f - i / 6f) * (1f + .12f * Mathf.Sin(visualClock.Time * 4f + i));
+                            Vector3 glow = tail + back * (i * .35f) + Vector3.up * (.12f + .04f * Mathf.Sin(visualClock.Time * 3f + i));
                             trail.Add(Matrix4x4.TRS(glow, Quaternion.identity, Vector3.one * size));
                         }
                     }
@@ -562,14 +569,14 @@ namespace SnakeClub
                     }
                 }
             }
-            float reboundAge = Time.time - reboundStarted;
+            float reboundAge = visualClock.Time - reboundStarted;
             reboundRipple.enabled = !ReducedEffects && reboundAge >= 0f && reboundAge < .5f;
             if (reboundRipple.enabled)
             {
                 PlaceRing(reboundRipple, new Vector3(reboundPosition.x, .27f, reboundPosition.z), Mathf.Lerp(.45f, 1.7f, reboundAge / .5f));
                 reboundRipple.widthMultiplier = .12f * (1f - reboundAge / .5f);
             }
-            float burstAge = Time.time - burstStarted;
+            float burstAge = visualClock.Time - burstStarted;
             if (!ReducedEffects && burstAge >= 0 && burstAge < .8f)
             {
                 float progress = burstAge / .8f;
@@ -585,14 +592,14 @@ namespace SnakeClub
                 starObject.SetActive(state.starVisible);
                 if (state.starVisible)
                 {
-                    starObject.transform.position = new Vector3(state.starPosition.x, 1.5f + .2f * Mathf.Sin(Time.time * 3), state.starPosition.y);
-                    starObject.transform.localScale = Vector3.one * (1.2f + .15f * Mathf.Sin(Time.time * 4));
+                    starObject.transform.position = new Vector3(state.starPosition.x, 1.5f + (ReducedEffects ? 0f : .2f * Mathf.Sin(visualClock.Time * 3)), state.starPosition.y);
+                    starObject.transform.localScale = Vector3.one * (1.2f + (ReducedEffects ? 0f : .15f * Mathf.Sin(visualClock.Time * 4)));
                 }
             }
             foreach (var fruit in state.fruits)
             {
                 Point p = fruit.position;
-                float pulse = .65f + .08f * Mathf.Sin(Time.time * 2.4f + p.x + p.y);
+                float pulse = ReducedEffects ? .65f : .65f + .08f * Mathf.Sin(visualClock.Time * 2.4f + p.x + p.y);
                 fruits[Mathf.Abs(fruit.color % fruits.Length)].Add(Matrix4x4.TRS(new Vector3(p.x, .52f, p.y), Quaternion.identity, Vector3.one * pulse));
             }
             for (int i = 0; i < bodies.Length; i++) { DrawBatch(links[i], bodyMaterials[i], cylinder); DrawBatch(bodies[i], bodyMaterials[i], sphere); DrawBatch(horns[i], bodyMaterials[i], cone); }
@@ -719,14 +726,14 @@ namespace SnakeClub
             {
                 var line = lines[layer]; line.enabled = true; line.positionCount = positions.Count - 2;
                 Color shade = layer == 0 ? color : Color.Lerp(color, Color.white, .78f);
-                float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(Time.time * 4f);
+                float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(visualClock.Time * 4f);
                 line.startColor = line.endColor = new Color(shade.r * pulse, shade.g * pulse, shade.b * pulse, 1f);
                 for (int i = 2; i < positions.Count; i++) line.SetPosition(i - 2, new Vector3(positions[i].x, .23f + layer * .02f, positions[i].z));
             }
             if (!ReducedEffects)
             {
                 // Moving highlights remain inside the real collidable path.
-                float phase = Mathf.Repeat(Time.time * 3f, 5f);
+                float phase = Mathf.Repeat(visualClock.Time * 3f, 5f);
                 for (float sample = 2f + phase; sample < positions.Count - 1; sample += 5f)
                 {
                     int i = Mathf.FloorToInt(sample);
