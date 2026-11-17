@@ -49,7 +49,9 @@ namespace SnakeClub
             homeScreen.SetupPreferences(
                 () => { reducedEffects = !reducedEffects; PlayerPrefs.SetInt("snake.v031.reducedEffects", reducedEffects ? 1 : 0); PlayerPrefs.Save(); },
                 () => feedback.HapticsEnabled = !feedback.HapticsEnabled,
-                () => feedback.MusicEnabled = !feedback.MusicEnabled);
+                () => feedback.MusicEnabled = !feedback.MusicEnabled,
+                () => feedback.MusicVolume = AudioLevels.Next(feedback.MusicVolume),
+                () => feedback.EffectsVolume = AudioLevels.Next(feedback.EffectsVolume));
             homeScreen.SetupResults(
                 () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
                 () => GamePlatform.ShareChallenge(api.Date, message => { if (!string.IsNullOrEmpty(message)) resultNote = message; }),
