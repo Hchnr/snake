@@ -23,6 +23,7 @@ namespace SnakeClub.Tests.Editor
                 config.serverUrl = ""; config.allowDevLogin = true; Require(!config.FixedPvePreview, "preview allowed developer authentication");
                 config.allowDevLogin = false; config.experimentalFixedPve = false; Require(!config.FixedPvePreview, "preview enabled without explicit flag");
                 Debug.Log("PASS Unity fixed PvE preview requires explicit offline configuration");
+                TestFixedPvePreviewFlow();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");
@@ -118,6 +119,52 @@ namespace SnakeClub.Tests.Editor
                 if (!string.IsNullOrEmpty(stamp)) File.WriteAllText(stamp, "passed\n");
             }
             finally { UnityEngine.Object.DestroyImmediate(owner); }
+        }
+
+        private static void TestFixedPvePreviewFlow()
+        {
+            var root = new GameObject("Offline fixed PvE regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>();
+                var api = root.AddComponent<GameApiClient>();
+                api.Configure(new GameConfiguration { experimentalFixedPve = true, apiUrl = "", serverUrl = "", allowDevLogin = false });
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var connection = root.AddComponent<RoomConnection>();
+                var type = typeof(SnakeGameApp);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args)
+                {
+                    var method = type.GetMethod(name, flags) ?? throw new Exception("Missing method: " + name);
+                    method.Invoke(app, args);
+                }
+                Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, renderer); Field("connection").SetValue(app, connection);
+                string pendingBefore = PlayerPrefs.GetString("snake.v3.pending", "");
+                Call("StartMain");
+                var world = Field("fixedPve").GetValue(app) as PveFixedWorld;
+                Require(world != null && (bool)Field("inGame").GetValue(app) && Field("activeRun").GetValue(app) == null, "main button did not start isolated fixed PvE");
+                var state = Field("state").GetValue(app) as ArenaState;
+                Require(state != null && state.phase == "running" && state.snakes.Count == 8, "preview did not project playable state");
+                Field("direction").SetValue(app, new Point(0, 1));
+                Field("pointerBoost").SetValue(app, true);
+                Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 4 && state.tick == 4 && world.Fighters[0].motion.Boosting, "preview did not advance using input");
+                Field("paused").SetValue(app, true); Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 4, "paused preview advanced");
+                Field("paused").SetValue(app, false);
+                Field("controlActions").SetValue(app, 1);
+                var profile = (PlayerProgress)Field("practiceProfile").GetValue(app);
+                int previousMatches = profile.completedMatches;
+                Call("RecordResult");
+                Require(PlayerPrefs.GetString("snake.v3.pending", "") == pendingBefore && profile.completedMatches == previousMatches,
+                    "preview modified settlement queue or practice progression");
+                Require(((string)Field("resultNote").GetValue(app)).Contains("试玩"), "preview result was not labelled");
+                Call("BackToMenu");
+                Require(Field("fixedPve").GetValue(app) == null && !(bool)Field("inGame").GetValue(app), "preview did not return to menu");
+                Debug.Log("PASS Unity offline fixed PvE start, input, pause and isolated settlement");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
         private static void Require(bool condition, string message)

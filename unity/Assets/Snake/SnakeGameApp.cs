@@ -360,17 +360,7 @@ namespace SnakeClub
                 }
                 state = daily.State;
             }
-            if (fixedPve != null && inGame && !paused)
-            {
-                stepTimer += Mathf.Min(Time.deltaTime, .2f);
-                while (stepTimer >= .05f && !fixedPve.Finished)
-                {
-                    fixedPve.Step(EncodeDirection(direction), pointerBoost);
-                    state = fixedPve.RenderState();
-                    matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId);
-                    stepTimer -= .05f;
-                }
-            }
+            AdvanceFixedPve(Time.deltaTime);
             if (arena != null && !paused && (!homeVisible || renderWardrobePreview))
             {
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
@@ -432,6 +422,19 @@ namespace SnakeClub
             arenaRenderer.ReducedEffects = reducedEffects;
             arenaRenderer.MotionPaused = paused || appPaused || !appFocused;
             if (arenaRenderer.Visible) arenaRenderer.Draw(state, wardrobePreview ? "demo-0" : playerId);
+        }
+
+        private void AdvanceFixedPve(float deltaTime)
+        {
+            if (fixedPve == null || !inGame || paused) return;
+            stepTimer += Mathf.Min(Mathf.Max(0, deltaTime), .2f);
+            while (stepTimer >= .05f && !fixedPve.Finished)
+            {
+                fixedPve.Step(EncodeDirection(direction), pointerBoost);
+                state = fixedPve.RenderState();
+                matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId);
+                stepTimer -= .05f;
+            }
         }
 
         private void ReadControls()
