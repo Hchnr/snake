@@ -4,6 +4,16 @@ using System.Collections.Generic;
 
 namespace SnakeClub.Core
 {
+    // Request generations prevent responses from an invalidated login from
+    // changing state after a new login has completed.
+    public sealed class SessionGeneration
+    {
+        private long current;
+        public long Capture() => current;
+        public bool IsCurrent(long generation) => generation == current;
+        public void Advance() { current++; }
+    }
+
     [Serializable]
     public sealed class ExpeditionState
     {

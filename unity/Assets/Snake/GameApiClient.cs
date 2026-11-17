@@ -58,6 +58,7 @@ namespace SnakeClub
         public string LaunchChallengeToken { get; private set; } = "";
         public int ChallengeRevision { get; private set; }
         private string session = "";
+        private readonly SessionGeneration sessionGeneration = new SessionGeneration();
         private bool reachable;
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
         private bool platformReady;
@@ -172,6 +173,7 @@ namespace SnakeClub
         {
             if (!reply.ok || string.IsNullOrEmpty(reply.session)) { done(reply); return; }
             session = reply.session;
+            sessionGeneration.Advance();
             Apply(reply);
             Get("bootstrap", done);
         }
@@ -183,6 +185,7 @@ namespace SnakeClub
         private IEnumerator Request(string method, string path, ApiRequest body, Action<ApiReply> done)
         {
             if (string.IsNullOrWhiteSpace(Config.apiUrl)) { done(new ApiReply { error = "对战服务尚未配置" }); yield break; }
+            long requestGeneration = sessionGeneration.Capture();
             string url = Config.apiUrl.TrimEnd('/') + "/api/v3/" + path;
             using (var request = new UnityWebRequest(url, method))
             {
@@ -195,6 +198,12 @@ namespace SnakeClub
                 }
                 if (!string.IsNullOrEmpty(session)) request.SetRequestHeader("Authorization", "Bearer " + session);
                 yield return request.SendWebRequest();
+                if (!sessionGeneration.IsCurrent(requestGeneration))
+                {
+                    // Still complete the caller so loading and retry state can recover.
+                    done(new ApiReply { error = "登录状态已变化，请重试" });
+                    yield break;
+                }
                 reachable = request.responseCode > 0;
                 ApiReply reply = null;
                 if (!string.IsNullOrEmpty(request.downloadHandler.text))
@@ -202,7 +211,7 @@ namespace SnakeClub
                 if (reply == null) reply = new ApiReply { error = "网络不可用，当前为离线练习" };
                 reply.httpStatus = request.responseCode;
                 if (!reply.ok && string.IsNullOrEmpty(reply.error)) reply.error = "网络请求失败";
-                if (request.responseCode == 401) { session = ""; Profile = null; reachable = false; }
+                if (request.responseCode == 401) { session = ""; Profile = null; reachable = false; sessionGeneration.Advance(); }
                 Apply(reply);
                 done(reply);
             }
