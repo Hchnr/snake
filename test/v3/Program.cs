@@ -103,6 +103,7 @@ var cases = new (string name, Action run)[]
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
+    ("nameplates avoid overlap, anchors and the minimap", NameplateCases),
     ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
     ("star carriers attract nearby AI without changing daily-3 replay", StarPursuitCases),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
@@ -297,6 +298,38 @@ static void MusicBehavior()
     Check(home.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && home.Any(x => Math.Abs(x) > .05f), "home loop is clipped or silent");
     Check(battle.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && battle.Any(x => Math.Abs(x) > .05f), "battle loop is clipped or silent");
     Check(!home.SequenceEqual(battle), "home and battle loops are identical");
+}
+
+static void NameplateCases()
+{
+    var layout = new NameplateLayout();
+    var center = new Point(540, 800);
+    for (int i = 0; i < 8; i++) layout.AddAnchor(center);
+    var boxes = new List<Point>();
+    for (int i = 0; i < 12; i++)
+    {
+        if (!layout.TryPlace(center, out var box)) continue;
+        if (boxes.Count == 0) Check(box.x == 435 && box.y == 732, "priority player did not retain the natural label position");
+        Check(box.y + NameplateLayout.Height <= center.y - 12, "nameplate moved below the avatar anchor");
+        Check(!(center.x >= box.x - 8 && center.x <= box.x + NameplateLayout.Width + 8 &&
+            center.y >= box.y - 8 && center.y <= box.y + NameplateLayout.Height + 8), "nameplate covered an actor anchor");
+        foreach (var prior in boxes)
+            Check(box.x >= prior.x + NameplateLayout.Width + 6 || box.x + NameplateLayout.Width + 6 <= prior.x ||
+                  box.y >= prior.y + NameplateLayout.Height + 6 || box.y + NameplateLayout.Height + 6 <= prior.y, "overlapping actors produced overlapping labels");
+        boxes.Add(box);
+    }
+    Check(boxes.Count >= 4 && boxes.Count < 12, "crowded area did not bound readable labels");
+    layout.Reset(); layout.AddAnchor(new Point(960, 430));
+    Check(!layout.TryPlace(new Point(960, 430), out _), "upper-right label covered the minimap or the avatar");
+    layout.Reset(); layout.AddAnchor(new Point(960, 750));
+    Check(layout.TryPlace(new Point(960, 750), out var besideMap) && besideMap.y >= 545 && besideMap.x + NameplateLayout.Width <= 1050,
+        "label below the minimap was not placed safely");
+    Check(!layout.TryPlace(new Point(float.NaN, 500), out _) && !layout.TryPlace(new Point(30, 500), out _), "invalid or off-screen label was placed");
+    layout.Reset(); layout.AddAnchor(center); layout.Reserve(400, 700, 280, 100);
+    Check(layout.TryPlace(center, out var away) && away.y + NameplateLayout.Height + 6 <= 700,
+        "label covered the tutorial panel");
+    layout.Reset(); layout.AddAnchor(center);
+    Check(layout.TryPlace(center, out var first) && first.y == 732, "layout reset retained old slots");
 }
 
 static void NearbyDanger()
