@@ -45,7 +45,6 @@ namespace SnakeClub
                 index => previewSkin = index, EquipPreviewSkin, TrialPreviewSkin);
             homeScreen.SetupReconnect(ConnectProfile);
             homeScreen.SetupPreferences(
-                () => { mirrorControls = !mirrorControls; PlayerPrefs.SetInt("snake.v031.mirrorControls", mirrorControls ? 1 : 0); PlayerPrefs.Save(); },
                 () => { reducedEffects = !reducedEffects; PlayerPrefs.SetInt("snake.v031.reducedEffects", reducedEffects ? 1 : 0); PlayerPrefs.Save(); });
             homeScreen.SetupResults(
                 () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
@@ -97,7 +96,6 @@ namespace SnakeClub
 
         private void LoadPreferences()
         {
-            mirrorControls = PlayerPrefs.GetInt("snake.v031.mirrorControls", 0) != 0;
             reducedEffects = PlayerPrefs.GetInt("snake.v031.reducedEffects", 0) != 0;
         }
 
@@ -222,7 +220,7 @@ namespace SnakeClub
             }
             else
             {
-                Label(new Rect(150, 850, 780, 80), depthWon ? "三间秘境全部完成" : "已完成房间的奖励仍会保留", 28, new Color(.80f, .94f, .90f), TextAnchor.MiddleCenter);
+                Label(new Rect(150, 850, 780, 80), depthWon ? "三间秘境全部完成" : activeRun == null ? "离线练习不计账号奖励" : "已确认的房间奖励会保留", 28, new Color(.80f, .94f, .90f), TextAnchor.MiddleCenter);
                 if (Button(new Rect(210, 980, 660, 105), "再次深潜", new Color(.10f, .60f, .49f))) StartDepth();
                 if (Button(new Rect(210, 1110, 660, 100), "返回大厅", new Color(.17f, .25f, .34f))) BackToMenu();
             }
@@ -230,6 +228,7 @@ namespace SnakeClub
 
         private void BeginDaily(ApiReply run)
         {
+            dragSteering.Reset();
             connection.Close(); online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
@@ -326,6 +325,7 @@ namespace SnakeClub
             else if (frontPage == "skins") DrawSkins();
             else if (frontPage == "talents") DrawTalents();
             else if (frontPage == "caves") DrawCaves();
+            else if (frontPage == "cave-album") DrawCaveAlbum();
             else if (frontPage == "leaderboard") DrawLeaderboard();
             else if (frontPage == "more") DrawMore();
         }
@@ -354,10 +354,10 @@ namespace SnakeClub
             if (SmallButton(new Rect(790, 1760, 200, 70), feedback.Enabled ? "声音：开" : "声音：关", new Color(.12f, .24f, .31f), 22)) feedback.Enabled = !feedback.Enabled;
         }
 
-        private void FrontHeader(string title, string subtitle)
+        private void FrontHeader(string title, string subtitle, string back = "home")
         {
             Panel(new Rect(55, 65, 970, 215), new Color(.025f, .065f, .12f, .91f));
-            if (SmallButton(new Rect(80, 102, 130, 76), "返回", new Color(.15f, .25f, .33f), 24)) { frontPage = "home"; arenaRenderer.SelectedSkin = EffectiveSkin; }
+            if (SmallButton(new Rect(80, 102, 130, 76), "返回", new Color(.15f, .25f, .33f), 24)) { frontPage = back; arenaRenderer.SelectedSkin = EffectiveSkin; }
             Label(new Rect(225, 91, 610, 82), title, 48, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(100, 185, 880, 55), subtitle, 25, new Color(.68f, .84f, .87f), TextAnchor.MiddleCenter);
         }
@@ -516,7 +516,8 @@ namespace SnakeClub
                             if (reply.ok) { caveStory = "我出发啦，稍后见！"; caveStoryUntil = Time.unscaledTime + 4f; }
                         });
                 }
-                Label(new Rect(100, 1210, 880, 100), "同时仅可探索一个洞穴，最多累计 8 小时。\n每日探洞经验剩余 " + (20 - p.dailyExpeditionXp), 24, new Color(.77f, .88f, .88f), TextAnchor.MiddleCenter);
+                if (SmallButton(new Rect(260, 1140, 560, 90), "查看碎片图鉴", new Color(.24f, .36f, .48f), 26)) frontPage = "cave-album";
+                Label(new Rect(100, 1240, 880, 90), "同时仅可探索一个洞穴，最多累计 8 小时。\n每日探洞经验剩余 " + (20 - p.dailyExpeditionXp), 24, new Color(.77f, .88f, .88f), TextAnchor.MiddleCenter);
                 DrawRewardOffer(new Rect(200, 1340, 680, 95));
             }
             if (Time.unscaledTime < caveStoryUntil && homeAvatar != null && homeAvatar.Texture != null)
@@ -526,6 +527,26 @@ namespace SnakeClub
                 Label(new Rect(315, 1570, 650, 80), frontNotice, 22, new Color(.80f, .91f, .91f), TextAnchor.MiddleLeft);
             }
             else Label(new Rect(100, 1530, 880, 100), frontNotice, 24, new Color(.80f, .91f, .91f), TextAnchor.MiddleCenter);
+        }
+
+        private void DrawCaveAlbum()
+        {
+            FrontHeader("梦游图鉴", "完整探洞获得碎片，解锁各洞穴的故事", "caves");
+            PlayerProgress profile = CurrentProfile;
+            for (int cave = 0; cave < Progression.CaveNames.Length; cave++)
+            {
+                int fragments = profile.caveFragments != null && cave < profile.caveFragments.Length ? Math.Max(0, profile.caveFragments[cave]) : 0;
+                float y = 340 + cave * 360;
+                Panel(new Rect(95, y, 890, 325), new Color(.025f, .08f, .14f, .93f));
+                Label(new Rect(130, y + 20, 820, 60), Progression.CaveNames[cave] + "  ·  碎片 " + fragments, 32, Color.white, TextAnchor.MiddleLeft, true);
+                for (int chapter = 0; chapter < 3; chapter++)
+                {
+                    bool unlocked = fragments >= Progression.CaveStoryThreshold(chapter);
+                    Label(new Rect(145, y + 90 + chapter * 65, 790, 55), (chapter + 1) + "  " + Progression.CaveStory(cave, chapter, fragments), 25,
+                        unlocked ? new Color(.80f, .95f, .87f) : new Color(.55f, .65f, .69f), TextAnchor.MiddleLeft);
+                }
+            }
+            Label(new Rect(110, 1450, 860, 80), api.Connected ? "图鉴根据账号碎片自动解锁，不消耗碎片" : "连接账号后查看已解锁的图鉴", 23, new Color(.77f, .88f, .88f), TextAnchor.MiddleCenter);
         }
 
         private void OpenBoard()

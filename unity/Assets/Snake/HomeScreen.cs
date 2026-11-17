@@ -19,7 +19,7 @@ namespace SnakeClub
         private RawImage background, portrait, skinPortrait, resultPortrait;
         private Text level, coins, notice, primaryText, primaryHint, caveText, soundText;
         private Text skinName, skinDescription, skinActionText, skinNotice, skinTrialText;
-        private Text resultTitle, resultStats, resultDetails, resultAdText, settingsSound, settingsControls, settingsEffects;
+        private Text resultTitle, resultStats, resultDetails, resultAdText, settingsSound, settingsEffects;
         private readonly Image[] skinCards = new Image[SkinCatalog.All.Length];
         private readonly RawImage[] skinThumbnails = new RawImage[SkinCatalog.All.Length];
         private readonly Text[] skinStates = new Text[SkinCatalog.All.Length];
@@ -32,7 +32,7 @@ namespace SnakeClub
         private Font font;
         private Action onStart, onSkins, onCaves, onMore, onSound;
         private Action onSkinBack, onSkinTrial;
-        private Action onResultRetry, onResultMenu, onResultShare, onResultAd, onReconnect, onControls, onEffects;
+        private Action onResultRetry, onResultMenu, onResultShare, onResultAd, onReconnect, onEffects;
         private Action<int> onSkinSelect, onSkinEquip;
         private int selectedPreview, skinPageIndex;
         private Rect lastSafe;
@@ -132,7 +132,7 @@ namespace SnakeClub
         }
 
         public void SetupReconnect(Action reconnectAction) => onReconnect = reconnectAction;
-        public void SetupPreferences(Action controls, Action effects) { onControls = controls; onEffects = effects; }
+        public void SetupPreferences(Action effects) { onEffects = effects; }
 
         public void SetPage(bool skins, bool results = false)
         {
@@ -150,7 +150,7 @@ namespace SnakeClub
 
         public void SetState(PlayerProgress profile, Texture character, string message, bool busy, bool connected, bool sound,
             int equipped, int preview, bool referencesEnabled, bool trialAvailable, bool friendChallenge = false,
-            bool mirrored = false, bool reduce = false)
+            bool reduce = false)
         {
             if (canvas == null || profile == null) return;
             reducedEffects = reduce;
@@ -164,7 +164,6 @@ namespace SnakeClub
             Set(notice, message ?? "");
             Set(soundText, sound ? "声音：开" : "声音：关");
             Set(settingsSound, sound ? "声音：开" : "声音：关");
-            Set(settingsControls, mirrored ? "摇杆：右侧" : "摇杆：左侧");
             Set(settingsEffects, reducedEffects ? "画面特效：简洁" : "画面特效：丰富");
             primary.interactable = !busy;
             if (reconnect.gameObject.activeSelf == connected) reconnect.gameObject.SetActive(!connected);
@@ -221,8 +220,7 @@ namespace SnakeClub
             MakeText("Settings title", settingsModal, new Rect(180, 550, 720, 90), "游戏设置", 47, Color.white, TextAnchor.MiddleCenter, true);
             var sound = MakeButton("Settings sound", settingsModal, new Rect(220, 680, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onSound?.Invoke());
             settingsSound = MakeText("Settings sound label", sound.transform, new Rect(0, 0, 640, 105), "声音：开", 28, Color.white, TextAnchor.MiddleCenter, true);
-            var controls = MakeButton("Settings controls", settingsModal, new Rect(220, 820, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onControls?.Invoke());
-            settingsControls = MakeText("Settings controls label", controls.transform, new Rect(0, 0, 640, 105), "摇杆：左侧", 28, Color.white, TextAnchor.MiddleCenter, true);
+            MakeText("Settings controls label", settingsModal, new Rect(220, 820, 640, 105), "控制：全屏拖动 · 双指加速", 28, Color.white, TextAnchor.MiddleCenter, true);
             var effects = MakeButton("Settings effects", settingsModal, new Rect(220, 960, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onEffects?.Invoke());
             settingsEffects = MakeText("Settings effects label", effects.transform, new Rect(0, 0, 640, 105), "画面特效：丰富", 28, Color.white, TextAnchor.MiddleCenter, true);
             var close = MakeButton("Settings close", settingsModal, new Rect(300, 1120, 480, 100), new Color(.08f, .68f, .54f, 1f), () => settingsModal.gameObject.SetActive(false));

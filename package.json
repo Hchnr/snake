@@ -10,6 +10,7 @@
     "preview": "node scripts/preview-unity.js",
     "test:v2": "sh scripts/test-v2.sh",
     "test:v3": "sh scripts/test-v3.sh",
+    "test:unity:compile": "python3 scripts/check-unity-compile.py",
     "test:unity": "python3 scripts/test-unity.py",
     "test:unity:play": "python3 scripts/test-unity-play.py",
     "server:v2": "dotnet run --project server/Snake.Server.csproj",

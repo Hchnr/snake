@@ -132,7 +132,9 @@ namespace SnakeClub.Tests.Editor
                 }
                 if (phase == 2)
                 {
-                    Click(ButtonNamed(app, "Settings controls")); phase++; deadline = EditorApplication.timeSinceStartup + .2; return;
+                    Text controls = Array.Find(app.GetComponentsInChildren<Text>(true), item => item.name == "Settings controls label");
+                    if (controls == null || !controls.text.Contains("全屏拖动")) throw new InvalidOperationException("Full-screen control help missing");
+                    phase++; deadline = EditorApplication.timeSinceStartup + .2; return;
                 }
                 if (phase == 3)
                 {
@@ -140,13 +142,8 @@ namespace SnakeClub.Tests.Editor
                 }
                 if (phase == 4)
                 {
-                    if (PlayerPrefs.GetInt("snake.v031.mirrorControls", 0) != 1 || PlayerPrefs.GetInt("snake.v031.reducedEffects", 0) != 1)
-                        throw new InvalidOperationException("Control or effects preference was not saved");
-                    var apply = typeof(SnakeGameApp).GetMethod("ApplyPointer", BindingFlags.Instance | BindingFlags.NonPublic);
-                    if (apply == null || !(bool)apply.Invoke(app, new object[] { new Vector2(965, 1645) }))
-                        throw new InvalidOperationException("Right-side joystick did not accept input");
-                    var direction = (Point)typeof(SnakeGameApp).GetField("direction", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(app);
-                    if (direction.x <= 0) throw new InvalidOperationException("Right-side joystick reversed the input direction");
+                    if (PlayerPrefs.GetInt("snake.v031.reducedEffects", 0) != 1)
+                        throw new InvalidOperationException("Effects preference was not saved");
                     Click(ButtonNamed(app, "Settings close")); Click(ButtonNamed(app, "装扮")); phase++; deadline = EditorApplication.timeSinceStartup + .2; return;
                 }
                 if (phase == 5)

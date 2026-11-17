@@ -46,7 +46,9 @@ namespace SnakeClub
         private bool onlineMenu;
         private bool paused;
         private bool pointerBoost;
-        private bool mirrorControls, reducedEffects;
+        private bool reducedEffects;
+        private readonly DragSteering dragSteering = new DragSteering();
+        private int suppressPointerUpFrame = -1;
         private bool firstRun;
         private bool depthMode, depthWon;
         private int depthRoom;
@@ -134,6 +136,7 @@ namespace SnakeClub
 
         private void BeginPve(ApiReply run)
         {
+            dragSteering.Reset();
             connection.Close();
             online = false;
             inGame = true;
@@ -177,6 +180,7 @@ namespace SnakeClub
 
         private void StartOnline(string action)
         {
+            dragSteering.Reset();
             string address = serverInput.Trim();
             if (!address.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) && !address.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
             {
@@ -236,6 +240,7 @@ namespace SnakeClub
 
         private void BackToMenu()
         {
+            dragSteering.Reset();
             connection.Close();
             inGame = false;
             online = false;
@@ -264,7 +269,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, mirrorControls, reducedEffects);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
@@ -284,6 +289,8 @@ namespace SnakeClub
                 if (homeAvatar.Visible) homeAvatar.Skin = homeVisible && frontPage == "skins" ? previewSkin :
                     resultVisible && activeRun != null && activeRun.trialSkin > 0 && EffectiveSkin < SkinCatalog.OwnedSkinCount ? activeRun.trialSkin : EffectiveSkin;
             }
+            if (inGame && !paused && state != null && state.phase == "running") ReadControls();
+            else { dragSteering.Reset(); pointerBoost = false; }
             if (daily != null && inGame && !paused)
             {
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
@@ -317,7 +324,6 @@ namespace SnakeClub
             }
             if (inGame && !paused && state != null && state.phase == "running")
             {
-                ReadControls();
                 if (online && !string.IsNullOrEmpty(playerId))
                 {
                     sendTimer += Time.deltaTime;
@@ -356,13 +362,44 @@ namespace SnakeClub
             bool acted = x != 0 || y != 0 || pointerBoost;
             if (x != 0 || y != 0) direction = new Point(x, y).Normalized;
 
+            int activeTouches = 0;
+            for (int i = 0; i < Input.touchCount; i++)
+            {
+                Touch touch = Input.GetTouch(i);
+                if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
+                {
+                    if (touch.phase == TouchPhase.Ended)
+                    {
+                        Vector2 last = ToVirtual(touch.position);
+                        if (dragSteering.Move(touch.fingerId, new Point(last.x, last.y), out Point next)) { direction = next; acted = true; }
+                    }
+                    if (dragSteering.End(touch.fingerId)) suppressPointerUpFrame = Time.frameCount;
+                }
+                else activeTouches++;
+            }
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch touch = Input.GetTouch(i);
                 if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled) continue;
-                acted |= ApplyPointer(ToVirtual(touch.position));
+                Vector2 position = ToVirtual(touch.position);
+                Point point = new Point(position.x, position.y);
+                if (!dragSteering.Active) dragSteering.Begin(touch.fingerId, point);
+                else if (dragSteering.Move(touch.fingerId, point, out Point next)) { direction = next; acted = true; }
             }
-            if (Input.touchCount == 0 && Input.GetMouseButton(0)) acted |= ApplyPointer(ToVirtual(Input.mousePosition));
+            // Holding a second finger adds an optional boost without reserving a screen area.
+            if (activeTouches > 1) { pointerBoost = true; acted = true; }
+            if (Input.touchCount == 0)
+            {
+                Vector2 position = ToVirtual(Input.mousePosition);
+                Point point = new Point(position.x, position.y);
+                if (Input.GetMouseButtonDown(0)) dragSteering.Begin(-1, point);
+                if (Input.GetMouseButton(0) && dragSteering.Move(-1, point, out Point next)) { direction = next; acted = true; }
+                if (Input.GetMouseButtonUp(0))
+                {
+                    if (dragSteering.Move(-1, point, out Point last)) { direction = last; acted = true; }
+                    if (dragSteering.End(-1)) suppressPointerUpFrame = Time.frameCount;
+                }
+            }
             if (acted) controlActions++;
         }
 
@@ -381,27 +418,27 @@ namespace SnakeClub
             return new Vector2((screen.x - left) / scale, ((Screen.height - screen.y) - top) / scale);
         }
 
-        private bool ApplyPointer(Vector2 position)
-        {
-            if (mirrorControls) position.x = 1080f - position.x;
-            if (position.y > 1390 && position.x < 560)
-            {
-                Vector2 delta = position - new Vector2(245, 1645);
-                if (mirrorControls) delta.x = -delta.x;
-                if (delta.magnitude > 18) { direction = new Point(delta.x, -delta.y).Normalized; return true; }
-            }
-            if (position.y > 1450 && position.x > 700) { pointerBoost = true; return true; }
-            return false;
-        }
-
         private void OnApplicationPause(bool isPaused)
         {
-            if (isPaused && inGame && !online) paused = true;
+            if (isPaused) SuspendInput();
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus) SuspendInput();
+        }
+
+        private void SuspendInput()
+        {
+            dragSteering.Reset(); pointerBoost = false;
+            if (inGame && !online) paused = true;
         }
 
         private void OnGUI()
         {
             if (rounded == null) return;
+            if (inGame && Event.current.type == EventType.MouseUp && suppressPointerUpFrame == Time.frameCount)
+                Event.current.Use();
             SafeUiMetrics(out float scale, out float left, out float top);
             Matrix4x4 old = GUI.matrix;
             GUI.matrix = Matrix4x4.TRS(new Vector3(left, top, 0), Quaternion.identity, new Vector3(scale, scale, 1));
@@ -448,7 +485,7 @@ namespace SnakeClub
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
-            else Label(new Rect(88, 135, 410, 52), depthMode ? DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun != null && activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
+            else Label(new Rect(88, 135, 410, 52), depthMode ? (activeRun == null ? "练习 · " : "") + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), 40, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
             Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + "  星核 " + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
@@ -483,7 +520,7 @@ namespace SnakeClub
             if (firstRun && !online && state != null && state.phase == "running" && state.tick < 600)
             {
                 int seconds = state.tick / 20;
-                string hint = seconds < 2 ? "" : seconds < 8 ? (controlActions > 0 ? "" : "拖动" + (mirrorControls ? "右侧" : "左侧") + "摇杆，控制角色方向") :
+                string hint = seconds < 2 ? "" : seconds < 8 ? (controlActions > 0 ? "" : "在屏幕任意位置拖动，控制方向") :
                     seconds < 16 ? "绕住对手，再回到自己的轨迹" : seconds < 24 ? "撞墙不会失败，还会短暂加速" : "让对手撞上你的轨迹，淘汰后立即成长";
                 if (!string.IsNullOrEmpty(hint))
                 {
@@ -535,14 +572,8 @@ namespace SnakeClub
 
         private void DrawControls()
         {
-            Panel(ControlRect(new Rect(115, 1515, 260, 260)), new Color(.10f, .18f, .25f, .65f));
-            Panel(ControlRect(new Rect(190, 1590, 110, 110)), new Color(.65f, .95f, .87f, .72f));
-            Panel(ControlRect(new Rect(770, 1535, 220, 220)), new Color(.94f, .55f, .25f, .85f));
-            Label(ControlRect(new Rect(770, 1580, 220, 120)), "加速", 38, Color.white, TextAnchor.MiddleCenter, true);
-            Label(new Rect(105, 1795, 870, 70), "摇杆移动  ·  长按加速消耗长度  ·  撞墙反弹", 24, new Color(.80f, .87f, .90f), TextAnchor.MiddleCenter);
+            Label(new Rect(105, 1795, 870, 70), "全屏拖动转向  ·  双指加速消耗长度  ·  撞墙反弹", 24, new Color(.80f, .87f, .90f), TextAnchor.MiddleCenter);
         }
-
-        private Rect ControlRect(Rect rect) => mirrorControls ? new Rect(1080f - rect.xMax, rect.y, rect.width, rect.height) : rect;
 
         private void DrawMiniMap(ArenaState world)
         {
