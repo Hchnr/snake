@@ -38,6 +38,34 @@ namespace SnakeClub.Core
         public ExpeditionState expedition;
     }
 
+    // Platform callbacks can be missing, duplicated, late, or throw. Only the
+    // first result may start an exchange or complete the login attempt.
+    public static class PlatformLoginFlow
+    {
+        public static void Start(Action<Action<string, string>, Action> request,
+            Action<Action> scheduleTimeout, Action<string, string> exchange, Action<string> fail)
+        {
+            int resolved = 0;
+            bool Claim() => System.Threading.Interlocked.CompareExchange(ref resolved, 1, 0) == 0;
+            void Failure(string message) { if (Claim()) fail(message); }
+            try
+            {
+                request((code, anonymousCode) =>
+                {
+                    if (!Claim()) return;
+                    if (string.IsNullOrWhiteSpace(code) && string.IsNullOrWhiteSpace(anonymousCode))
+                    { fail("抖音登录没有返回有效凭证"); return; }
+                    try { exchange(code, anonymousCode); }
+                    catch (Exception) { fail("抖音登录请求失败"); }
+                }, () => Failure("抖音登录失败"));
+            }
+            catch (Exception) { Failure("抖音登录暂不可用"); }
+            if (System.Threading.Volatile.Read(ref resolved) != 0) return;
+            try { scheduleTimeout(() => Failure("抖音登录超时")); }
+            catch (Exception) { Failure("抖音登录暂不可用"); }
+        }
+    }
+
     // Submission retries use monotonic elapsed time supplied by the client;
     // stored run ownership is checked before any network request is sent.
     public sealed class PendingRetrySchedule

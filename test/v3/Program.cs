@@ -25,6 +25,7 @@ if (args.Length >= 2 && args[0] == "replay")
 var cases = new (string name, Action run)[]
 {
     ("incoming friend challenges deduplicate, retry and reject stale replies", IncomingFriendCases),
+    ("platform login handles timeout, late and duplicate callbacks", PlatformLoginCases),
     ("Douyin login handles valid, malformed and unavailable upstream responses", DouyinExchangeCases),
     ("first seven active days grow linearly and later growth slows", GrowthCurve),
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
@@ -128,6 +129,37 @@ static void IncomingFriendCases()
     Check(incoming.Complete(retryVersion, false, 2) && !incoming.Pending, "finished challenge remained pending");
     incoming.Offer("second");
     Check(incoming.Begin(2, out _, out _), "a later invocation of the same link was ignored");
+}
+
+static void PlatformLoginCases()
+{
+    Action<string, string> success = null;
+    Action failure = null, timeout = null;
+    int exchanges = 0, failures = 0;
+    string message = "";
+    void Fail(string value) { failures++; message = value; }
+    void Start() => PlatformLoginFlow.Start((ok, bad) => { success = ok; failure = bad; },
+        deadline => timeout = deadline, (code, anonymous) => exchanges++, Fail);
+
+    Start(); timeout(); success("late", ""); failure(); timeout();
+    Check(exchanges == 0 && failures == 1 && message.Contains("超时"), "timeout did not reject late callbacks exactly once");
+    exchanges = failures = 0; Start(); success("code", ""); success("duplicate", ""); failure(); timeout();
+    Check(exchanges == 1 && failures == 0, "success started multiple exchanges or failed later");
+    exchanges = failures = 0; Start(); failure(); success("late", ""); timeout();
+    Check(exchanges == 0 && failures == 1 && message.Contains("失败"), "failure did not settle exactly once");
+    exchanges = failures = 0; Start(); success(" ", null); timeout();
+    Check(exchanges == 0 && failures == 1 && message.Contains("凭证"), "empty platform credential was exchanged");
+    exchanges = failures = 0; Start(); success(null, "anonymous"); timeout();
+    Check(exchanges == 1 && failures == 0, "anonymous platform credential was rejected");
+    failures = 0;
+    PlatformLoginFlow.Start((ok, bad) => throw new Exception("SDK error"), deadline => { }, (code, anonymous) => exchanges++, Fail);
+    Check(failures == 1 && message.Contains("不可用"), "synchronous SDK exception did not complete login");
+    failures = 0;
+    PlatformLoginFlow.Start((ok, bad) => { }, deadline => throw new Exception("timer error"), (code, anonymous) => exchanges++, Fail);
+    Check(failures == 1 && message.Contains("不可用"), "timeout scheduling error did not complete login");
+    failures = 0;
+    PlatformLoginFlow.Start((ok, bad) => ok("code", ""), deadline => { }, (code, anonymous) => throw new Exception("request error"), Fail);
+    Check(failures == 1 && message.Contains("请求失败"), "exchange startup exception did not complete login");
 }
 
 static void PendingRetries()
