@@ -233,6 +233,9 @@ test('old account inventory, talent and active expedition survive progress migra
 test('PvE settlement is bound to the player and pays once, including daily objective', async () => {
   const runA = (await request('match/start', { token: alice.session, body: {} })).data;
   const runB = (await request('match/start', { token: alice.session, body: {} })).data;
+  assert.equal(runA.mode, 'pve'); assert.equal(runB.mode, 'pve');
+  const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs;
+  assert.equal(stored[runA.runId].seed, runA.seed); assert.equal(stored[runB.runId].seed, runB.seed);
   const finish = run => ({ runId: run.runId, token: run.token, seconds: 3, actions: 5 });
   assert.equal((await request('match/finish', { token: bob.session, body: finish(runA) })).status, 400);
   assert.equal((await request('match/finish', { token: alice.session, body: { ...finish(runA), token: runA.token + 'x' } })).status, 400);

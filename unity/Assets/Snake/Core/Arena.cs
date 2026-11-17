@@ -536,6 +536,19 @@ namespace SnakeClub.Core
             for (int i = 0; i < fruitCount; i++) State.fruits.Add(NewFruit());
         }
 
+        // Shared initialization for ordinary PvE and its future replay verifier.
+        // Rules still use floating point and System.Random; cross-runtime replay
+        // must be demonstrated before this can be used to validate rewards.
+        public static Arena CreateStandardPve(int seed, bool firstRun, string playerName)
+        {
+            var arena = new Arena(seed, roundSeconds: firstRun ? 60f : 90f,
+                nearbyOpponents: true, enableCaptures: true, rotatingEvents: true);
+            arena.AddSnake("you", playerName, false);
+            for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
+            arena.Start();
+            return arena;
+        }
+
         public SnakeState AddSnake(string id, string name, bool bot)
         {
             if (string.IsNullOrWhiteSpace(id) || Find(id) != null) throw new ArgumentException("Snake ID must be unique.");

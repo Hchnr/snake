@@ -150,18 +150,24 @@ namespace SnakeClub
             room = "";
             playerId = "you";
             firstRun = !CurrentProfile.tutorialComplete;
-            arena = new Arena(unchecked((int)DateTime.UtcNow.Ticks), roundSeconds: depthMode ? 55f : firstRun ? 60f : 90f, nearbyOpponents: true, enableCaptures: true, rotatingEvents: !depthMode);
-            arena.AddSnake(playerId, string.IsNullOrWhiteSpace(nameInput) ? "玩家" : nameInput.Trim(), false);
-            for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
-            if (depthMode && depthRoom == 2) arena.ConfigureStar(5f, playerId);
-            else if (depthMode) arena.DisableStar();
-            if (depthMode && depthRoom == 3)
+            int arenaSeed = run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks);
+            string playerName = string.IsNullOrWhiteSpace(nameInput) ? "玩家" : nameInput.Trim();
+            if (!depthMode) arena = Arena.CreateStandardPve(arenaSeed, firstRun, playerName);
+            else
             {
-                arena.SetStartingLength("bot-0", 20);
-                arena.ConfigureBoss("bot-0");
-                arena.State.eventKind = "bounty"; arena.State.eventStatus = "active"; arena.State.eventTarget = "bot-0";
+                arena = new Arena(arenaSeed, roundSeconds: 55f, nearbyOpponents: true, enableCaptures: true);
+                arena.AddSnake(playerId, playerName, false);
+                for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
+                if (depthRoom == 2) arena.ConfigureStar(5f, playerId);
+                else arena.DisableStar();
+                if (depthRoom == 3)
+                {
+                    arena.SetStartingLength("bot-0", 20);
+                    arena.ConfigureBoss("bot-0");
+                    arena.State.eventKind = "bounty"; arena.State.eventStatus = "active"; arena.State.eventTarget = "bot-0";
+                }
+                arena.Start();
             }
-            arena.Start();
             state = arena.State;
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             stepTimer = 0;
