@@ -324,6 +324,15 @@ namespace SnakeClub.Core
         public readonly ArenaState State;
         public int FruitRevision { get; private set; }
         private readonly Dictionary<string, Control> controls = new Dictionary<string, Control>();
+        // These buffers belong to one arena and are cleared before each use.
+        // No simulation state or completed capture polygon references them.
+        private readonly Dictionary<string, Point> previousHeadsBuffer = new Dictionary<string, Point>();
+        private readonly Dictionary<string, CaptureLoop> captureLoopsBuffer = new Dictionary<string, CaptureLoop>();
+        private readonly Dictionary<string, string> captureDeathsBuffer = new Dictionary<string, string>();
+        private readonly Dictionary<string, string> collisionDeathsBuffer = new Dictionary<string, string>();
+        private readonly Dictionary<string, string> collisionReasonsBuffer = new Dictionary<string, string>();
+        private readonly List<CapturePoint> capturePathBuffer = new List<CapturePoint>(MaximumLength);
+        private readonly List<string> protectedBossesBuffer = new List<string>();
         private readonly Random random;
         private readonly bool nearbyOpponents, enableCaptures, rotatingEvents;
         private bool starEnabled = true;
@@ -430,7 +439,8 @@ namespace SnakeClub.Core
             State.tick++;
             State.remaining = Math.Max(0, State.remaining - dt);
             if (!rotatingEvents && State.eventStatus == "active") State.eventRemaining = State.remaining;
-            var previousHeads = enableCaptures ? new Dictionary<string, Point>() : null;
+            var previousHeads = previousHeadsBuffer;
+            previousHeads.Clear();
             foreach (var snake in State.snakes)
             {
                 if (!snake.alive) continue;
@@ -504,7 +514,8 @@ namespace SnakeClub.Core
             CollectFruits();
             if (starEnabled && (!rotatingEvents || (State.eventStatus == "active" && State.eventKind == "star"))) UpdateStar(dt);
             if (rotatingEvents) UpdateRotatingEvent(dt);
-            int alive = State.snakes.FindAll(s => s.alive).Count;
+            int alive = 0;
+            foreach (var snake in State.snakes) if (snake.alive) alive++;
             if (State.remaining <= 0 || (participantsAtStart >= 2 && alive <= 1)) Finish();
         }
 
@@ -512,16 +523,16 @@ namespace SnakeClub.Core
 
         private void ResolveCaptures(Dictionary<string, Point> previousHeads)
         {
-            var loops = new Dictionary<string, CaptureLoop>();
+            var loops = captureLoopsBuffer; loops.Clear();
             foreach (var snake in State.snakes)
             {
                 if (!snake.alive || snake.shield > 0 || controls[snake.id].captureCooldown > 0 || !previousHeads.ContainsKey(snake.id)) continue;
-                var path = new List<CapturePoint>(snake.segments.Count);
-                foreach (var point in snake.segments) path.Add(CapturePosition(point));
-                if (!CaptureGeometry.TryLoop(CapturePosition(previousHeads[snake.id]), path, out var loop)) continue;
+                capturePathBuffer.Clear();
+                foreach (var point in snake.segments) capturePathBuffer.Add(CapturePosition(point));
+                if (!CaptureGeometry.TryLoop(CapturePosition(previousHeads[snake.id]), capturePathBuffer, out var loop)) continue;
                 loops[snake.id] = loop; controls[snake.id].captureCooldown = .75f;
             }
-            var deaths = new Dictionary<string, string>();
+            var deaths = captureDeathsBuffer; deaths.Clear();
             foreach (var victim in State.snakes)
             {
                 if (!victim.alive || victim.shield > 0) continue;
@@ -558,8 +569,8 @@ namespace SnakeClub.Core
 
         private void ResolveCollisions()
         {
-            var deaths = new Dictionary<string, string>();
-            var reasons = new Dictionary<string, string>();
+            var deaths = collisionDeathsBuffer; deaths.Clear();
+            var reasons = collisionReasonsBuffer; reasons.Clear();
             // Compare heads once, before applying any deaths, so equal clashes are fair.
             for (int i = 0; i < State.snakes.Count; i++)
             {
@@ -610,7 +621,7 @@ namespace SnakeClub.Core
 
         private void ApplyBossDefense(Dictionary<string, string> deaths)
         {
-            var protectedBosses = new List<string>();
+            var protectedBosses = protectedBossesBuffer; protectedBosses.Clear();
             foreach (var pair in deaths)
             {
                 var victim = Find(pair.Key);

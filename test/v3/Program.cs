@@ -50,6 +50,7 @@ var cases = new (string name, Action run)[]
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
+    ("local arena reuses collision buffers without stale outcomes", ArenaBufferReuse),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
@@ -731,6 +732,38 @@ static void LocalRotatingEvents()
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
 }
 
+static void ArenaBufferReuse()
+{
+    var arena = new Arena(123, fruitCount: 0, enableCaptures: true);
+    var first = arena.AddSnake("first", "first", false);
+    var second = arena.AddSnake("second", "second", false);
+    first.shield = second.shield = 0;
+    first.segments = new() { new(0, 0), new(-1, 0), new(-2, 0) };
+    second.segments = new() { new(0, 0), new(1, 0), new(2, 0) };
+    var resolve = typeof(Arena).GetMethod("ResolveCollisions", BindingFlags.Instance | BindingFlags.NonPublic);
+    resolve.Invoke(arena, null);
+    Check(!first.alive && !second.alive, "initial collision did not happen");
+    first.alive = second.alive = true;
+    second.segments = new() { new(40, 0), new(41, 0), new(42, 0) };
+    resolve.Invoke(arena, null);
+    Check(first.alive && second.alive, "previous collision leaked into the next resolution");
+
+    var quiet = new Arena(124, roundSeconds: 60, fruitCount: 0, enableCaptures: true);
+    for (int i = 0; i < 8; i++)
+    {
+        var snake = quiet.AddSnake("p" + i, "player", false);
+        snake.shield = 0; snake.angle = 0;
+        for (int j = 0; j < snake.segments.Count; j++) snake.segments[j] = new Point(-j * Arena.SegmentSpacing, -70 + i * 20);
+        quiet.SetInput(snake.id, new Point(1, 0), false);
+    }
+    quiet.DisableStar(); quiet.Start();
+    for (int i = 0; i < 20; i++) quiet.Tick(.05f);
+    long before = GC.GetAllocatedBytesForCurrentThread();
+    for (int i = 0; i < 200; i++) quiet.Tick(.05f);
+    long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+    Check(quiet.State.tick == 220 && bytes < 200L * 256, "ordinary arena ticks allocate too much or ended unexpectedly: " + bytes);
+}
+
 static void LocalCaptureResolution()
 {
     var arena = new Arena(52, fruitCount: 0, enableCaptures: true);
@@ -752,6 +785,10 @@ static void LocalCaptureResolution()
     Check(arena.State.captureOwner == "you" && arena.State.captureCount == 2, "local capture feedback differs from the resolved state");
     var highlights = new MatchHighlights(); highlights.Observe(arena.State, "you");
     Check(highlights.BestCapture == 2 && highlights.PeakLength == 10, "actual capture was not reflected in the highlight");
+    first.alive = true;
+    typeof(Arena).GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic)
+        .Invoke(arena, new object[] { new Dictionary<string, Point> { ["you"] = owner.segments[0] } });
+    Check(first.alive && owner.kills == 2, "previous capture leaked into a later stationary tick");
 }
 
 static void HighlightSummary()
