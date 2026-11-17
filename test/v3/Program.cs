@@ -24,6 +24,7 @@ if (args.Length >= 2 && args[0] == "replay")
 
 var cases = new (string name, Action run)[]
 {
+    ("Douyin login handles valid, malformed and unavailable upstream responses", DouyinExchangeCases),
     ("first seven active days grow linearly and later growth slows", GrowthCurve),
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
     ("recommended talents allocate available points deterministically", TalentRecommendation),
@@ -64,6 +65,42 @@ static void Check(bool value, string message)
 {
     if (!value) throw new Exception(message);
 }
+static void DouyinExchangeCases()
+{
+    string seenUrl = "";
+    var handler = new FakeHttpHandler((request, _) =>
+    {
+        Check(request.Method == HttpMethod.Get && request.Content.Headers.ContentType.MediaType == "application/json", "incorrect platform request method or content type");
+        seenUrl = request.RequestUri.AbsoluteUri;
+        return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"error\":0,\"openid\":\"registered\",\"anonymous_openid\":\"visitor\",\"session_key\":\"private\"}") });
+    });
+    var client = new HttpClient(handler);
+    var exchange = new DouyinSessionExchange(client, TimeSpan.FromMilliseconds(100));
+    var result = exchange.Exchange("app id", "secret&key", "code+1", "anon/2").GetAwaiter().GetResult();
+    Check(result.Status == 200 && result.OpenId == "registered" && result.AnonymousId == "visitor", "registered/anonymous identities were not retained");
+    Check(seenUrl.Contains("appid=app%20id") && seenUrl.Contains("secret=secret%26key") && seenUrl.Contains("code=code%2B1") && seenUrl.Contains("anonymous_code=anon%2F2"), "request parameters were not encoded");
+    ExchangeResult Reply(string body, System.Net.HttpStatusCode status = System.Net.HttpStatusCode.OK)
+    {
+        var stub = new FakeHttpHandler((_, _) => Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) }));
+        return new DouyinSessionExchange(new HttpClient(stub)).Exchange("app", "secret", null, "anon").GetAwaiter().GetResult();
+    }
+    result = Reply("{\"error\":0,\"anonymous_openid\":\"visitor\"}");
+    Check(result.Status == 200 && result.OpenId == "visitor" && result.AnonymousId == "visitor", "anonymous identity not supported");
+    Check(Reply("{\"error\":40018}").Status == 401 && Reply("{\"error\":40019}").Status == 401, "invalid one-use code not rejected");
+    Check(Reply("{\"error\":40017}").Status == 503 && Reply("{\"error\":-1}").Status == 503, "platform or configuration failure misclassified");
+    foreach (string bad in new[] { "not json", "[]", "{}", "{\"error\":\"zero\"}", "{\"error\":0,\"openid\":5}", new string('x', 17000) })
+        Check(Reply(bad).Status == 503, "malformed or oversized platform response was accepted");
+    Check(Reply("{\"error\":0}").Status == 401, "missing identity was accepted");
+    Check(Reply("{}", System.Net.HttpStatusCode.ServiceUnavailable).Status == 503, "upstream HTTP error was not handled");
+    Check(exchange.Exchange("app", "secret", "", "").GetAwaiter().GetResult().Status == 400, "empty code was sent upstream");
+    var slow = new FakeHttpHandler(async (_, token) => { await Task.Delay(Timeout.Infinite, token); return new HttpResponseMessage(); });
+    result = new DouyinSessionExchange(new HttpClient(slow), TimeSpan.FromMilliseconds(20)).Exchange("app", "do-not-leak", "code", null).GetAwaiter().GetResult();
+    Check(result.Status == 503 && !result.Error.Contains("do-not-leak"), "timeout was not safe or exposed credentials");
+    var failed = new FakeHttpHandler((_, _) => Task.FromException<HttpResponseMessage>(new HttpRequestException("secret do-not-leak")));
+    result = new DouyinSessionExchange(new HttpClient(failed)).Exchange("app", "do-not-leak", "code", null).GetAwaiter().GetResult();
+    Check(result.Status == 503 && !result.Error.Contains("do-not-leak"), "network exception exposed credentials or did not degrade gracefully");
+}
+
 static void PendingRetries()
 {
     var retry = new PendingRetrySchedule();
@@ -671,4 +708,11 @@ static void DepthBoss()
     WaitCooldown(); Hit(); Check(boss.alive && boss.bossShield == 1, "second shield hit did not register");
     WaitCooldown(); Hit(); Check(!boss.alive && boss.bossShield == 0 && boss.eliminatedBy == player.id && player.kills == 1,
         "final shield hit did not eliminate the boss and credit the player");
+}
+
+sealed class FakeHttpHandler : HttpMessageHandler
+{
+    private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond;
+    public FakeHttpHandler(Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> respond) { this.respond = respond; }
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) => respond(request, cancellationToken);
 }
