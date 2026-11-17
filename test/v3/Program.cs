@@ -52,6 +52,7 @@ var cases = new (string name, Action run)[]
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
+    ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
     ("single-player events rotate, award real captures and end cleanly", LocalRotatingEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
@@ -569,6 +570,29 @@ static void CaptureResolution()
     Check(match.State.snakes[0].eliminationReason == "capture" && match.State.snakes[0].eliminatedBy == "bot-1", "daily capture cause was not projected");
     Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 0 && (int)snakeType.GetField("kills").GetValue(snakes[1]) == 0,
         "an eliminated captor incorrectly received growth");
+}
+
+static void EventOutcomeCases()
+{
+    var notice = new EventOutcomeNotice();
+    var world = new ArenaState { phase = "running", tick = 300, eventKind = "bounty", eventStatus = "waiting" };
+    var player = new SnakeState { id = "you" }; world.snakes.Add(player);
+    notice.Observe(world, "you");
+    world.eventStatus = "ended"; notice.Observe(world, "you");
+    Check(notice.Current(world) == "", "event that never started produced a notice");
+    world.eventStatus = "active"; notice.Observe(world, "you");
+    player.starPoints = 2; world.tick = 350; world.eventStatus = "ended"; notice.Observe(world, "you");
+    Check(notice.Current(world).Contains("巨蛇悬赏") && notice.Current(world).Contains("2 事件点"), "earned points were not shown");
+    world.tick = 409; notice.Observe(world, "you");
+    Check(notice.Current(world) != "", "notice expired too early");
+    world.tick = 410; Check(notice.Current(world) == "", "notice did not expire");
+    notice.Reset(); player.starPoints = 0; world.tick = 500; world.eventKind = "star"; world.eventStatus = "active"; notice.Observe(world, "you");
+    world.eventStatus = "ended"; notice.Observe(world, "you");
+    Check(notice.Current(world).Contains("星核争夺") && notice.Current(world).Contains("未得事件点"), "no-reward outcome misrepresented");
+    world.phase = "ended"; Check(notice.Current(world) == "", "event notice obscured result");
+    notice.Reset(); world.phase = "running"; world.eventKind = "fruit"; world.eventStatus = "active"; notice.Observe(world, "missing");
+    world.eventStatus = "ended"; notice.Observe(world, "missing");
+    Check(notice.Current(world) == "", "unknown player was reported as earning no points");
 }
 
 static void DailyEvents()

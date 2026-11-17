@@ -50,6 +50,7 @@ namespace SnakeClub
         private bool reducedEffects;
         private readonly DragSteering dragSteering = new DragSteering();
         private readonly MatchHighlights matchHighlights = new MatchHighlights();
+        private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
         private bool firstRun, tutorialHints = true, hasSteered, tutorialClosedLoop, tutorialRebounded;
@@ -161,7 +162,7 @@ namespace SnakeClub
             }
             arena.Start();
             state = arena.State;
-            matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
+            matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset();
             stepTimer = 0;
             direction = new Point(1, 0);
             controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
@@ -286,6 +287,9 @@ namespace SnakeClub
                         string title = daily != null ? "挑战结束" : state.winner == playerId ? "围猎胜利" : "围猎结束";
                         string stats = daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
                             own == null ? "" : "最长 " + matchHighlights.PeakLength + "   ·   淘汰 " + own.kills;
+                        if (own != null && (state.eventStatus == "active" || state.eventStatus == "ended") &&
+                            (state.eventKind == "bounty" || state.eventKind == "star" || state.eventKind == "fruit"))
+                            stats += "   ·   事件点 " + own.starPoints;
                         bool share = daily != null && activeRun != null && api.Connected && verifiedDaily &&
                             activeRun.date == api.Date && activeRun.rules == DailyMatch.RulesVersion && !string.IsNullOrEmpty(verifiedShareToken);
                         int adCoins = !string.IsNullOrEmpty(lastRewardId) && GamePlatform.HasRewardedAds(api) ? lastRewardCoins : 0;
@@ -312,7 +316,7 @@ namespace SnakeClub
                 {
                     byte heading = EncodeDirection(direction);
                     daily.Step(heading, pointerBoost);
-                    matchHighlights.Observe(daily.State, playerId); ObserveTutorial(daily.State);
+                    matchHighlights.Observe(daily.State, playerId); ObserveTutorial(daily.State); eventOutcome.Observe(daily.State, playerId);
                     dailyInputs.Add(heading); dailyInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                     stepTimer -= .05f;
                 }
@@ -325,7 +329,7 @@ namespace SnakeClub
                 {
                     if (inGame) arena.SetInput(playerId, direction, pointerBoost);
                     arena.Tick(.05f);
-                    if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); }
+                    if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); }
                     if (inGame && depthMode && arena.State.phase == "running" &&
                         DepthChallenge.Evaluate(depthRoom, arena.State, playerId) != DepthChallenge.RoomStatus.InProgress) arena.EndRound();
                     stepTimer -= .05f;
@@ -541,6 +545,15 @@ namespace SnakeClub
             {
                 string starHint = string.IsNullOrEmpty(state.starHolder) ? "星核出现" : state.starHolder == playerId ? "携带星核 " + Mathf.CeilToInt((1f - state.starProgress) * 10f) + " 秒" : "对手携带星核";
                 Label(new Rect(275, 300, 490, 60), starHint, 25, new Color(1f, .85f, .48f), TextAnchor.MiddleCenter, true);
+            }
+            if (state != null && state.eventStatus != "active")
+            {
+                string eventMessage = eventOutcome.Current(state);
+                if (!string.IsNullOrEmpty(eventMessage))
+                {
+                    Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
+                    Label(new Rect(285, 292, 470, 82), eventMessage, 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
+                }
             }
             if (Time.unscaledTime < killFlashUntil && state != null && state.phase == "running")
             {
