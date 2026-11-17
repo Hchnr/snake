@@ -32,9 +32,31 @@ namespace SnakeClub.Tests
             foreach (var fruit in initial.fruits) { Add(fruit.position.x); Add(fruit.position.y); Add(fruit.color); }
             string initialHash = hash.ToString("x16");
             hash = 14695981039346656037UL;
+            foreach (var snake in initial.snakes) Add(snake.angle);
+            string angleHash = hash.ToString("x16");
+            hash = 14695981039346656037UL;
+            foreach (var snake in initial.snakes) { Add(snake.segments[0].x); Add(snake.segments[0].y); }
+            string headHash = hash.ToString("x16");
+            string headBits = "";
+            foreach (var snake in initial.snakes)
+            {
+                var head = snake.segments[0];
+                if (headBits.Length != 0) headBits += ",";
+                headBits += BitConverter.ToInt32(BitConverter.GetBytes(head.x), 0).ToString("x8") + ":" +
+                    BitConverter.ToInt32(BitConverter.GetBytes(head.y), 0).ToString("x8");
+            }
+            hash = 14695981039346656037UL;
+            foreach (var snake in initial.snakes) foreach (var point in snake.segments) { Add(point.x); Add(point.y); }
+            string bodyHash = hash.ToString("x16");
+            hash = 14695981039346656037UL;
+            foreach (var fruit in initial.fruits) { Add(fruit.position.x); Add(fruit.position.y); Add(fruit.color); }
+            string fruitHash = hash.ToString("x16");
+            hash = 14695981039346656037UL;
+            string outcomes = "";
             foreach (int seed in new[] { 0, 1, 12345, int.MaxValue })
             foreach (bool first in new[] { true, false })
             {
+                ulong outcomeHash = 14695981039346656037UL;
                 var arena = Arena.CreateStandardPve(seed, first, "玩家");
                 var profile = new PlayerProgress { selectedSkin = 2, talents = new[] { 1, 2, 1, 0, 1, 0, 0, 0, 0 } };
                 arena.SetBonuses("you", Progression.Bonuses(profile));
@@ -52,9 +74,20 @@ namespace SnakeClub.Tests
                         foreach (var point in snake.segments) { Add(point.x); Add(point.y); }
                     }
                     foreach (var fruit in state.fruits) { Add(fruit.position.x); Add(fruit.position.y); Add(fruit.color); }
+                    ulong rawHash = hash; hash = outcomeHash;
+                    Add(state.tick); Add(state.phase); Add(state.winner); Add(state.eventKind); Add(state.eventStatus);
+                    Add(state.eventTarget); Add(state.starHolder); Add(state.captureTick); Add(state.captureOwner); Add(state.captureCount);
+                    foreach (var snake in state.snakes)
+                    {
+                        Add(snake.id); Add(snake.alive ? 1 : 0); Add(snake.kills); Add(snake.starPoints);
+                        Add(snake.segments.Count); Add(snake.eliminatedBy); Add(snake.eliminationReason);
+                    }
+                    outcomeHash = hash; hash = rawHash;
                 }
+                if (outcomes.Length != 0) outcomes += ",";
+                outcomes += seed + ":" + (first ? "first" : "normal") + ":" + outcomeHash.ToString("x16");
             }
-            return "random=" + rngHash + ";initial=" + initialHash + ";replay=" + hash.ToString("x16");
+            return "random=" + rngHash + ";initial=" + initialHash + ";angles=" + angleHash + ";heads=" + headHash + ";headbits=" + headBits + ";bodies=" + bodyHash + ";fruits=" + fruitHash + ";replay=" + hash.ToString("x16") + ";outcomes=" + outcomes;
         }
     }
 }
