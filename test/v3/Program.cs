@@ -1039,6 +1039,26 @@ static void PveBotAvoidanceCases()
     bot.shieldTicks = 0; threat.shieldTicks = 0; threat.alive = false; x = 0; y = 0;
     PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
     Check(x == 0 && y == 0, "dead trail incorrectly affected bot");
+
+    var head = new PveFixedFighter("head", new PveFixedMotion(4000, 0, 0, 16));
+    var heads = new[] { bot, head }; x = 0; y = 0;
+    PveFixedWorld.AccumulateHeadAvoidance(bot, heads, ref x, ref y);
+    Check(x < 0 && y == 0, "equally long opposing head was not avoided");
+    bot.shieldTicks = 21; x = 0; y = 0;
+    PveFixedWorld.AccumulateHeadAvoidance(bot, heads, ref x, ref y);
+    Check(x == 0 && y == 0, "long protected bot avoided a head too early");
+    bot.shieldTicks = 20; head.shieldTicks = 20;
+    PveFixedWorld.AccumulateHeadAvoidance(bot, heads, ref x, ref y);
+    Check(x < 0, "bot did not anticipate expiring head protection");
+    bot.shieldTicks = 0; head.shieldTicks = 21; x = 0; y = 0;
+    PveFixedWorld.AccumulateHeadAvoidance(bot, heads, ref x, ref y);
+    Check(x == 0 && y == 0, "long protected opponent was treated as an immediate threat");
+    head.shieldTicks = 0; head.alive = false;
+    PveFixedWorld.AccumulateHeadAvoidance(bot, heads, ref x, ref y);
+    Check(x == 0 && y == 0, "dead head was avoided");
+    head.alive = true; bot.motion.Grow(1);
+    PveFixedWorld.AccumulateHeadAvoidance(bot, heads, ref x, ref y);
+    Check(x == 0 && y == 0, "shorter head was treated as a head-on threat");
 }
 
 static void PveFixedProjectionCases()

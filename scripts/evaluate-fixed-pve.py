@@ -15,6 +15,7 @@ foreach (int style in new[] { 0, 1 })
 {
     int[] at = { 0, 60, 100, 160, 300 };
     int[] active = new int[at.Length], near = new int[at.Length], bots = new int[at.Length];
+    var deaths = new SortedDictionary<string, int>();
     for (int seed = 1; seed <= samples; seed++)
     {
         var world = new PveFixedWorld(seed, true, new PlayerProgress());
@@ -35,10 +36,17 @@ foreach (int style in new[] { 0, 1 })
             bots[n] += living;
             if (inView > 0) near[n]++;
         }
+        if (!world.Fighters[0].alive && world.Tick <= 300)
+        {
+            string window = world.Tick <= 100 ? "0-5s" : world.Tick <= 160 ? "5-8s" : "8-15s";
+            string key = window + "/" + world.Fighters[0].eliminationReason;
+            deaths[key] = deaths.GetValueOrDefault(key) + 1;
+        }
     }
     Console.WriteLine(style == 0 ? "input=fixed" : "input=turning");
     for (int i = 0; i < at.Length; i++)
         Console.WriteLine($"t={at[i] / 20.0:F1}s alive={active[i]}/{samples} near={near[i]}/{active[i]} mean_bots={(active[i] == 0 ? 0 : (double)bots[i] / active[i]):F2}");
+    Console.WriteLine("deaths=" + string.Join(", ", deaths.Select(p => p.Key + ":" + p.Value)));
 }
 '''
 with tempfile.TemporaryDirectory(prefix='snake-fixed-pve-eval-') as directory:
