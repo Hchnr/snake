@@ -204,14 +204,9 @@ namespace SnakeClub
         {
             if (busy) return;
             depthWon = false;
-            if (!api.Connected) { BeginPve(null); resultNote = "离线练习不计账号奖励"; return; }
-            busy = true;
-            api.Post("match/start", new ApiRequest(), reply =>
-            {
-                busy = false;
-                BeginPve(reply.ok ? reply : null);
-                resultNote = reply.ok ? "" : "离线练习不计账号奖励";
-            });
+            // Depth uses different rules and cannot be settled as an ordinary PvE match.
+            BeginPve(null);
+            resultNote = "深潜练习 · 不计账号奖励或排行";
         }
 
         private string DepthGoalText() => depthRoom == 1 ? "目标：淘汰 1 条对手" : depthRoom == 2 ? "目标：携带星核得分" : "目标：击破护盾并围猎首领";
@@ -249,7 +244,7 @@ namespace SnakeClub
             }
             else
             {
-                Label(new Rect(150, 850, 780, 80), depthWon ? "三间秘境全部完成" : DepthChallenge.FailureReason(depthRoom, state, playerId) + (activeRun != null ? "\n已确认的奖励会保留" : ""), 24, new Color(.80f, .94f, .90f), TextAnchor.MiddleCenter);
+                Label(new Rect(150, 850, 780, 80), depthWon ? "三间秘境全部完成" : DepthChallenge.FailureReason(depthRoom, state, playerId), 24, new Color(.80f, .94f, .90f), TextAnchor.MiddleCenter);
                 if (Button(new Rect(210, 980, 660, 105), "再次深潜", new Color(.10f, .60f, .49f))) StartDepth();
                 if (Button(new Rect(210, 1110, 660, 100), "返回大厅", new Color(.17f, .25f, .34f))) BackToMenu();
             }
@@ -277,6 +272,7 @@ namespace SnakeClub
         {
             resultRecorded = true;
             if (fixedPve != null) { resultNote = "整数规则试玩 · 不计账号奖励或排行"; return; }
+            if (depthMode) { resultNote = "深潜练习 · 不计账号奖励或排行"; return; }
             if (activeRun == null || string.IsNullOrEmpty(activePlayerId))
             {
                 if (controlActions > 0) { practiceProfile.tutorialComplete = true; practiceProfile.completedMatches++; }

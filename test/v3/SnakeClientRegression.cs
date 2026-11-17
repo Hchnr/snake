@@ -25,6 +25,7 @@ namespace SnakeClub.Tests.Editor
                 Debug.Log("PASS Unity fixed PvE preview requires explicit offline configuration");
                 TestFixedPvePreviewFlow();
                 TestPracticeTutorialAccess();
+                TestDepthPracticeIsolation();
                 TestBackgroundSimulation();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -177,6 +178,47 @@ namespace SnakeClub.Tests.Editor
                 Require(daily.State.tick == 0 && ((System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app)).Count == 0,
                     "daily challenge advanced while ad was displayed");
                 Debug.Log("PASS Unity ordinary and daily simulations stop when suspended");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestDepthPracticeIsolation()
+        {
+            var root = new GameObject("Depth practice isolation regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>();
+                var api = root.AddComponent<GameApiClient>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                var profile = new PlayerProgress { playerId = "depth-account", completedMatches = 3, coins = 123 };
+                typeof(GameApiClient).GetProperty("Profile").SetValue(api, profile);
+                typeof(GameApiClient).GetField("session", flags).SetValue(api, "test-session");
+                typeof(GameApiClient).GetField("reachable", flags).SetValue(api, true);
+                Field("api").SetValue(app, api);
+                Field("arenaRenderer").SetValue(app, root.AddComponent<ArenaRenderer>());
+                Field("connection").SetValue(app, root.AddComponent<RoomConnection>());
+                string pending = PlayerPrefs.GetString("snake.v3.pending", "");
+                Call("StartDepth");
+                Require((bool)Field("depthMode").GetValue(app) && Field("activeRun").GetValue(app) == null &&
+                    !(bool)Field("busy").GetValue(app), "connected depth requested an ordinary PvE run");
+                Call("SelectDepthBonus", 1);
+                Require((int)Field("depthRoom").GetValue(app) == 2 && Field("activeRun").GetValue(app) == null,
+                    "next depth room requested an ordinary PvE run");
+                // Guard against a stale or accidentally supplied ordinary run as well.
+                Field("activeRun").SetValue(app, new ApiReply { runId = "stale", token = "stale" });
+                Field("activePlayerId").SetValue(app, profile.playerId);
+                Field("controlActions").SetValue(app, 3);
+                var practice = (PlayerProgress)Field("practiceProfile").GetValue(app);
+                int completed = practice.completedMatches;
+                Call("RecordResult");
+                Require(PlayerPrefs.GetString("snake.v3.pending", "") == pending && profile.coins == 123 &&
+                    profile.completedMatches == 3 && practice.completedMatches == completed,
+                    "depth result modified progress or queued an ordinary settlement");
+                Require(((string)Field("resultNote").GetValue(app)).Contains("不计账号奖励"), "depth reward status was not explained");
+                Debug.Log("PASS Unity depth rooms remain isolated practice even with a connected account");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
