@@ -53,6 +53,9 @@ namespace SnakeClub.Core
             int a = Sin8(lower), b = Sin8(lower + 1);
             return a + (b - a) * fraction / 256;
         }
+        // Direction vectors are scaled by 10000 and shared by AI/spawning.
+        public static int DirectionX(byte heading) => Sin(heading * 256 + 16384);
+        public static int DirectionY(byte heading) => Sin(heading * 256);
         // Integer square root gives the same segment relaxation in each runtime.
         private static int Distance(int x, int y)
         {

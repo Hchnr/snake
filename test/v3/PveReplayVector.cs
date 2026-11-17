@@ -87,6 +87,23 @@ namespace SnakeClub.Tests
             }
             string combatHash = hash.ToString("x16");
             hash = 14695981039346656037UL;
+            foreach (int seed in new[] { 0, 1, 12345, int.MaxValue })
+            {
+                var world = new PveFixedWorld(seed, false, new PlayerProgress { selectedSkin = 2, talents = new[] { 1, 2, 1, 0, 1, 0, 0, 0, 0 } });
+                for (int tick = 0; tick < 500 && !world.Finished; tick++)
+                {
+                    world.Step((byte)(tick * 13 + seed), tick % 35 > 24);
+                    Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
+                    foreach (var fighter in world.Fighters)
+                    {
+                        Add(fighter.alive ? 1 : 0); Add(fighter.shieldTicks); Add(fighter.kills); Add(fighter.eliminatedBy);
+                        foreach (var point in fighter.motion.Segments) { Add(point.x); Add(point.y); }
+                    }
+                    foreach (var item in world.Fruit) { Add(item.position.x); Add(item.position.y); Add(item.color); }
+                }
+            }
+            string worldHash = hash.ToString("x16");
+            hash = 14695981039346656037UL;
             string outcomes = "";
             foreach (int seed in new[] { 0, 1, 12345, int.MaxValue })
             foreach (bool first in new[] { true, false })
@@ -122,7 +139,7 @@ namespace SnakeClub.Tests
                 if (outcomes.Length != 0) outcomes += ",";
                 outcomes += seed + ":" + (first ? "first" : "normal") + ":" + outcomeHash.ToString("x16");
             }
-            return "fixed=" + fixedHash + ";combat=" + combatHash + ";random=" + rngHash + ";initial=" + initialHash + ";angles=" + angleHash + ";heads=" + headHash + ";headbits=" + headBits + ";bodies=" + bodyHash + ";fruits=" + fruitHash + ";replay=" + hash.ToString("x16") + ";outcomes=" + outcomes;
+            return "fixed=" + fixedHash + ";combat=" + combatHash + ";world=" + worldHash + ";random=" + rngHash + ";initial=" + initialHash + ";angles=" + angleHash + ";heads=" + headHash + ";headbits=" + headBits + ";bodies=" + bodyHash + ";fruits=" + fruitHash + ";replay=" + hash.ToString("x16") + ";outcomes=" + outcomes;
         }
     }
 }
