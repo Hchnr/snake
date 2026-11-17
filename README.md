@@ -30,6 +30,9 @@ v0.0.3.2 正在开发中，首发以抖音小游戏为目标，浏览器 WebGL �
 # 竞技与成长规则、房间通信、服务端账号/回放/探洞/排行
 npm test
 
+# 测量桌面 .NET 每日挑战模拟分配，不包含 Unity 渲染或手机性能
+python3 scripts/benchmark-daily.py
+
 # 后台编译 Unity 运行时代码，不启动编辑器或游戏
 npm run test:unity:compile
 # 本机安装并导入 TTSDK 后，还可检查抖音条件编译：

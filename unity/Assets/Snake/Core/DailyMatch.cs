@@ -26,6 +26,12 @@ namespace SnakeClub.Core
         private readonly List<SimSnake> snakes = new List<SimSnake>();
         private readonly List<SimPoint> fruit = new List<SimPoint>();
         private readonly List<int> fruitColor = new List<int>();
+        // Eight participants are fixed for each daily rule version. Buffers are
+        // private to the match and cleared before reuse on each simulation step.
+        private readonly SimPoint[] previousHeadBuffer = new SimPoint[8];
+        private readonly int[] deathBuffer = new int[8], captureKillerBuffer = new int[8];
+        private readonly CaptureLoop[] captureLoopBuffer = new CaptureLoop[8];
+        private readonly List<CapturePoint> capturePathBuffer = new List<CapturePoint>(Arena.MaximumLength);
         private uint random;
         private int starDelay = 20 * TickRate;
         private SimPoint star;
@@ -95,7 +101,7 @@ namespace SnakeClub.Core
             if (Finished) return;
             State.tick++;
             if (!legacy && State.tick == EventStart) StartEvent();
-            var previousHeads = captures ? new SimPoint[snakes.Count] : null;
+            var previousHeads = captures ? previousHeadBuffer : null;
             for (int i = 0; i < snakes.Count; i++)
             {
                 var snake = snakes[i];
@@ -225,7 +231,7 @@ namespace SnakeClub.Core
 
         private void ResolveCollisions()
         {
-            int[] deaths = new int[snakes.Count];
+            int[] deaths = deathBuffer;
             for (int i = 0; i < deaths.Length; i++) deaths[i] = -2;
             for (int i = 0; i < snakes.Count; i++) for (int j = i + 1; j < snakes.Count; j++)
             {
@@ -271,18 +277,19 @@ namespace SnakeClub.Core
 
         private void ResolveCaptures(SimPoint[] previousHeads)
         {
-            var loops = new CaptureLoop[snakes.Count];
+            var loops = captureLoopBuffer;
+            Array.Clear(loops, 0, loops.Length);
             for (int i = 0; i < snakes.Count; i++)
             {
                 var owner = snakes[i];
                 if (!owner.alive || owner.shield > 0 || owner.captureCooldown > 0) continue;
-                var path = new List<CapturePoint>(owner.segments.Count);
-                foreach (var p in owner.segments) path.Add(new CapturePoint(p.x, p.y));
-                if (!CaptureGeometry.TryLoop(new CapturePoint(previousHeads[i].x, previousHeads[i].y), path, out loops[i])) continue;
+                capturePathBuffer.Clear();
+                foreach (var p in owner.segments) capturePathBuffer.Add(new CapturePoint(p.x, p.y));
+                if (!CaptureGeometry.TryLoop(new CapturePoint(previousHeads[i].x, previousHeads[i].y), capturePathBuffer, out loops[i])) continue;
                 owner.captureCooldown = 15;
             }
 
-            var killer = new int[snakes.Count];
+            var killer = captureKillerBuffer;
             for (int victim = 0; victim < snakes.Count; victim++)
             {
                 killer[victim] = -1;
@@ -433,8 +440,15 @@ namespace SnakeClub.Core
                 target.segments.Clear();
                 foreach (var p in source.segments) target.segments.Add(ToPoint(p));
             }
-            State.fruits.Clear();
-            for (int i = 0; i < fruit.Count; i++) State.fruits.Add(new FruitState { position = ToPoint(fruit[i]), color = fruitColor[i] });
+            // State is a mutable projection, just like snake segments. Reusing
+            // fruit objects avoids 200 allocations every 50 ms on the client.
+            while (State.fruits.Count < fruit.Count) State.fruits.Add(new FruitState());
+            if (State.fruits.Count > fruit.Count) State.fruits.RemoveRange(fruit.Count, State.fruits.Count - fruit.Count);
+            for (int i = 0; i < fruit.Count; i++)
+            {
+                State.fruits[i].position = ToPoint(fruit[i]);
+                State.fruits[i].color = fruitColor[i];
+            }
             State.starVisible = starActive; State.starPosition = ToPoint(star);
             State.starHolder = starHolder < 0 ? "" : snakes[starHolder].id;
             State.starProgress = starTicks / (float)((legacy ? 10 : 8) * TickRate);

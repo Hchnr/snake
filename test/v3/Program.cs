@@ -31,6 +31,7 @@ var cases = new (string name, Action run)[]
     ("expedition fragments unlock stories without spending inventory", CaveAlbum),
     ("wall bounce grants a brief pulse with a cooldown", BouncePulse),
     ("daily replay reproduces states and published score formula", DailyReplay),
+    ("daily fruit projection reuses objects and reflects simulation changes", DailyFruitProjection),
     ("daily challenges use their own seed and are bounded", DailySeeds),
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
@@ -267,6 +268,23 @@ static void DailyReplay()
         Check(a.State.tick <= DailyMatch.MaxTicks && a.Score >= 0 && a.Score <= DailyMatch.CaptureMaxScore, "daily bounds exceeded");
     }
 }
+static void DailyFruitProjection()
+{
+    var match = new DailyMatch(17);
+    var first = match.State.fruits[0];
+    var all = match.State.fruits.ToArray();
+    match.Step(42, false);
+    Check(match.State.fruits.Count == Arena.FruitCount && ReferenceEquals(first, match.State.fruits[0]), "fruit projection recreated its objects");
+    Check(all.Zip(match.State.fruits).All(pair => ReferenceEquals(pair.First, pair.Second)), "fruit object ordering changed");
+    var type = typeof(DailyMatch); var pointType = type.GetNestedType("SimPoint", BindingFlags.NonPublic);
+    var fruit = (IList)type.GetField("fruit", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(match);
+    var colors = (IList)type.GetField("fruitColor", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(match);
+    fruit[0] = Activator.CreateInstance(pointType, new object[] { 1234, -5678 }); colors[0] = 3;
+    type.GetMethod("Sync", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, null);
+    Check(ReferenceEquals(first, match.State.fruits[0]) && Math.Abs(first.position.x - 1.234f) < .0001f &&
+        Math.Abs(first.position.y + 5.678f) < .0001f && first.color == 3, "reused projection did not update its visible values");
+}
+
 static void DailySeeds()
 {
     var a = new DailyMatch(12345); var b = new DailyMatch(12346);
