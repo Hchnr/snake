@@ -130,7 +130,7 @@ namespace SnakeClub
 
         private void Demo()
         {
-            arena = new Arena(24);
+            arena = new Arena(24, nearbyOpponents: true, enableCaptures: true);
             for (int i = 0; i < 8; i++) arena.AddSnake("demo-" + i, "AI " + (i + 1), true);
             arena.Start();
             state = arena.State;
@@ -273,6 +273,8 @@ namespace SnakeClub
                 feedback.RebaselineAfterSuspend(state, playerId);
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
             bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
+            bool wardrobePreview = homeVisible && frontPage == "skins" && homeScreen != null && homeScreen.ArenaPreview;
+            bool renderWardrobePreview = wardrobePreview && appFocused && !appPaused;
             bool resultVisible = inGame && !online && !depthMode && state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
             bool resultWon = resultVisible && MatchOutcome.IsVictory(state, playerId);
             if (homeScreen != null)
@@ -306,7 +308,8 @@ namespace SnakeClub
             }
             if (homeAvatar != null)
             {
-                homeAvatar.Visible = homeVisible || resultVisible || caveVisible;
+                homeAvatar.Visible = (homeVisible || resultVisible || caveVisible) && appFocused && !appPaused &&
+                    (!renderWardrobePreview || arenaRenderer.PreviewTexture == null);
                 homeAvatar.ReducedEffects = reducedEffects;
                 homeAvatar.SetResult(resultVisible, resultWon);
                 if (homeAvatar.Visible) homeAvatar.Skin = homeVisible && frontPage == "skins" ? previewSkin :
@@ -327,7 +330,7 @@ namespace SnakeClub
                 }
                 state = daily.State;
             }
-            if (arena != null && !paused && !homeVisible)
+            if (arena != null && !paused && (!homeVisible || renderWardrobePreview))
             {
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
                 while (stepTimer >= .05f)
@@ -339,7 +342,7 @@ namespace SnakeClub
                         DepthChallenge.Evaluate(depthRoom, arena.State, playerId) != DepthChallenge.RoomStatus.InProgress) arena.EndRound();
                     stepTimer -= .05f;
                 }
-                if (!inGame && arena.State.phase == "ended") Demo();
+                if (!inGame && (arena.State.phase == "ended" || (wardrobePreview && (arena.Find("demo-0") == null || !arena.Find("demo-0").alive)))) Demo();
                 state = arena.State;
                 if (inGame && depthMode && state.phase == "ended") depthWon = DepthGoalReached(state);
                 if (inGame && !online && state.phase == "running")
@@ -372,10 +375,13 @@ namespace SnakeClub
                     visualKills = own.kills; visualTick = state.tick;
                 }
             }
-            arenaRenderer.Visible = !homeVisible;
+            arenaRenderer.SetPreviewMode(renderWardrobePreview);
+            if (wardrobePreview) arenaRenderer.SelectedSkin = previewSkin;
+            arenaRenderer.Visible = !homeVisible || (renderWardrobePreview && arenaRenderer.PreviewTexture != null);
+            if (homeScreen != null) homeScreen.SetArenaPreview(renderWardrobePreview ? arenaRenderer.PreviewTexture : null);
             arenaRenderer.ReducedEffects = reducedEffects;
             arenaRenderer.MotionPaused = paused || appPaused || !appFocused;
-            if (arenaRenderer.Visible) arenaRenderer.Draw(state, playerId);
+            if (arenaRenderer.Visible) arenaRenderer.Draw(state, wardrobePreview ? "demo-0" : playerId);
         }
 
         private void ReadControls()

@@ -79,7 +79,20 @@ namespace SnakeClub.Tests.Editor
                 FindButton("Skin card 4").onClick.Invoke();
                 FindButton("Equip skin").onClick.Invoke();
                 Require(selected == 4 && equipped == 4, "skin selection or local preview action is not wired");
-                screen.SetPage(false); FindButton("Start hunt").onClick.Invoke();
+                FindButton("Skin preview toggle").onClick.Invoke();
+                Require(screen.ArenaPreview, "arena preview toggle did not activate");
+                screen.SetArenaPreview(background);
+                RawImage FindRaw(string name)
+                {
+                    foreach (var image in owner.GetComponentsInChildren<RawImage>(true)) if (image.name == name) return image;
+                    throw new Exception("UI image not found: " + name);
+                }
+                Require(FindRaw("Skin arena preview").enabled && !FindRaw("Skin character").enabled, "arena preview did not replace the portrait");
+                screen.SetArenaPreview(null);
+                Require(!FindRaw("Skin arena preview").enabled && FindRaw("Skin character").enabled, "missing preview texture did not fall back to portrait");
+                Require(selected == 4 && equipped == 4, "arena preview changed the selection or ownership action");
+                screen.SetPage(false); Require(!screen.ArenaPreview, "arena preview remained active after leaving the wardrobe");
+                FindButton("Start hunt").onClick.Invoke();
                 Require(started == 1, "main hunt action is not wired");
                 screen.SetPage(false, true); screen.SetResult("挑战结束", "得分 100", "成绩已验证", false, true, 0);
                 FindButton("Result retry").onClick.Invoke();
