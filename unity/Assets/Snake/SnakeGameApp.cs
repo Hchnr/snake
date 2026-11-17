@@ -180,6 +180,7 @@ namespace SnakeClub
             runInputs.Clear();
             activeRun = run;
             activePlayerId = api.Profile != null ? api.Profile.playerId : "";
+            activePracticeAccount = run == null && !depthMode && api.Connected ? api.Profile.playerId : "";
             lastRewardId = "";
             resultRecorded = false;
             int skin = startConfig != null ? startConfig.skin : run != null && run.trialSkin > 0 ? run.trialSkin : CurrentProfile.selectedSkin;
@@ -207,7 +208,7 @@ namespace SnakeClub
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false; tutorialBoosted = false;
-            activeRun = null; activePlayerId = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
+            activeRun = null; activePlayerId = ""; activePracticeAccount = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
             verifiedDaily = false; verifiedShareToken = "";
             resultNote = "整数规则试玩 · 不计账号奖励或排行";
             arenaRenderer.SelectedSkin = EffectiveSkin;
@@ -316,7 +317,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview, TutorialReady);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);

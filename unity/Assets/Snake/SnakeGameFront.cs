@@ -23,6 +23,7 @@ namespace SnakeClub
         private HomeAvatar homeAvatar;
         private HomeScreen homeScreen;
         private string frontPage = "home", frontNotice = "", resultNote = "", lastRewardId = "", lastRewardKind = "", activePlayerId = "", friendDate = "";
+        private string activePracticeAccount = "", practicedAccount = "";
         private bool busy, resultRecorded, flushing, adShowing, connecting, verifiedDaily;
         private int friendScore, activeFriendScore = -1;
         private string friendRules = "", activeFriendDate = "", activeFriendRules = "", verifiedShareToken = "";
@@ -41,6 +42,8 @@ namespace SnakeClub
         private int observedChallengeRevision;
         private float nextPendingPoll;
         private PlayerProgress CurrentProfile => api != null && api.Connected ? api.Profile : practiceProfile;
+        private bool TutorialReady => CurrentProfile.tutorialComplete || (api != null && api.Connected &&
+            !string.IsNullOrEmpty(practicedAccount) && api.Profile.playerId == practicedAccount);
         private bool ReferencePreviewEnabled => api != null && api.Config.allowReferenceSkinPreview && SkinVisual.ReferenceAvailable;
         private int EffectiveSkin => ReferencePreviewEnabled && localVisualSkin >= SkinCatalog.OwnedSkinCount
             && localVisualSkin < SkinCatalog.All.Length ? localVisualSkin : CurrentProfile.selectedSkin;
@@ -106,7 +109,7 @@ namespace SnakeClub
         private void StartMain()
         {
             if (api.Config.FixedPvePreview) { RequestPve(); return; }
-            if (!CurrentProfile.tutorialComplete) RequestPve();
+            if (!TutorialReady) RequestPve();
             else RequestDaily();
         }
 
@@ -260,6 +263,7 @@ namespace SnakeClub
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
             state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             activeRun = run; resultRecorded = false; runInputs.Clear();
+            activePracticeAccount = "";
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; firstRun = !CurrentProfile.tutorialComplete;
@@ -275,7 +279,12 @@ namespace SnakeClub
             if (activeRun == null || string.IsNullOrEmpty(activePlayerId))
             {
                 if (controlActions > 0) { practiceProfile.tutorialComplete = true; practiceProfile.completedMatches++; }
-                resultNote = daily != null ? "练习局 · 不计入排行榜" : "离线练习 · 不计账号奖励"; return;
+                if (daily == null && !depthMode && controlActions > 0 && !string.IsNullOrEmpty(activePracticeAccount))
+                    practicedAccount = activePracticeAccount;
+                resultNote = daily != null ? "练习局 · 不计入排行榜" : api.Connected ? "练习局 · 不计账号奖励" : "离线练习 · 不计账号奖励";
+                if (daily == null && !depthMode && api.Connected && api.Profile.playerId == practicedAccount && !string.IsNullOrEmpty(practicedAccount))
+                    resultNote += "\n返回大厅可参加每日挑战";
+                return;
             }
             string runId = activeRun.runId;
             var pending = ReadPending();
