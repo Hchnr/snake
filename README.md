@@ -33,6 +33,7 @@ npm test
 
 # 测量桌面 .NET 每日挑战模拟分配，不包含 Unity 渲染或手机性能
 python3 scripts/benchmark-daily.py
+python3 scripts/benchmark-arena.py
 
 # 后台编译 Unity 运行时代码，不启动编辑器或游戏
 npm run test:unity:compile
