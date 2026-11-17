@@ -133,6 +133,23 @@ namespace SnakeClub.Core
                 }
             }
         }
+        // Equal or longer heads can eliminate this bot. Avoid the current
+        // position, including shortly before shields expire; no future input
+        // or special player immunity is involved.
+        internal static void AccumulateHeadAvoidance(PveFixedFighter self, IReadOnlyList<PveFixedFighter> opponents, ref long vx, ref long vy)
+        {
+            if (self == null || !self.alive || self.shieldTicks > TickRate) return;
+            for (int i = 0; i < opponents.Count; i++)
+            {
+                var other = opponents[i];
+                if (other == null || other == self || !other.alive || other.shieldTicks > TickRate || other.motion.Length < self.motion.Length) continue;
+                int dx = self.motion.X - other.motion.X, dy = self.motion.Y - other.motion.Y;
+                int distance = PveFixedMotion.Distance(dx, dy);
+                if (distance <= 10 || distance >= 7000) continue;
+                long weight = (7000 - distance) * 8L;
+                vx += dx * weight / distance; vy += dy * weight / distance;
+            }
+        }
         private byte BotHeading(int index)
         {
             if (--botTimer[index] > 0) return botDirection[index];
@@ -152,6 +169,7 @@ namespace SnakeClub.Core
                 vy += (long)(fighters[nearest].motion.Y - self.motion.Y) * sign;
             }
             AccumulateTrailAvoidance(self, fighters, ref vx, ref vy);
+            AccumulateHeadAvoidance(self, fighters, ref vx, ref vy);
             if (nearest < 0 || closest > 10000L * 10000L)
             {
                 long closestFruit = 18000L * 18000L; int fruitIndex = -1;
