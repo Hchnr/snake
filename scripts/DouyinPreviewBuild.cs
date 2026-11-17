@@ -1,5 +1,8 @@
 // Copied into an isolated Unity project by build-douyin-preview.py.
 // This file lives outside Assets so the repository does not depend on TTSDK.
+#if !SNAKE_DOUYIN_TTSDK
+#error Douyin preview must compile with SNAKE_DOUYIN_TTSDK enabled.
+#endif
 using System;
 using System.IO;
 using System.Threading.Tasks;

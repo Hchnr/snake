@@ -2,6 +2,8 @@
 dist/
 node_modules/
 coverage/
+__pycache__/
+*.py[cod]
 
 # Unity generated files and local builds
 [Ll]ibrary/
