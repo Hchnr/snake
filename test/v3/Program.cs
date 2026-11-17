@@ -35,6 +35,7 @@ var cases = new (string name, Action run)[]
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
+    ("danger cue follows live, unshielded collision hazards", NearbyDanger),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
@@ -56,6 +57,30 @@ static void Check(bool value, string message)
 {
     if (!value) throw new Exception(message);
 }
+static void NearbyDanger()
+{
+    var state = new ArenaState { phase = "running" };
+    var player = new SnakeState { id = "you", segments = new List<Point> { new(0, 0), new(-1, 0), new(-2, 0) } };
+    var other = new SnakeState { id = "other", segments = new List<Point> { new(30, 0), new(29, 0), new(3, 0), new(25, 0) } };
+    state.snakes.Add(player); state.snakes.Add(other);
+    Check(DangerProbe.Find(state, "you", out var cue) && cue.x == 3, "near body was not indicated");
+    other.shield = 1;
+    Check(!DangerProbe.Find(state, "you", out _), "protected opponent incorrectly indicated danger");
+    other.shield = 0; player.shield = 1;
+    Check(!DangerProbe.Find(state, "you", out _), "protected player incorrectly received warning");
+    player.shield = 0; other.alive = false;
+    Check(!DangerProbe.Find(state, "you", out _), "dead opponent incorrectly indicated danger");
+    other.alive = true; other.segments[2] = new Point(30, 0); other.segments[0] = new Point(3, 0);
+    Check(DangerProbe.Find(state, "you", out cue) && cue.x == 3, "dangerous opposing head was missed");
+    other.segments.RemoveAt(3);
+    other.segments.RemoveAt(2);
+    Check(!DangerProbe.Find(state, "you", out _), "shorter opposing head incorrectly indicated danger");
+    other.segments[0] = new Point(30, 0); other.segments[1] = new Point(1, 0);
+    Check(!DangerProbe.Find(state, "you", out _), "non-colliding neck incorrectly indicated danger");
+    state.phase = "ended"; other.segments.Add(new Point(1, 0));
+    Check(!DangerProbe.Find(state, "you", out _), "ended match retained danger warning");
+}
+
 static void FullScreenDrag()
 {
     foreach (var origin in new[] { new Point(0, 0), new Point(1079, 0), new Point(0, 1919), new Point(1079, 1919), new Point(540, 960) })

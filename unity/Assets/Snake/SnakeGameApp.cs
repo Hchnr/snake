@@ -516,6 +516,8 @@ namespace SnakeClub
                 string captureText = state.captureCount > 0 ? "收圈捕获 " + state.captureCount + " 个对手！" : "轨迹闭合！";
                 Label(new Rect(240, 520, 600, 90), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
             }
+            if (!paused && DangerProbe.Find(state, playerId, out _))
+                Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
             if (state != null && state.phase == "running") DrawNames(state);
             if (firstRun && !online && state != null && state.phase == "running" && state.tick < 600)
             {

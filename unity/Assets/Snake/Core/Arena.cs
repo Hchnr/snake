@@ -77,6 +77,36 @@ namespace SnakeClub.Core
         public List<Point> capturePolygon = new List<Point>();
     }
 
+    // Presentation-only proximity query: use the same head/body radii and
+    // shield rules as the simulation, without affecting movement or outcomes.
+    public static class DangerProbe
+    {
+        public const float WarningClearance = 2.5f;
+
+        public static bool Find(ArenaState state, string playerId, out Point position)
+        {
+            position = default;
+            if (state == null || state.phase != "running" || string.IsNullOrEmpty(playerId)) return false;
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive || player.shield > 0 || player.segments.Count == 0) return false;
+            float closest = WarningClearance;
+            bool found = false;
+            foreach (var opponent in state.snakes)
+            {
+                if (opponent == player || !opponent.alive || opponent.shield > 0 || opponent.segments.Count == 0) continue;
+                for (int i = 0; i < opponent.segments.Count; i++)
+                {
+                    if (i == 1 || (i == 0 && player.segments.Count > opponent.segments.Count)) continue;
+                    float radius = i == 0 ? Arena.CollisionRadius * 2f : Arena.CollisionRadius * 1.55f;
+                    float clearance = Point.Distance(player.segments[0], opponent.segments[i]) - radius;
+                    if (clearance >= closest) continue;
+                    closest = clearance; position = opponent.segments[i]; found = true;
+                }
+            }
+            return found;
+        }
+    }
+
     [Serializable]
     public sealed class CombatBonuses
     {

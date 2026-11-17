@@ -47,7 +47,7 @@ namespace SnakeClub
         private Mesh cylinder;
         private Mesh cone;
         private Camera view;
-        private LineRenderer marker, eventRing, captureOutline, captureFlare, reboundRipple, directionArrow, bossWarning;
+        private LineRenderer marker, eventRing, captureOutline, captureFlare, reboundRipple, directionArrow, bossWarning, dangerArrow;
         private Transform runtimeRoot;
         private GameObject starObject;
         private bool cameraReady;
@@ -234,6 +234,12 @@ namespace SnakeClub
             directionArrow.sharedMaterial = trailLineMaterial; directionArrow.sortingOrder = 4;
             directionArrow.startColor = directionArrow.endColor = new Color(.9f, 1f, .95f, 1f);
             directionArrow.shadowCastingMode = ShadowCastingMode.Off;
+            var dangerObject = new GameObject("Nearby danger direction"); dangerObject.transform.SetParent(runtimeRoot, false);
+            dangerArrow = dangerObject.AddComponent<LineRenderer>(); dangerArrow.useWorldSpace = true;
+            dangerArrow.positionCount = 3; dangerArrow.widthMultiplier = .18f;
+            dangerArrow.sharedMaterial = trailLineMaterial; dangerArrow.sortingOrder = 5;
+            dangerArrow.startColor = dangerArrow.endColor = new Color(1f, .68f, .28f, 1f);
+            dangerArrow.shadowCastingMode = ShadowCastingMode.Off;
             var bossObject = new GameObject("Boss attack warning"); bossObject.transform.SetParent(runtimeRoot, false);
             bossWarning = bossObject.AddComponent<LineRenderer>(); bossWarning.useWorldSpace = true;
             bossWarning.positionCount = 2; bossWarning.widthMultiplier = .20f; bossWarning.sortingOrder = 3;
@@ -320,6 +326,7 @@ namespace SnakeClub
                 if (crystals[i] != null) crystals[i].Rotate(Vector3.up, Time.deltaTime * (5f + i % 5), Space.World);
             marker.enabled = false;
             directionArrow.enabled = false;
+            dangerArrow.enabled = false;
             bossWarning.enabled = false;
             eventRing.enabled = state.eventStatus == "active" && state.eventKind == "fruit" && state.eventRadius > 0;
             if (eventRing.enabled)
@@ -445,6 +452,20 @@ namespace SnakeClub
                             float size = .29f * (1f - i / 6f) * (1f + .12f * Mathf.Sin(Time.time * 4f + i));
                             Vector3 glow = tail + back * (i * .35f) + Vector3.up * (.12f + .04f * Mathf.Sin(Time.time * 3f + i));
                             trail.Add(Matrix4x4.TRS(glow, Quaternion.identity, Vector3.one * size));
+                        }
+                    }
+                    if (DangerProbe.Find(state, playerId, out var danger))
+                    {
+                        Point offset = danger - snake.segments[0];
+                        if (offset.Length > .01f)
+                        {
+                            Vector3 toward = new Vector3(offset.x, 0, offset.y).normalized;
+                            Vector3 across = new Vector3(-toward.z, 0, toward.x);
+                            Vector3 tip = center + toward * 2.3f + Vector3.down * .43f;
+                            dangerArrow.enabled = true;
+                            dangerArrow.SetPosition(0, tip - toward * .55f + across * .38f);
+                            dangerArrow.SetPosition(1, tip);
+                            dangerArrow.SetPosition(2, tip - toward * .55f - across * .38f);
                         }
                     }
                     marker.enabled = true;
