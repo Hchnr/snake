@@ -32,6 +32,7 @@ namespace SnakeClub
         private ArenaFeedback feedback;
         private RoomConnection connection;
         private Arena arena;
+        private PveFixedWorld fixedPve;
         private ArenaState state;
         private string playerId = "";
         private string nameInput = "玩家";
@@ -142,6 +143,7 @@ namespace SnakeClub
         private void BeginPve(ApiReply run)
         {
             dragSteering.Reset();
+            fixedPve = null;
             connection.Close();
             online = false;
             inGame = true;
@@ -193,6 +195,24 @@ namespace SnakeClub
             arenaRenderer.SelectedSkin = EffectiveSkin >= SkinCatalog.OwnedSkinCount ? EffectiveSkin : skin;
         }
 
+        private void BeginFixedPve()
+        {
+            dragSteering.Reset(); connection.Close();
+            online = false; inGame = true; paused = false; status = ""; room = "";
+            playerId = "you"; arena = null; daily = null; depthMode = false;
+            firstRun = !practiceProfile.tutorialComplete;
+            fixedPve = new PveFixedWorld(unchecked((int)DateTime.UtcNow.Ticks), firstRun, practiceProfile);
+            state = fixedPve.RenderState();
+            matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
+            eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
+            stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
+            controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
+            activeRun = null; activePlayerId = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
+            verifiedDaily = false; verifiedShareToken = "";
+            resultNote = "整数规则试玩 · 不计账号奖励或排行";
+            arenaRenderer.SelectedSkin = EffectiveSkin;
+        }
+
         private void StartOnline(string action)
         {
             dragSteering.Reset();
@@ -207,7 +227,7 @@ namespace SnakeClub
             inGame = true;
             paused = false;
             depthMode = false;
-            arena = null;
+            arena = null; fixedPve = null;
             state = null;
             playerId = "";
             room = "";
@@ -264,6 +284,7 @@ namespace SnakeClub
             depthMode = false;
             status = "";
             daily = null;
+            fixedPve = null;
             activeRun = null;
             frontPage = "home";
             arenaRenderer.SelectedSkin = EffectiveSkin;
@@ -295,7 +316,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
@@ -338,6 +359,17 @@ namespace SnakeClub
                     stepTimer -= .05f;
                 }
                 state = daily.State;
+            }
+            if (fixedPve != null && inGame && !paused)
+            {
+                stepTimer += Mathf.Min(Time.deltaTime, .2f);
+                while (stepTimer >= .05f && !fixedPve.Finished)
+                {
+                    fixedPve.Step(EncodeDirection(direction), pointerBoost);
+                    state = fixedPve.RenderState();
+                    matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId);
+                    stepTimer -= .05f;
+                }
             }
             if (arena != null && !paused && (!homeVisible || renderWardrobePreview))
             {
@@ -551,7 +583,7 @@ namespace SnakeClub
         {
             Panel(new Rect(48, 50, 984, 188), new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
-            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
+            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? "整数规则试玩" : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
             else Label(new Rect(88, 135, 410, 52), depthMode ? (activeRun == null ? "练习 · " : "") + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             bool urgent = RoundTimerPresentation.IsUrgent(state);

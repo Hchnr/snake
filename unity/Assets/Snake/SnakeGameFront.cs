@@ -105,6 +105,7 @@ namespace SnakeClub
 
         private void StartMain()
         {
+            if (api.Config.FixedPvePreview) { RequestPve(); return; }
             if (!CurrentProfile.tutorialComplete) RequestPve();
             else RequestDaily();
         }
@@ -163,6 +164,7 @@ namespace SnakeClub
         {
             if (busy) return;
             depthMode = false;
+            if (api.Config.FixedPvePreview) { BeginFixedPve(); return; }
             if (!api.Connected) { BeginPve(null); resultNote = "离线练习不计账号奖励"; return; }
             busy = true;
             api.Post("match/start", new ApiRequest(), reply =>
@@ -254,7 +256,7 @@ namespace SnakeClub
         {
             dragSteering.Reset();
             connection.Close(); online = false; inGame = true; paused = false; status = ""; room = "";
-            playerId = "you"; arena = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
+            playerId = "you"; arena = null; fixedPve = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
             state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             activeRun = run; resultRecorded = false; runInputs.Clear();
@@ -269,6 +271,7 @@ namespace SnakeClub
         private void RecordResult()
         {
             resultRecorded = true;
+            if (fixedPve != null) { resultNote = "整数规则试玩 · 不计账号奖励或排行"; return; }
             if (activeRun == null || string.IsNullOrEmpty(activePlayerId))
             {
                 if (controlActions > 0) { practiceProfile.tutorialComplete = true; practiceProfile.completedMatches++; }
