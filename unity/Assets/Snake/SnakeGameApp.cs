@@ -52,6 +52,9 @@ namespace SnakeClub
         private bool reducedEffects;
         private readonly DragSteering dragSteering = new DragSteering();
         private readonly MatchHighlights matchHighlights = new MatchHighlights();
+        private readonly NameplateLayout nameplates = new NameplateLayout();
+        private struct NameplateEntry { public Rect box; public Vector2 anchor; public Color color; public string label; }
+        private readonly List<NameplateEntry> nameplateEntries = new List<NameplateEntry>(8);
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
         private readonly KillFeedback killFeedback = new KillFeedback();
@@ -794,21 +797,72 @@ namespace SnakeClub
 
         private void DrawNames(ArenaState world)
         {
+            nameplates.Reset(); nameplateEntries.Clear();
+            if (firstRun && tutorialHints && !online && !paused)
+            {
+                var own = world.snakes.Find(s => s.id == playerId);
+                string hint = FirstRunHints.Select(world.tick, hasSteered, tutorialClosedLoop, tutorialRebounded,
+                    own == null ? 0 : own.kills, FirstRunHints.ApproachingOwnTrail(own), tutorialBoosted);
+                if (!string.IsNullOrEmpty(hint)) nameplates.Reserve(100, 550, 880, 100);
+            }
             foreach (var snake in world.snakes)
             {
                 if (!snake.alive || snake.segments.Count == 0) continue;
-                Vector3 projected = arenaRenderer.WorldToScreen(snake.segments[0]);
-                if (projected.z <= 0) continue;
-                Vector2 position = ToVirtual(projected);
-                if (position.x < 90 || position.x > 990 || position.y < 260 || position.y > 1430) continue;
-                string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
-                if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
-                if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
-                if (snake.shield > 0) label += " · 保护";
-                Rect box = new Rect(position.x - 105, position.y - 68, 210, 48);
-                Panel(box, new Color(.03f, .07f, .12f, .78f));
-                Label(box, label, 23, Color.white, TextAnchor.MiddleCenter, true);
+                Vector3 screen = arenaRenderer.WorldToScreen(snake.segments[0]);
+                if (screen.z <= 0) continue;
+                Vector2 anchor = ToVirtual(screen);
+                nameplates.AddAnchor(new Point(anchor.x, anchor.y));
             }
+            // The player and a marked objective get the first available slots.
+            for (int priority = 0; priority < 3; priority++)
+                foreach (var snake in world.snakes)
+                {
+                    bool own = snake.id == playerId;
+                    bool target = !own && (snake.boss || (world.eventStatus == "active" && world.eventTarget == snake.id));
+                    if ((priority == 0 && !own) || (priority == 1 && !target) || (priority == 2 && (own || target))) continue;
+                    CollectNameplate(world, snake);
+                }
+            // Leaders go behind every label so they never draw over the player's name.
+            foreach (var entry in nameplateEntries) DrawNameplateLeader(entry);
+            foreach (var entry in nameplateEntries) DrawNameplate(entry);
+        }
+
+        private void CollectNameplate(ArenaState world, SnakeState snake)
+        {
+            if (!snake.alive || snake.segments.Count == 0) return;
+            Vector3 projected = arenaRenderer.WorldToScreen(snake.segments[0]);
+            if (projected.z <= 0) return;
+            Vector2 position = ToVirtual(projected);
+            if (!nameplates.TryPlace(new Point(position.x, position.y), out var placed)) return;
+            string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
+            if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
+            if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
+            if (snake.shield > 0) label += " · 保护";
+            nameplateEntries.Add(new NameplateEntry { box = new Rect(placed.x, placed.y, NameplateLayout.Width, NameplateLayout.Height),
+                anchor = position, color = arenaRenderer.TrailColor(snake, playerId), label = label });
+        }
+
+        private void DrawNameplateLeader(NameplateEntry entry)
+        {
+            Rect box = entry.box; Vector2 position = entry.anchor;
+            if (Mathf.Abs(box.y - (position.y - 68)) <= 8f && Mathf.Abs(box.x - (position.x - NameplateLayout.Width / 2)) <= 8f) return;
+            Vector2 start = new Vector2(Mathf.Clamp(position.x, box.x + 12, box.xMax - 12), position.y >= box.yMax ? box.yMax : box.y);
+            Vector2 delta = position - start;
+            if (delta.sqrMagnitude <= 1f) return;
+            Matrix4x4 oldMatrix = GUI.matrix; Color oldColor = GUI.color;
+            GUI.color = new Color(.75f, .90f, .86f, .55f);
+            GUIUtility.RotateAroundPivot(Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg, start);
+            GUI.DrawTexture(new Rect(start.x, start.y - 1, delta.magnitude, 2), Texture2D.whiteTexture);
+            GUI.matrix = oldMatrix; GUI.color = oldColor;
+        }
+
+        private void DrawNameplate(NameplateEntry entry)
+        {
+            Rect box = entry.box;
+            Panel(box, new Color(.03f, .07f, .12f, .88f));
+            Color previous = GUI.color; GUI.color = entry.color;
+            GUI.DrawTexture(new Rect(box.x + 8, box.y + 10, 8, box.height - 20), rounded); GUI.color = previous;
+            Label(new Rect(box.x + 16, box.y, box.width - 20, box.height), entry.label, 23, Color.white, TextAnchor.MiddleCenter, true);
         }
 
         private static string FormatTime(float seconds)

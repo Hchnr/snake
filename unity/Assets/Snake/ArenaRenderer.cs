@@ -507,6 +507,9 @@ namespace SnakeClub
                         characters[snake.id] = character;
                     }
                     eliminations.ObserveAlive(snake.id); exitPoses.Remove(snake.id);
+                    // Keep the controlled character recognizable when sprites overlap.
+                    // Re-evaluate every frame because online player identity can change.
+                    character.sortingOrder = snake.id == playerId ? 20 : 10;
                     character.sprite = characterSprite; character.color = Color.white; character.enabled = true;
                     if (!characterMotions.TryGetValue(snake.id, out var motion))
                         characterMotions[snake.id] = motion = new CharacterMotion();

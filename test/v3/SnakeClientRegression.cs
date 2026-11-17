@@ -395,6 +395,11 @@ namespace SnakeClub.Tests.Editor
                 // Editor batch tests do not invoke MonoBehaviour.Awake on AddComponent.
                 typeof(ArenaRenderer).GetMethod("Initialize", rendererFlags).Invoke(renderer, null);
                 renderer.Draw(state, "you");
+                var characters = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", rendererFlags).GetValue(renderer);
+                Require(characters["you"].sortingOrder > characters["bot-1"].sortingOrder, "controlled character is behind opponent sprites");
+                renderer.Draw(state, "bot-1");
+                Require(characters["bot-1"].sortingOrder > characters["you"].sortingOrder, "sprite priority did not follow a changed player identity");
+                renderer.Draw(state, "you");
                 var protections = (System.Collections.Generic.Dictionary<string, LineRenderer>)typeof(ArenaRenderer).GetField("protectionMarkers", rendererFlags).GetValue(renderer);
                 var marker = (LineRenderer)typeof(ArenaRenderer).GetField("marker", rendererFlags).GetValue(renderer);
                 var head = state.snakes[0].segments[0];
