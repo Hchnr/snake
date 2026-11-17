@@ -1022,13 +1022,16 @@ static void PveBotAvoidanceCases()
     var fighters = new[] { bot, threat }; long x = 0, y = 0;
     PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
     Check(x < 0 && y == 0, "nearby collision trail did not push bot away");
-    threat.shieldTicks = 1; x = 0; y = 0;
+    threat.shieldTicks = 100; x = 0; y = 0;
     PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
     Check(x == 0 && y == 0, "protected trail incorrectly affected bot");
-    threat.shieldTicks = 0; bot.shieldTicks = 1;
+    threat.shieldTicks = 0; bot.shieldTicks = 100;
     PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
     Check(x == 0 && y == 0, "protected bot incorrectly avoided trail");
-    bot.shieldTicks = 0; threat.alive = false;
+    bot.shieldTicks = 10; threat.shieldTicks = 10;
+    PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
+    Check(x < 0, "bot failed to anticipate an expiring shield");
+    bot.shieldTicks = 0; threat.shieldTicks = 0; threat.alive = false; x = 0; y = 0;
     PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
     Check(x == 0 && y == 0, "dead trail incorrectly affected bot");
 }
@@ -1110,6 +1113,10 @@ static void PveFixedWorldCases()
         var profile = new PlayerProgress { selectedSkin = 2, talents = new[] { 1, 2, 0, 1, 0, 0, 0, 0, 0 } };
         var a = new PveFixedWorld(seed, true, profile); var b = new PveFixedWorld(seed, true, profile);
         Check(a.Fighters.Count == 8 && a.Fruit.Count == Arena.FruitCount, "missing opponents or fruit");
+        Check(a.Fighters[0].shieldTicks == 4 * PveFixedWorld.TickRate, "first-run player shield should last four seconds");
+        Check(a.Fighters.Skip(1).All(f => f.shieldTicks == 3 * PveFixedWorld.TickRate), "bot shields should last three seconds");
+        var regular = new PveFixedWorld(seed, false, profile);
+        Check(regular.Fighters[0].shieldTicks == 3 * PveFixedWorld.TickRate, "regular player shield should last three seconds");
         for (int i = 0; i < 1200 && !a.Finished; i++)
         {
             a.Step((byte)(i * 13), i % 30 > 20); b.Step((byte)(i * 13), i % 30 > 20);

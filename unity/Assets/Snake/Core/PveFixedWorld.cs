@@ -59,7 +59,7 @@ namespace SnakeClub.Core
                 CapturePoint head = Spawn(i);
                 int heading = Next(256);
                 fighters[i] = new PveFixedFighter(i == 0 ? "you" : "bot-" + i,
-                    new PveFixedMotion(head.x, head.y, heading * 256, DailyMatch.CaptureStartingLength)) { shieldTicks = 3 * TickRate };
+                    new PveFixedMotion(head.x, head.y, heading * 256, DailyMatch.CaptureStartingLength)) { shieldTicks = (firstRun && i == 0 ? 4 : 3) * TickRate };
                 botDirection[i] = (byte)heading;
             }
         }
@@ -90,15 +90,15 @@ namespace SnakeClub.Core
             return new CapturePoint(Math.Max(-PveFixedMotion.Edge, Math.Min(PveFixedMotion.Edge, candidate.x)),
                 Math.Max(-PveFixedMotion.Edge, Math.Min(PveFixedMotion.Edge, candidate.y)));
         }
-        // Use only currently visible, unprotected bodies. The neck is not a
-        // collision target and dead or shielded snakes cannot threaten us.
+        // Treat a nearly expired shield as an approaching hazard so bots do
+        // not overlap when immunity ends. Distant shielded snakes are safe.
         internal static void AccumulateTrailAvoidance(PveFixedFighter self, IReadOnlyList<PveFixedFighter> opponents, ref long vx, ref long vy)
         {
-            if (self == null || !self.alive || self.shieldTicks > 0) return;
+            if (self == null || !self.alive || self.shieldTicks > TickRate) return;
             for (int i = 0; i < opponents.Count; i++)
             {
                 var other = opponents[i];
-                if (other == null || other == self || !other.alive || other.shieldTicks > 0) continue;
+                if (other == null || other == self || !other.alive || other.shieldTicks > TickRate) continue;
                 for (int part = 2; part < other.motion.Length; part += 2)
                 {
                     var point = other.motion.Segments[part];
@@ -141,6 +141,18 @@ namespace SnakeClub.Core
                 { vx += (fruit[fruitIndex].position.x - self.motion.X) / 2; vy += (fruit[fruitIndex].position.y - self.motion.Y) / 2; }
             }
             botBoost[index] = nearest >= 0 && closest < 15000L * 15000L && self.motion.Length > fighters[nearest].motion.Length + 3;
+            // Two hunters favor the actual player, using only present position.
+            // Their ordinary boost costs length and remains optional for the bot.
+            if (index <= 2 && fighters[0].alive && !(eventActive && eventType == 1))
+            {
+                long dx = (long)fighters[0].motion.X - self.motion.X, dy = (long)fighters[0].motion.Y - self.motion.Y;
+                long distance = dx * dx + dy * dy;
+                if (distance < 50000L * 50000L && (distance > 12000L * 12000L || self.motion.Length >= fighters[0].motion.Length))
+                {
+                    vx += dx * 3; vy += dy * 3;
+                    if (distance > 12000L * 12000L && distance < 40000L * 40000L && self.motion.Length > 12) botBoost[index] = true;
+                }
+            }
             if (eventActive && eventType == 1)
             {
                 if (starHolder >= 0 && starHolder != index && fighters[starHolder].alive)
