@@ -1,6 +1,6 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
+const { spawn, spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -21,10 +21,10 @@ async function freePort() {
   });
 }
 
-async function start(port, limit = '10000') {
+async function start(port, limit = '10000', databaseFile = database, legacyFile = legacy) {
   const child = spawn('dotnet', [serverDll], { cwd: root, env: {
     ...process.env, SNAKE_ENV: 'development', SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), SNAKE_DEV_AUTH: '1', SNAKE_DEV_ADS: '0',
-    SNAKE_DATA_FILE: legacy, SNAKE_SQLITE_FILE: database, SNAKE_SESSION_KEY: 'sqlite-isolated-test-key', SNAKE_RATE_LIMIT_PER_MIN: limit, DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    SNAKE_DATA_FILE: legacyFile, SNAKE_SQLITE_FILE: databaseFile, SNAKE_SESSION_KEY: 'sqlite-isolated-test-key', SNAKE_RATE_LIMIT_PER_MIN: limit, DOTNET_CLI_TELEMETRY_OPTOUT: '1'
   }, stdio: ['ignore', 'pipe', 'pipe'] });
   let output = '';
   child.stdout.on('data', chunk => { output += chunk; });
@@ -104,6 +104,41 @@ test('concurrent servers settle each run exactly once and preserve both updates'
   const profile = (await request(endpoints[0], 'bootstrap', user.session)).data.profile;
   assert.equal(profile.coins, 210); assert.equal(profile.experience, 260); assert.equal(profile.completedMatches, 3);
   assert.deepEqual(profile.ownedSkins, [0, 2, 1]);
+});
+
+test('online backup restores persisted accounts and rankings without touching the live database', async () => {
+  const snapshot = path.join(temp, 'verified-backup.sqlite');
+  const script = path.join(root, 'scripts/backup-sqlite.py');
+  assert.ok(fs.existsSync(database + '-wal') && fs.statSync(database + '-wal').size > 0, 'test requires a live WAL');
+  const backup = spawnSync('python3', [script, database, snapshot], { encoding: 'utf8' });
+  assert.equal(backup.status, 0, backup.stderr);
+  assert.equal(fs.statSync(snapshot).mode & 0o077, 0, 'backup is readable by other users');
+  const before = fs.readFileSync(snapshot);
+  const refused = spawnSync('python3', [script, database, snapshot], { encoding: 'utf8' });
+  assert.notEqual(refused.status, 0); assert.deepEqual(fs.readFileSync(snapshot), before);
+  const invalid = path.join(temp, 'invalid.sqlite'); fs.writeFileSync(invalid, 'not a SQLite database');
+  const failed = path.join(temp, 'failed-backup.sqlite');
+  assert.notEqual(spawnSync('python3', [script, invalid, failed]).status, 0);
+  assert.equal(fs.existsSync(failed), false);
+  assert.deepEqual(fs.readdirSync(temp).filter(name => name.startsWith('.snake-backup-')), []);
+
+  // Start an independent server from the snapshot while the original remains live.
+  const restored = await start(await freePort(), '10000', snapshot, path.join(temp, 'no-import.json'));
+  try {
+    const profile = (await request(restored.endpoint, 'bootstrap', user.session)).data.profile;
+    assert.equal(profile.coins, 210); assert.equal(profile.experience, 260);
+    assert.deepEqual(profile.ownedSkins, [0, 2, 1]);
+    const board = await request(restored.endpoint, 'challenge/leaderboard?rules=daily-2', user.session);
+    assert.equal(board.data.total, 2); assert.equal(board.data.rank, 2); assert.equal(board.data.gap, 40);
+    const run = (await request(restored.endpoint, 'match/start', user.session, {})).data;
+    await sleep(1300);
+    const payload = { runId: run.runId, token: run.token, seconds: 3, actions: 3 };
+    const first = await request(restored.endpoint, 'match/finish', user.session, payload);
+    const duplicate = await request(restored.endpoint, 'match/finish', user.session, payload);
+    assert.equal(first.status, 200); assert.equal(duplicate.status, 200);
+    assert.equal((await request(restored.endpoint, 'bootstrap', user.session)).data.profile.coins, 245);
+    assert.equal((await request(endpoints[0], 'bootstrap', user.session)).data.profile.coins, 210);
+  } finally { await stop(restored); }
 });
 
 test('database survives restart without importing the old file again', async () => {
