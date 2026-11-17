@@ -74,6 +74,7 @@ var cases = new (string name, Action run)[]
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
     ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
     ("integer PvE world replays AI and fruit deterministically", PveFixedWorldCases),
+    ("integer PvE events respect real outcomes and timing", PveFixedEventsCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
@@ -992,6 +993,51 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveFixedEventsCases()
+{
+    foreach (int seed in new[] { 0, 1, 2 })
+    {
+        var world = new PveFixedWorld(seed, false, new PlayerProgress());
+        foreach (var fighter in world.Fighters) fighter.shieldTicks = 2000;
+        for (int i = 0; i < 299; i++) world.Step(0, false);
+        Check(world.EventStatus == "", "event started too early");
+        world.Step(0, false);
+        Check(world.EventStatus == "active" && world.EventKind == new[] { "bounty", "star", "fruit" }[seed], "wrong event started");
+        if (seed == 0) Check(world.EventTarget.StartsWith("bot-") && world.Fighters.Any(f => f.id == world.EventTarget && f.motion.Length >= 20), "bounty target missing");
+        if (seed == 2) Check(world.Fruit.Take(12).Count(f => Math.Abs(f.position.x - world.EventCenter.x) <= 14000 && Math.Abs(f.position.y - world.EventCenter.y) <= 14000) >= 6, "fruit event spawn outside region");
+        if (seed == 1)
+        {
+            typeof(PveFixedWorld).GetField("starHolder", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(world, 0);
+            for (int i = 0; i < 159; i++) world.Step(0, false);
+            Check(world.Fighters[0].eventPoints == 0, "star awarded too early");
+            world.Step(0, false); Check(world.Fighters[0].eventPoints == 1, "star did not award after eight seconds");
+            for (int i = 0; i < 160; i++) world.Step(0, false);
+            Check(world.Fighters[0].eventPoints == 2 && world.EventStatus == "ended", "star did not end at two points");
+        }
+        while (!world.Finished && world.Tick < 800 && world.EventStatus == "active") world.Step(0, false);
+        Check(world.EventStatus == "ended" && world.EventTicksRemaining == 0, "event failed to end");
+        foreach (var fighter in world.Fighters) Check(fighter.eventPoints >= 0 && fighter.eventPoints <= 2, "event point cap exceeded");
+    }
+    var early = new PveFixedWorld(1, false, new PlayerProgress());
+    early.Fighters[0].alive = false; early.Step(0, false);
+    Check(early.Finished && early.EventStatus == "", "early ending invented an event");
+    var owner = new PveFixedFighter("a", new PveFixedMotion(0, 0, 0, 16));
+    var target = new PveFixedFighter("b", new PveFixedMotion(0, 0, 0, 16));
+    target.eliminatedBy = "a";
+    PveFixedWorld.AwardEventElimination(owner, target, "bounty", "b", new CapturePoint());
+    Check(owner.eventPoints == 0, "uncredited elimination awarded points");
+    target.credited = true;
+    PveFixedWorld.AwardEventElimination(owner, target, "bounty", "other", new CapturePoint());
+    Check(owner.eventPoints == 0, "non-target bounty awarded points");
+    PveFixedWorld.AwardEventElimination(owner, target, "bounty", "b", new CapturePoint());
+    Check(owner.eventPoints == 2, "real bounty not awarded");
+    owner.eventPoints = 0;
+    PveFixedWorld.AwardEventElimination(owner, target, "fruit", "", new CapturePoint(14000, 0));
+    Check(owner.eventPoints == 1, "fruit-zone boundary kill not awarded");
+    PveFixedWorld.AwardEventElimination(owner, target, "fruit", "", new CapturePoint(14001, 0));
+    Check(owner.eventPoints == 1, "outside fruit zone awarded points");
 }
 
 static void PveFixedWorldCases()

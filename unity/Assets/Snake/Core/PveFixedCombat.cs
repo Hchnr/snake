@@ -11,7 +11,8 @@ namespace SnakeClub.Core
         public readonly string id;
         public readonly PveFixedMotion motion;
         public bool alive = true;
-        public int shieldTicks, captureCooldown, kills;
+        public int shieldTicks, captureCooldown, kills, eventPoints;
+        public bool credited;
         public string eliminatedBy = "", eliminationReason = "";
         public PveFixedFighter(string id, PveFixedMotion motion)
         {
@@ -43,6 +44,7 @@ namespace SnakeClub.Core
             {
                 int owner = killer[i];
                 if (owner < 0 || !fighters[owner].alive) continue;
+                fighters[i].credited = true;
                 fighters[owner].kills++;
                 fighters[owner].motion.Grow(Math.Max(1, fighters[i].motion.Length / 2));
             }

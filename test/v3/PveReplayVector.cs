@@ -94,12 +94,26 @@ namespace SnakeClub.Tests
                 {
                     world.Step((byte)(tick * 13 + seed), tick % 35 > 24);
                     Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
+                    Add(world.EventKind); Add(world.EventStatus); Add(world.EventTarget); Add(world.EventTicksRemaining);
+                    Add(world.EventCenter.x); Add(world.EventCenter.y); Add(world.StarPosition.x); Add(world.StarPosition.y); Add(world.StarHolder); Add(world.StarTicks);
                     foreach (var fighter in world.Fighters)
                     {
-                        Add(fighter.alive ? 1 : 0); Add(fighter.shieldTicks); Add(fighter.kills); Add(fighter.eliminatedBy);
+                        Add(fighter.alive ? 1 : 0); Add(fighter.shieldTicks); Add(fighter.kills); Add(fighter.eventPoints); Add(fighter.eliminatedBy);
                         foreach (var point in fighter.motion.Segments) { Add(point.x); Add(point.y); }
                     }
                     foreach (var item in world.Fruit) { Add(item.position.x); Add(item.position.y); Add(item.color); }
+                }
+            }
+            foreach (int seed in new[] { 0, 1, 2 })
+            {
+                var world = new PveFixedWorld(seed, false, new PlayerProgress());
+                foreach (var fighter in world.Fighters) fighter.shieldTicks = 2000;
+                for (int tick = 0; tick < 810 && !world.Finished; tick++)
+                {
+                    world.Step(0, false);
+                    Add(world.Tick); Add(world.EventKind); Add(world.EventStatus); Add(world.EventTarget); Add(world.EventTicksRemaining);
+                    Add(world.EventCenter.x); Add(world.EventCenter.y); Add(world.StarPosition.x); Add(world.StarPosition.y); Add(world.StarHolder); Add(world.StarTicks);
+                    foreach (var fighter in world.Fighters) { Add(fighter.eventPoints); Add(fighter.motion.X); Add(fighter.motion.Y); }
                 }
             }
             string worldHash = hash.ToString("x16");
