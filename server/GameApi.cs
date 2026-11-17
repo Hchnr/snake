@@ -190,7 +190,8 @@ sealed class GameApi
         int minutes = (int)Math.Min(expedition.durationMinutes, elapsed / 600000 * 10);
         expedition.endedAt = now.ToUnixTimeMilliseconds(); expedition.claimed = true;
         expedition.coins = Progression.ExpeditionCoins(minutes, expedition.bonusPercent);
-        expedition.experience = Math.Min(20 - p.dailyExpeditionXp, Progression.ExpeditionExperience(minutes));
+        p.dailyExpeditionXp = Math.Max(0, Math.Min(20, p.dailyExpeditionXp));
+        expedition.experience = Progression.ExpeditionAvailableExperience(minutes, p.dailyExpeditionXp);
         if (minutes >= expedition.durationMinutes)
         {
             if (p.caveFragments == null || p.caveFragments.Length != 3) p.caveFragments = new int[3];

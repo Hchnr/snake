@@ -64,6 +64,7 @@ before(async () => {
   temp = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-v3-test-'));
   dataFile = path.join(temp, 'progress.json');
   const caveId = idFor('v3-cave');
+  const caveOvercapId = idFor('v3-cave-overcap');
   const legacyId = idFor('v3-legacy');
   const oldProfileId = idFor('v3-old-profile');
   const newId = idFor('v3-new-rules');
@@ -80,6 +81,7 @@ before(async () => {
     players: {
       [pursuitId]: { playerId: pursuitId, displayName: '追逐测试', dailyKey: chinaDay() },
       [receiptId]: { playerId: receiptId, displayName: '回执测试', tutorialComplete: true, coins: 73, experience: 29, dailyKey: chinaDay() },
+      [caveOvercapId]: { playerId: caveOvercapId, displayName: '旧探洞', dailyKey: chinaDay(), experience: 29, dailyExpeditionXp: 99, expedition: { id: 'overcap-cave', cave: 0, durationMinutes: 120, startedAt: Date.now() - 9 * 3600000, bonusPercent: 0 } },
       [caveId]: { playerId: caveId, displayName: '洞穴测试', dailyKey: chinaDay(), expedition: { id: 'expedition-fixture', cave: 2, durationMinutes: 480, startedAt: Date.now() - 12 * 3600000, bonusPercent: 7 } },
       [oldProfileId]: { playerId: oldProfileId, displayName: '老玩家', tutorialComplete: true, experience: 345, coins: 777, ownedSkins: [0, 2], selectedSkin: 2,
         talents: [1, 0, 0, 0, 0, 0, 0, 0, 0], dailyKey: chinaDay(), expedition: { id: 'old-cave', cave: 1, durationMinutes: 240, startedAt: Date.now() - 10000, bonusPercent: 2 } }
@@ -259,6 +261,13 @@ test('PvE settlement is bound to the player and pays once, including daily objec
   const disabled = await request('ad/complete', { token: alice.session, body: { id: prepared.data.id } });
   assert.equal(disabled.status, 503);
   assert.equal((await request('bootstrap', { token: alice.session })).data.profile.coins, 110);
+});
+
+test('over-cap legacy expedition data never subtracts experience', async () => {
+  const player = await login('v3-cave-overcap');
+  const claim = await request('expedition/claim', { token: player.session, body: { id: 'overcap-cave' } });
+  assert.equal(claim.status, 200); assert.equal(claim.data.experience, 0);
+  assert.equal(claim.data.profile.experience, 29); assert.equal(claim.data.profile.dailyExpeditionXp, 20);
 });
 
 test('offline expedition is capped at eight hours and its claim is idempotent', async () => {

@@ -30,6 +30,7 @@ var cases = new (string name, Action run)[]
     ("first seven active days grow linearly and later growth slows", GrowthCurve),
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
     ("recommended talents allocate available points deterministically", TalentRecommendation),
+    ("cave refresh invalidates stale responses and backs off failures", CaveSyncCases),
     ("expedition rewards respect time and bonus limits", ExpeditionRewards),
     ("expedition fragments unlock stories without spending inventory", CaveAlbum),
     ("wall bounce grants a brief pulse with a cooldown", BouncePulse),
@@ -349,8 +350,31 @@ static void TalentRecommendation()
     Check(Progression.AvailablePoints(profile) == 0 && Progression.AllocateRecommended(profile) == 0, "recommendation spent unavailable points");
 }
 
+static void CaveSyncCases()
+{
+    var sync = new CaveSyncState();
+    Check(!sync.Ready, "new cave state unexpectedly ready");
+    Check(sync.TryBegin(0, out var first) && sync.InFlight, "initial cave refresh did not start");
+    sync.Invalidate();
+    Check(!sync.TryBegin(0, out _), "overlapping refresh started during an in-flight request");
+    Check(!sync.Complete(first, true, 0) && !sync.Ready && !sync.InFlight, "stale foreground response was accepted");
+    Check(sync.TryBegin(0, out var second), "new refresh did not start");
+    Check(!sync.Complete(first, true, 0) && sync.InFlight, "duplicate stale response interrupted a newer request");
+    Check(sync.Complete(second, false, 0) && !sync.Ready, "failed refresh became ready");
+    Check(!sync.TryBegin(1, out _), "failed refresh retried too early");
+    Check(sync.TryBegin(2, out var third), "failed refresh did not retry");
+    Check(sync.Complete(third, true, 2) && sync.Ready && !sync.TryBegin(3, out _), "successful refresh did not become ready");
+    sync.Invalidate();
+    Check(!sync.Ready, "foreground return did not invalidate refresh");
+    Check(sync.TryBegin(3, out var fourth) && sync.Complete(fourth, true, 3), "returning to foreground did not require a new refresh");
+    Check(!sync.Complete(fourth, false, 3) && sync.Ready, "duplicate callback changed the refresh state");
+}
+
 static void ExpeditionRewards()
 {
+    Check(Progression.ExpeditionAvailableExperience(480, 18) == 2, "remaining daily experience cap was not applied");
+    Check(Progression.ExpeditionAvailableExperience(480, 99) == 0, "over-cap old data produced negative experience");
+    Check(Progression.ExpeditionRemainingExperience(int.MinValue) == 20 && Progression.ExpeditionRemainingExperience(int.MaxValue) == 0, "invalid experience totals overflowed the cap");
     Check(Progression.ExpeditionCoins(120, 0) == 60 && Progression.ExpeditionExperience(120) == 5, "2-hour rewards incorrect");
     Check(Progression.ExpeditionCoins(480, 0) == 240 && Progression.ExpeditionExperience(480) == 20, "8-hour rewards incorrect");
     Check(Progression.ExpeditionCoins(720, 7) == 256 && Progression.ExpeditionExperience(720) == 20, "8-hour ceiling or bonus incorrect");
