@@ -150,8 +150,11 @@ namespace SnakeClub.Tests.Editor
                 Field("pointerBoost").SetValue(app, true);
                 Call("AdvanceFixedPve", .2f);
                 Require(world.Tick == 4 && state.tick == 4 && world.Fighters[0].motion.Boosting, "preview did not advance using input");
+                var inputs = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
+                Require(inputs.Count == 8 && inputs[0] == 64 && inputs[1] == 1 && inputs[6] == 64 && inputs[7] == 1,
+                    "preview did not record the actual per-tick controls");
                 Field("paused").SetValue(app, true); Call("AdvanceFixedPve", .2f);
-                Require(world.Tick == 4, "paused preview advanced");
+                Require(world.Tick == 4 && inputs.Count == 8, "paused preview advanced or recorded input");
                 Field("paused").SetValue(app, false);
                 Field("controlActions").SetValue(app, 1);
                 var profile = (PlayerProgress)Field("practiceProfile").GetValue(app);

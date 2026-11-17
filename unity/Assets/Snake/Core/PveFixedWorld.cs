@@ -11,6 +11,29 @@ namespace SnakeClub.Core
         public PveFixedFruit(CapturePoint position, int color) { this.position = position; this.color = color; }
     }
 
+    // Internal prototype replay only. The world rules are not frozen or
+    // verified on the target platforms and must not authorize rewards.
+    public static class PveFixedRecording
+    {
+        public const int MaxTicks = 90 * PveFixedWorld.TickRate;
+        public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
+        {
+            result = null;
+            int limit = (firstRun ? 60 : 90) * PveFixedWorld.TickRate;
+            if (inputs == null || inputs.Length == 0 || inputs.Length % 2 != 0 || inputs.Length > limit * 2) return false;
+            for (int i = 1; i < inputs.Length; i += 2) if (inputs[i] > 1) return false;
+            var world = new PveFixedWorld(seed, firstRun, profile);
+            for (int i = 0; i < inputs.Length; i += 2)
+            {
+                if (world.Finished) return false;
+                world.Step(inputs[i], inputs[i + 1] == 1);
+            }
+            if (!world.Finished) return false;
+            result = world;
+            return true;
+        }
+    }
+
     // Isolated first draft of a deterministic ordinary PvE match. This is
     // not yet a versioned release ruleset or a trusted reward verifier.
     public sealed class PveFixedWorld

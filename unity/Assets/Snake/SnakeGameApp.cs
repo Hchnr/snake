@@ -430,7 +430,9 @@ namespace SnakeClub
             stepTimer += Mathf.Min(Mathf.Max(0, deltaTime), .2f);
             while (stepTimer >= .05f && !fixedPve.Finished)
             {
-                fixedPve.Step(EncodeDirection(direction), pointerBoost);
+                byte heading = EncodeDirection(direction);
+                fixedPve.Step(heading, pointerBoost);
+                runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                 state = fixedPve.RenderState();
                 matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId);
                 stepTimer -= .05f;
