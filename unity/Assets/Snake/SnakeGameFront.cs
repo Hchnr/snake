@@ -357,7 +357,7 @@ namespace SnakeClub
                             ? FriendChallengeComparison.Format(reply.score, activeFriendScore) : "";
                         resultNote = reply.ok ? (challenge ? "成绩已验证 · " : "") + rewards + comparison : reply.error;
                         if (reply.ok && reply.coins > 0) { lastRewardId = entry.runId; lastRewardKind = "match"; lastRewardCoins = reply.coins; }
-                        if (reply.ok && challenge) api.Get("challenge/leaderboard?rules=" + Uri.EscapeDataString(string.IsNullOrEmpty(entry.rules) ? DailyMatch.LegacyRulesVersion : entry.rules), ranking =>
+                        if (reply.ok && challenge && activeRun.date == api.Date) api.Get("challenge/leaderboard?rules=" + Uri.EscapeDataString(string.IsNullOrEmpty(entry.rules) ? DailyMatch.LegacyRulesVersion : entry.rules), ranking =>
                         {
                             if (!ranking.ok || activeRun == null || activeRun.runId != entry.runId) return;
                             string position = ranking.rank > 0 ? "今日第 " + ranking.rank + " 名 / " + ranking.total + " 人" : "成绩已记录";

@@ -71,12 +71,17 @@ CREATE INDEX IF NOT EXISTS ads_player_day ON ads(player_id, day);";
         return result;
     }
 
-    public GameData LoadPlayerState(SqliteConnection db, SqliteTransaction tx, string playerId, string day, long now)
+    public GameData LoadPlayerState(SqliteConnection db, SqliteTransaction tx, string playerId, string day, long now, string? receiptRunId = null)
     {
         var result = new GameData();
         LoadPlayer(db, tx, result, playerId);
         ReadRows(db, tx, "SELECT id,payload FROM runs WHERE player_id=$id AND expires_at >= $now", result.runs,
             ("$id", playerId), ("$now", now));
+        // A signed, completed run remains readable as a receipt after its
+        // submission window. Load just the requested row, not all history.
+        if (!string.IsNullOrEmpty(receiptRunId))
+            ReadRows(db, tx, "SELECT id,payload FROM runs WHERE id=$run AND player_id=$id AND completed=1 AND expires_at < $now", result.runs,
+                ("$run", receiptRunId), ("$id", playerId), ("$now", now));
         ReadRows(db, tx, "SELECT id,payload FROM rewards WHERE player_id=$id", result.rewards, ("$id", playerId));
         ReadRows(db, tx, "SELECT id,payload FROM ads WHERE player_id=$id AND day=$day", result.ads, ("$id", playerId), ("$day", day));
         return result;
