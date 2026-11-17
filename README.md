@@ -53,11 +53,14 @@ python3 scripts/build-unity-isolated.py webgl --offline-practice --no-graphics -
 # 对比整数 PvE 在桌面 .NET 和无头 Unity WebGL 的样本指纹
 python3 scripts/test-fixed-pve-webgl.py
 
+# 构建隔离客户端并在本机以真实时间模拟触摸，验证一局无奖励回放
+python3 scripts/test-fixed-pve-client-e2e.py
+
 # 使用图形后端在临时 Unity 工程中验证运行时动画与 UI 命中
 npm run test:unity:play
 ```
 
-WebGL 指纹检查需要 Chrome，可用 `SNAKE_CHROME` 指定可执行文件；它在临时工程中编译并用静音无头浏览器运行，可能耗时数分钟。指纹一致只覆盖脚本样本，不代表抖音手机、所有输入或可信发奖已通过。
+WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定可执行文件；它们在临时工程中编译并用静音无头浏览器运行，可能耗时数分钟。客户端检查还会启动临时本机服务并按真实时间完成一局。指纹一致只覆盖脚本样本，不代表抖音手机、所有输入或可信发奖已通过。
 
 每日挑战接口测试按实际局时等待，可能需要约 1 分钟；测试数据放在临时目录，不使用本机游戏存档。Unity 回归检查需要已安装并启用许可证的 Editor；可用 `UNITY_EDITOR` 指定可执行文件。
 
