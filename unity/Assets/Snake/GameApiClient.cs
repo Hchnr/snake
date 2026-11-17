@@ -146,6 +146,9 @@ namespace SnakeClub
 
         private void LoginDouyin(Action<ApiReply> done)
         {
+            // Offline preview still initializes TTSDK for platform features,
+            // but must not request an identity without a configured backend.
+            if (string.IsNullOrWhiteSpace(Config.apiUrl)) { done(new ApiReply { error = "当前为离线练习" }); return; }
             TT.Login((code, anonymousCode, isLogin) => PostRaw("auth/douyin", new ApiRequest { code = code, anonymousCode = anonymousCode }, reply => FinishLogin(reply, done)),
                 error => done(new ApiReply { error = "抖音登录失败" }), false);
         }

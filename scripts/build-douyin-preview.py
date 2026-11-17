@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 
+from unity_defines import enable_webgl_define
+
 root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser()
 parser.add_argument('--appid', required=True, help='Douyin mini-game AppID')
@@ -36,6 +38,11 @@ with tempfile.TemporaryDirectory(prefix='snake-douyin-preview-') as directory:
         excluded.extend(['ReferenceSkins', 'ReferenceSkins.meta'])
     for name in ('Assets', 'Packages', 'ProjectSettings'):
         shutil.copytree(root / 'unity' / name, project / name, ignore=shutil.ignore_patterns(*excluded))
+    settings_path = project / 'ProjectSettings/ProjectSettings.asset'
+    try:
+        settings_path.write_text(enable_webgl_define(settings_path.read_text(), 'SNAKE_DOUYIN_TTSDK'))
+    except ValueError as error:
+        sys.exit(f'Cannot configure Douyin SDK in the isolated project: {error}')
     config_path = project / 'Assets/Resources/GameConfig.json'
     config = json.loads(config_path.read_text())
     config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=args.include_reference_skins)

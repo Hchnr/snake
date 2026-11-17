@@ -5,7 +5,7 @@
   "description": "抖音优先的 Unity 蛇蛇竞技游戏",
   "engines": { "node": ">=22" },
   "scripts": {
-    "test": "sh scripts/test-v2.sh && sh scripts/test-v3.sh",
+    "test": "sh scripts/test-v2.sh && sh scripts/test-v3.sh && python3 -m unittest discover -s test/python",
     "build": "sh scripts/unity-build.sh webgl",
     "preview": "node scripts/preview-unity.js",
     "test:v2": "sh scripts/test-v2.sh",
