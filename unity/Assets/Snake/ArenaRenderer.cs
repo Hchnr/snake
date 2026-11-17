@@ -489,7 +489,7 @@ namespace SnakeClub
                 Point actualHead = snake.segments[0];
                 Vector3 collisionCenter = new Vector3(actualHead.x, .20f, actualHead.y);
                 if (snake.id != playerId) DrawOpponentMarker(snake.id, collisionCenter, Palette[color]);
-                if (snake.shield > 0) DrawProtectionMarker(snake.id, collisionCenter);
+                if (snake.shield > 0) DrawProtectionMarker(snake.id, collisionCenter, snake.shield);
                 if (snake.boss && snake.bossWindup > 0)
                 {
                     Vector3 aim = new Vector3(snake.bossAim.x, 0, snake.bossAim.y);
@@ -559,7 +559,7 @@ namespace SnakeClub
                             trail.Add(Matrix4x4.TRS(glow, Quaternion.identity, Vector3.one * size));
                         }
                     }
-                    if (DangerProbe.Find(state, playerId, out var danger))
+                    if (DangerProbe.Find(state, playerId, out var danger) || DangerProbe.FindBeforeProtectionEnds(state, playerId, out danger))
                     {
                         Point offset = danger - snake.segments[0];
                         if (offset.Length > .01f)
@@ -723,14 +723,17 @@ namespace SnakeClub
             PlaceRing(ring, new Vector3(center.x, .20f, center.z), Arena.CollisionRadius);
         }
 
-        private void DrawProtectionMarker(string id, Vector3 center)
+        private void DrawProtectionMarker(string id, Vector3 center, float remaining)
         {
             if (!protectionMarkers.TryGetValue(id, out var ring) || ring == null)
             {
                 ring = MakeEffectRing("Protection " + id, new Color(.40f, .88f, 1f, 1f));
                 protectionMarkers[id] = ring;
             }
-            ring.enabled = true; ring.widthMultiplier = .13f;
+            bool expiring = remaining <= 1f;
+            ring.enabled = true;
+            ring.startColor = ring.endColor = expiring ? new Color(1f, .72f, .32f, 1f) : new Color(.40f, .88f, 1f, 1f);
+            ring.widthMultiplier = expiring && !ReducedEffects ? .14f + .06f * (.5f + .5f * Mathf.Sin(visualClock.Time * 9f)) : .13f;
             PlaceRing(ring, center + Vector3.up * .03f, 1.12f);
         }
 
