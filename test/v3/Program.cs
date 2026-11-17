@@ -707,16 +707,24 @@ static void DepthGoals()
     Check(!DepthChallenge.GoalReached(1, world, "you"), "empty first room completed");
     player.kills = 1; Check(DepthChallenge.GoalReached(1, world, "you"), "first room kill not recognized");
     player.starPoints = 1; Check(DepthChallenge.GoalReached(2, world, "you"), "star room not recognized");
+    world.phase = "running"; world.remaining = 20;
+    Check(DepthChallenge.Evaluate(3, world, "you") == DepthChallenge.RoomStatus.InProgress, "living boss ended room early");
     boss.alive = false; boss.eliminatedBy = "another-bot";
     Check(!DepthChallenge.GoalReached(3, world, "you"), "another AI's kill incorrectly completed the boss room");
-    boss.eliminatedBy = "you"; Check(DepthChallenge.GoalReached(3, world, "you"), "player's boss kill not recognized");
-    player.alive = false; Check(!DepthChallenge.GoalReached(3, world, "you"), "dead player completed the room");
+    Check(DepthChallenge.Evaluate(3, world, "you") == DepthChallenge.RoomStatus.Lost && DepthChallenge.FailureReason(3, world, "you").Contains("其他对手"), "unreachable boss objective was not ended and explained");
+    boss.eliminatedBy = "you"; Check(DepthChallenge.GoalReached(3, world, "you") && DepthChallenge.Evaluate(3, world, "you") == DepthChallenge.RoomStatus.Won, "player's boss kill not recognized");
+    player.alive = false; Check(!DepthChallenge.GoalReached(3, world, "you") && DepthChallenge.Evaluate(3, world, "you") == DepthChallenge.RoomStatus.Lost, "dead player completed the room");
+    player.alive = true; boss.alive = true; world.phase = "ended"; world.remaining = 0;
+    Check(DepthChallenge.Evaluate(3, world, "you") == DepthChallenge.RoomStatus.Lost && DepthChallenge.FailureReason(3, world, "you").Contains("时间到"), "time limit failure not explained");
 }
 
 static void DepthRoomFlow()
 {
     string summary = DepthChallenge.BonusSummary(2, 1, 2);
     Check(summary.Contains("护盾 4 秒") && summary.Contains("加速 3 秒") && summary.Contains("增长 6 节"), "bonus summary disagrees with active effects");
+    Check(DepthChallenge.BonusChoice(0, 1, 0, 0).Contains("2 → 4 秒"), "stacked capture shield preview is incorrect");
+    Check(DepthChallenge.BonusChoice(1, 0, 0, 0).Contains("0 → 3 秒"), "rebound preview is incorrect");
+    Check(DepthChallenge.BonusChoice(2, 0, 0, 2).Contains("6 → 6 节"), "capped growth preview is incorrect");
     string capped = DepthChallenge.BonusSummary(int.MaxValue, -1, int.MaxValue);
     Check(capped.Contains("护盾 4 秒") && capped.Contains("加速 0 秒") && capped.Contains("增长 6 节"), "bonus summary did not enforce limits");
     var noStar = new Arena(3, fruitCount: 0);
