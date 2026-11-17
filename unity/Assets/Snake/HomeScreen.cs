@@ -19,7 +19,7 @@ namespace SnakeClub
         private RawImage background, portrait, skinPortrait, resultPortrait;
         private Text level, coins, notice, primaryText, primaryHint, caveText, soundText;
         private Text skinName, skinDescription, skinActionText, skinNotice, skinTrialText;
-        private Text resultTitle, resultStats, resultDetails, resultAdText, settingsSound, settingsEffects, settingsHaptics, settingsMusic;
+        private Text resultTitle, resultStats, resultHighlight, resultDetails, resultAdText, settingsSound, settingsEffects, settingsHaptics, settingsMusic;
         private readonly Image[] skinCards = new Image[SkinCatalog.All.Length];
         private readonly RawImage[] skinThumbnails = new RawImage[SkinCatalog.All.Length];
         private readonly Text[] skinStates = new Text[SkinCatalog.All.Length];
@@ -236,10 +236,10 @@ namespace SnakeClub
             settingsModal.gameObject.SetActive(false);
         }
 
-        public void SetResult(string title, string stats, string details, bool busy, bool canShare, int adCoins)
+        public void SetResult(string title, string stats, string details, bool busy, bool canShare, int adCoins, string highlight = "")
         {
             if (resultPage == null) return;
-            Set(resultTitle, title); Set(resultStats, stats); Set(resultDetails, details ?? "");
+            Set(resultTitle, title); Set(resultStats, stats); Set(resultHighlight, highlight ?? ""); Set(resultDetails, details ?? "");
             resultRetry.interactable = !busy;
             if (resultShare.gameObject.activeSelf != canShare) resultShare.gameObject.SetActive(canShare);
             bool canAd = adCoins > 0;
@@ -257,8 +257,9 @@ namespace SnakeClub
             Panel("Result accent", resultCard, new Rect(95, 120, 740, 660), new Color(.11f, .42f, .43f, .28f));
             resultTitle = MakeText("Result title", resultCard, new Rect(90, 50, 750, 95), "围猎结束", 55, new Color(1f, .93f, .70f), TextAnchor.MiddleCenter, true);
             resultPortrait = MakeRaw("Result character", resultCard, new Rect(175, 135, 580, 580), null); resultPortrait.raycastTarget = false;
-            resultStats = MakeText("Result stats", resultCard, new Rect(75, 665, 780, 120), "", 34, Color.white, TextAnchor.MiddleCenter, true);
-            resultDetails = MakeText("Result details", resultCard, new Rect(95, 785, 740, 112), "", 24, new Color(.78f, .93f, .90f), TextAnchor.MiddleCenter);
+            resultStats = MakeText("Result stats", resultCard, new Rect(75, 645, 780, 105), "", 34, Color.white, TextAnchor.MiddleCenter, true);
+            resultHighlight = MakeText("Result highlight", resultCard, new Rect(95, 750, 740, 48), "", 25, new Color(1f, .88f, .56f), TextAnchor.MiddleCenter, true);
+            resultDetails = MakeText("Result details", resultCard, new Rect(95, 800, 740, 100), "", 24, new Color(.78f, .93f, .90f), TextAnchor.MiddleCenter);
             resultRetry = MakeButton("Result retry", resultCard, new Rect(125, 925, 680, 120), new Color(.08f, .72f, .56f, 1f), () => onResultRetry?.Invoke());
             resultRetryRect = resultRetry.GetComponent<RectTransform>();
             MakeText("Retry label", resultRetry.transform, new Rect(0, 0, 680, 120), "再来一局", 36, Color.white, TextAnchor.MiddleCenter, true);

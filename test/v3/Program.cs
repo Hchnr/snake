@@ -43,6 +43,7 @@ var cases = new (string name, Action run)[]
     ("a starting-length player can actually close a loop", CapturePlayable),
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
+    ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
     ("single-player events rotate, award real captures and end cleanly", LocalRotatingEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
@@ -483,6 +484,35 @@ static void LocalCaptureResolution()
     Check(!first.alive && !second.alive && protectedTarget.alive, "local captures did not respect all victims and shields");
     Check(owner.kills == 2 && owner.segments.Count == 10, "local captures did not immediately credit and grow the owner");
     Check(arena.State.captureOwner == "you" && arena.State.captureCount == 2, "local capture feedback differs from the resolved state");
+    var highlights = new MatchHighlights(); highlights.Observe(arena.State, "you");
+    Check(highlights.BestCapture == 2 && highlights.PeakLength == 10, "actual capture was not reflected in the highlight");
+}
+
+static void HighlightSummary()
+{
+    var highlights = new MatchHighlights();
+    var world = new ArenaState();
+    var player = new SnakeState { id = "you", segments = new List<Point> { new(), new(), new() } };
+    world.snakes.Add(player);
+    highlights.Observe(world, "you");
+    Check(highlights.PeakLength == 3 && highlights.BestCapture == 0, "empty match produced a highlight");
+    player.segments.Add(new Point()); player.segments.Add(new Point());
+    world.captureTick = 1; world.captureOwner = "bot"; world.captureCount = 3;
+    highlights.Observe(world, "you");
+    Check(highlights.PeakLength == 5 && highlights.BestCapture == 0, "opponent's capture credited to player");
+    world.captureTick = 2; world.captureOwner = "you"; world.captureCount = 2; player.alive = false;
+    highlights.Observe(world, "you");
+    Check(highlights.BestCapture == 0, "eliminated captor received a highlight");
+    player.alive = true; world.captureTick = 3; world.captureCount = 2;
+    highlights.Observe(world, "you");
+    Check(highlights.BestCapture == 2, "player capture not retained");
+    player.segments.RemoveAt(4); world.captureCount = 7; // Same event must not be processed twice.
+    highlights.Observe(world, "you");
+    Check(highlights.BestCapture == 2 && highlights.PeakLength == 5, "duplicate event or shrinking changed the high point");
+    world.captureTick = 4; world.captureCount = 1; highlights.Observe(world, "you");
+    Check(highlights.BestCapture == 2, "later smaller capture replaced best");
+    highlights.Reset();
+    Check(highlights.BestCapture == 0 && highlights.PeakLength == 0, "previous match leaked into next result");
 }
 
 static void SkinVisualFallback()
