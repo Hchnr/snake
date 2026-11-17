@@ -72,6 +72,7 @@ namespace SnakeClub.Core
         public List<SnakeState> snakes = new List<SnakeState>();
         public List<FruitState> fruits = new List<FruitState>();
         // Transient presentation of the latest deterministic capture event.
+        // captureCount includes only eliminations credited to a surviving owner.
         public int captureTick = -1, captureCount;
         public string captureOwner = "";
         public List<Point> capturePolygon = new List<Point>();
@@ -788,7 +789,8 @@ namespace SnakeClub.Core
             if (shown == null) return;
             State.captureTick = State.tick; State.captureOwner = shown; State.captureCount = 0; State.capturePolygon.Clear();
             foreach (var point in loops[shown].polygon) State.capturePolygon.Add(new Point(point.x / 1000f, point.y / 1000f));
-            foreach (var pair in deaths) if (pair.Value == shown) State.captureCount++;
+            if (Find(shown).alive)
+                foreach (var pair in deaths) if (pair.Value == shown) State.captureCount++;
         }
 
         private void ResolveCollisions()

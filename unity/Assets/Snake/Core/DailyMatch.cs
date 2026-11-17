@@ -377,7 +377,8 @@ namespace SnakeClub.Core
                 State.captureTick = State.tick; State.captureOwner = snakes[shown].id;
                 State.captureCount = 0; State.capturePolygon.Clear();
                 foreach (var p in loops[shown].polygon) State.capturePolygon.Add(new Point(p.x / (float)Unit, p.y / (float)Unit));
-                foreach (int owner in killer) if (owner == shown) State.captureCount++;
+                if (snakes[shown].alive)
+                    foreach (int owner in killer) if (owner == shown) State.captureCount++;
             }
             if (eventActive && eventType == 0 && eventTarget >= 0 && !snakes[eventTarget].alive) FinishEvent();
         }

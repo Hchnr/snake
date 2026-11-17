@@ -822,6 +822,8 @@ static void CaptureResolution()
     Check(match.State.snakes[0].eliminationReason == "capture" && match.State.snakes[0].eliminatedBy == "bot-1", "daily capture cause was not projected");
     Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 0 && (int)snakeType.GetField("kills").GetValue(snakes[1]) == 0,
         "an eliminated captor incorrectly received growth");
+    Check(match.State.captureOwner == "you" && match.State.captureCount == 0 && match.State.capturePolygon.Count > 2,
+        "mutual daily capture displayed an uncredited elimination");
 }
 
 static void EventTargetIndicatorCases()
@@ -1233,6 +1235,21 @@ static void PveFixedCombatCases()
         }
     }
     Check(captured, "closed trail failed to capture an unprotected opponent");
+    a = Fighter("you", 3000, 1000, 8); b = Fighter("bot-1", 1000, 1000, 8);
+    var segmentField = typeof(PveFixedMotion).GetField("segments", BindingFlags.Instance | BindingFlags.NonPublic);
+    void SetMotion(PveFixedFighter fighter, CapturePoint previous, params CapturePoint[] points)
+    {
+        var parts = (List<CapturePoint>)segmentField.GetValue(fighter.motion); parts.Clear(); parts.AddRange(points);
+        typeof(PveFixedMotion).GetProperty("PreviousHead").SetValue(fighter.motion, previous);
+    }
+    SetMotion(a, new(3000, -1000), new(3000, 1000), new(3000, 2000), new(3000, 3000), new(2000, 4000), new(1000, 4000), new(0, 4000), new(0, 0), new(4000, 0));
+    SetMotion(b, new(1000, -1000), new(1000, 1000), new(1000, 2000), new(1000, 3000), new(2000, 4000), new(3000, 4000), new(4000, 4000), new(4000, 0), new(0, 0));
+    var mutual = new PveFixedCombatWorkspace(2);
+    PveFixedCombat.Resolve(new[] { a, b }, mutual);
+    Check(!a.alive && !b.alive && a.eliminationReason == "capture" && b.eliminationReason == "capture" && a.kills == 0 && b.kills == 0,
+        "integer mutual captures did not resolve without credit");
+    Check(mutual.captureOwner == "you" && mutual.captureCount == 0 && mutual.capturePolygon.Count > 2,
+        "integer mutual capture displayed an uncredited elimination");
 }
 
 static void PveFixedMotionCases()
@@ -1418,6 +1435,17 @@ static void LocalCaptureResolution()
     typeof(Arena).GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic)
         .Invoke(arena, new object[] { new Dictionary<string, Point> { ["you"] = owner.segments[0] } });
     Check(first.alive && owner.kills == 2, "previous capture leaked into a later stationary tick");
+
+    var mutual = new Arena(53, fruitCount: 0, enableCaptures: true);
+    var left = mutual.AddSnake("you", "you", false); var right = mutual.AddSnake("bot", "bot", true);
+    left.shield = right.shield = 0;
+    left.segments = new List<Point> { new(3, 1), new(3, 2), new(3, 3), new(2, 4), new(1, 4), new(0, 4), new(0, 0), new(4, 0) };
+    right.segments = new List<Point> { new(1, 1), new(1, 2), new(1, 3), new(2, 4), new(3, 4), new(4, 4), new(4, 0), new(0, 0) };
+    typeof(Arena).GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic)
+        .Invoke(mutual, new object[] { new Dictionary<string, Point> { ["you"] = new(3, -1), ["bot"] = new(1, -1) } });
+    Check(!left.alive && !right.alive && left.kills == 0 && right.kills == 0, "local mutual captures incorrectly credited a dead owner");
+    Check(mutual.State.captureOwner == "you" && mutual.State.captureCount == 0 && mutual.State.capturePolygon.Count > 2,
+        "local mutual capture displayed an uncredited elimination");
 }
 
 static void HighlightSummary()
