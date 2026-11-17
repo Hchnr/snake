@@ -34,6 +34,7 @@ namespace SnakeClub
         private ApiReply board;
         private const string PendingKey = "snake.v3.pending";
         private readonly PendingRetrySchedule pendingRetry = new PendingRetrySchedule();
+        private readonly PendingSettlementSchedule settlementRetry = new PendingSettlementSchedule();
         private readonly IncomingFriendChallenge incomingFriend = new IncomingFriendChallenge();
         private int observedChallengeRevision;
         private float nextPendingPoll;
@@ -344,7 +345,8 @@ namespace SnakeClub
         {
             if (flushing || !api.Connected) return;
             var pending = ReadPending();
-            var entry = pending.entries.Find(item => item != null && PendingRetrySchedule.OwnedBy(item.playerId, api.Profile.playerId));
+            var entry = pending.entries.Find(item => item != null && PendingRetrySchedule.OwnedBy(item.playerId, api.Profile.playerId) &&
+                settlementRetry.Due(item.playerId, item.runId, Time.unscaledTime));
             if (entry == null) return;
             flushing = true;
             bool challenge = entry.mode != "pve";
@@ -354,7 +356,7 @@ namespace SnakeClub
                 bool terminal = !string.IsNullOrEmpty(reply.error) && (reply.error.Contains("凭证无效或已过期") || reply.error.Contains("未检测到操作") || reply.error.Contains("回放") || reply.error.Contains("成绩与") || reply.error.Contains("规则已更新") || reply.error.Contains("对局时长无效"));
                 if (reply.ok || terminal)
                 {
-                    pendingRetry.Reset();
+                    settlementRetry.Remove(entry.playerId, entry.runId);
                     var latest = ReadPending(); latest.entries.RemoveAll(item => item != null && item.runId == entry.runId && PendingRetrySchedule.OwnedBy(item.playerId, entry.playerId)); SavePending(latest);
                     if (!reply.ok && (activeRun == null || activeRun.runId != entry.runId)) frontNotice = "待结算对局未通过：" + reply.error;
                     if (activeRun != null && activeRun.runId == entry.runId)
@@ -380,7 +382,10 @@ namespace SnakeClub
                 }
                 else
                 {
-                    pendingRetry.Fail(Time.unscaledTime);
+                    settlementRetry.Fail(entry.playerId, entry.runId, Time.unscaledTime);
+                    // Check other due runs on the next frame without recursive
+                    // callbacks; this run remains durable and backs off alone.
+                    nextPendingPoll = Time.unscaledTime;
                     if (activeRun != null && activeRun.runId == entry.runId) resultNote = "成绩已保存，将自动重试";
                     else frontNotice = "有待结算对局，将自动重试";
                 }

@@ -83,6 +83,30 @@ namespace SnakeClub.Core
             !string.IsNullOrEmpty(owner) && !string.IsNullOrEmpty(player) && string.Equals(owner, player, StringComparison.Ordinal);
     }
 
+    // A transient error for one saved run must not block other runs. Retry
+    // state is per account and run; the durable queue remains the authority.
+    public sealed class PendingSettlementSchedule
+    {
+        private readonly Dictionary<string, PendingRetrySchedule> retries = new Dictionary<string, PendingRetrySchedule>();
+        private static string Key(string playerId, string runId) => playerId + "\0" + runId;
+        public bool Due(string playerId, string runId, double now)
+        {
+            if (string.IsNullOrEmpty(playerId) || string.IsNullOrEmpty(runId)) return false;
+            return !retries.TryGetValue(Key(playerId, runId), out var retry) || retry.Due(now);
+        }
+        public void Fail(string playerId, string runId, double now)
+        {
+            if (string.IsNullOrEmpty(playerId) || string.IsNullOrEmpty(runId)) return;
+            string key = Key(playerId, runId);
+            if (!retries.TryGetValue(key, out var retry)) retries[key] = retry = new PendingRetrySchedule();
+            retry.Fail(now);
+        }
+        public void Remove(string playerId, string runId)
+        {
+            if (!string.IsNullOrEmpty(playerId) && !string.IsNullOrEmpty(runId)) retries.Remove(Key(playerId, runId));
+        }
+    }
+
     public static class Progression
     {
         public static readonly string[] SkinNames = Array.ConvertAll(SkinCatalog.All, s => s.Name);
