@@ -582,7 +582,7 @@ namespace SnakeClub
             if (state != null && state.phase == "running") { DrawNames(state); DrawEventTargetEdge(state); }
             if (firstRun && tutorialHints && !online && !paused && state != null && state.phase == "running")
             {
-                string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills);
+                string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills, FirstRunHints.ApproachingOwnTrail(me));
                 if (!string.IsNullOrEmpty(hint))
                 {
                     Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));

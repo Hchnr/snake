@@ -113,11 +113,35 @@ namespace SnakeClub.Core
     // automatically as the timer advances. They do not affect input or rules.
     public static class FirstRunHints
     {
-        public static string Select(int tick, bool steered, bool closedLoop, bool rebounded, int kills)
+        // Presentation only: show a hint when the head is approaching a
+        // non-adjacent part of its actual body. This does not predict a valid
+        // capture, whose area and crossing are checked by CaptureGeometry.
+        public static bool ApproachingOwnTrail(SnakeState snake)
+        {
+            if (snake == null || !snake.alive || snake.shield > 0 || snake.segments == null ||
+                snake.segments.Count <= CaptureGeometry.FirstBodySegment + 1) return false;
+            Point head = snake.segments[0];
+            Point forward = new Point((float)Math.Cos(snake.angle), (float)Math.Sin(snake.angle));
+            for (int i = CaptureGeometry.FirstBodySegment; i + 1 < snake.segments.Count; i++)
+            {
+                Point a = snake.segments[i], b = snake.segments[i + 1], ab = b - a;
+                float lengthSquared = ab.x * ab.x + ab.y * ab.y;
+                if (lengthSquared < .000001f) continue;
+                Point fromA = head - a;
+                float t = Math.Max(0, Math.Min(1, (fromA.x * ab.x + fromA.y * ab.y) / lengthSquared));
+                Point delta = a + ab * t - head;
+                float distanceSquared = delta.x * delta.x + delta.y * delta.y;
+                if (distanceSquared > .01f && distanceSquared <= 4f && delta.x * forward.x + delta.y * forward.y > 0) return true;
+            }
+            return false;
+        }
+
+        public static string Select(int tick, bool steered, bool closedLoop, bool rebounded, int kills, bool nearTrail = false)
         {
             int seconds = Math.Max(0, tick) / 20;
             if (seconds < 2 || seconds >= 30) return "";
             if (!steered) return "在屏幕任意位置拖动，控制方向";
+            if (!closedLoop && nearTrail) return "绕回自己的轨迹，尝试闭合";
             if (seconds >= 8 && seconds < 16 && !closedLoop) return "绕住对手，再回到自己的轨迹";
             if (seconds >= 16 && seconds < 24 && !rebounded) return "撞墙不会失败，还会短暂加速";
             if (seconds >= 24 && kills <= 0) return "让对手撞上你的轨迹，淘汰后立即成长";

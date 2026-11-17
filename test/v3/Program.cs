@@ -295,6 +295,18 @@ static void FirstRunHintsCases()
     Check(FirstRunHints.Select(500, true, false, false, 0).Contains("淘汰"), "elimination hint missing");
     Check(FirstRunHints.Select(500, true, false, false, 1) == "", "elimination hint ignored an actual elimination");
     Check(FirstRunHints.Select(600, false, false, false, 0) == "", "hint continued after the tutorial window");
+    var snake = new SnakeState { angle = 0, segments = new List<Point> {
+        new Point(0, 0), new Point(-1, 0), new Point(-2, 0), new Point(-3, 0), new Point(-4, 0),
+        new Point(1, -1), new Point(1, 1) } };
+    Check(FirstRunHints.ApproachingOwnTrail(snake), "approaching a real body segment was not detected");
+    Check(FirstRunHints.Select(450, true, false, false, 0, true).Contains("闭合"), "contextual loop hint missing");
+    Check(!FirstRunHints.Select(450, true, true, false, 0, true).Contains("闭合"), "loop hint remained after capture");
+    snake.angle = (float)Math.PI;
+    Check(!FirstRunHints.ApproachingOwnTrail(snake), "body behind the head triggered a hint");
+    snake.angle = 0; snake.shield = 1;
+    Check(!FirstRunHints.ApproachingOwnTrail(snake), "protected snake was told it could capture");
+    snake.shield = 0; snake.alive = false;
+    Check(!FirstRunHints.ApproachingOwnTrail(snake), "dead snake triggered a hint");
 }
 
 static void FullScreenDrag()
