@@ -1,7 +1,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const { spawn, spawnSync } = require('node:child_process');
-const { createHash } = require('node:crypto');
+const { createHash, createHmac } = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
 const os = require('node:os');
@@ -12,7 +12,7 @@ const serverDll = path.join(root, 'server/bin/Debug/net10.0/Snake.Server.dll');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const idFor = device => createHash('sha256').update(`dev:${device}`).digest('hex').slice(0, 24);
 const day = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
-let temp, legacy, database, servers = [], user, endpoints = [];
+let temp, legacy, database, servers = [], user, endpoints = [], expiredReceipts;
 
 async function freePort() {
   return new Promise((resolve, reject) => {
@@ -57,14 +57,24 @@ async function request(endpoint, route, token, body) {
 before(async () => {
   temp = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-sqlite-test-'));
   legacy = path.join(temp, 'legacy.json'); database = path.join(temp, 'game.sqlite');
-  const playerId = idFor('sqlite-player'), otherId = idFor('sqlite-other');
+  const playerId = idFor('sqlite-player'), otherId = idFor('sqlite-other'), receiptId = idFor('sqlite-receipt');
   const base = { mode: 'daily', date: day(), completed: true, expiresAt: Date.now() - 1, finishedAt: Date.now() - 10000 };
+  const receiptBase = { playerId: receiptId, date: '2000-01-01', rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000 };
+  expiredReceipts = {
+    pve: { ...receiptBase, id: 'expired-pve', mode: 'pve', completed: true, coins: 35, experience: 20 },
+    daily: { ...receiptBase, id: 'expired-daily', mode: 'daily', completed: true, coins: 35, experience: 20, score: 123 },
+    pending: { ...receiptBase, id: 'expired-pending', mode: 'pve', completed: false }
+  };
   fs.writeFileSync(legacy, JSON.stringify({
     players: {
+      [receiptId]: { playerId: receiptId, displayName: '回执玩家', tutorialComplete: true, coins: 73, experience: 29, dailyKey: day() },
       [playerId]: { playerId, displayName: '玩家甲', tutorialComplete: true, experience: 200, coins: 100, ownedSkins: [0, 2], selectedSkin: 2, dailyKey: day() },
       [otherId]: { playerId: otherId, displayName: '玩家乙', tutorialComplete: true }
     },
     runs: {
+      'expired-pve': expiredReceipts.pve,
+      'expired-daily': expiredReceipts.daily,
+      'expired-pending': expiredReceipts.pending,
       old: { ...base, id: 'old', playerId, rules: 'daily-1', score: 900 },
       first: { ...base, id: 'first', playerId: otherId, rules: 'daily-2', score: 120 },
       second: { ...base, id: 'second', playerId, rules: 'daily-2', score: 80 },
@@ -91,6 +101,24 @@ test('legacy JSON imports once and a versioned leaderboard reads the shared data
   assert.deepEqual(board.data.rows.map(row => row.score), [120, 80]);
   const oldBoard = await request(endpoints[1], 'challenge/leaderboard', user.session);
   assert.equal(oldBoard.data.total, 1); assert.equal(oldBoard.data.rows[0].score, 900);
+});
+
+test('expired receipts recover across SQLite instances without duplicate rewards', async () => {
+  const owner = (await request(endpoints[0], 'auth/dev', null, { deviceId: 'sqlite-receipt' })).data;
+  const payload = run => {
+    const body = Buffer.from([run.id, run.playerId, run.mode, run.date, run.rules, run.seed, run.expiresAt].join(':')).toString('base64url');
+    const key = createHash('sha256').update('sqlite-isolated-test-key').digest();
+    return { runId: run.id, token: body + '.' + createHmac('sha256', key).update(body).digest('base64url'), seconds: 3, actions: 3, score: 123 };
+  };
+  const pve = await request(endpoints[1], 'match/finish', owner.session, payload(expiredReceipts.pve));
+  const daily = await request(endpoints[0], 'challenge/submit', owner.session, payload(expiredReceipts.daily));
+  assert.equal(pve.status, 200); assert.equal(pve.data.coins, 35);
+  assert.equal(daily.status, 200); assert.equal(daily.data.score, 123); assert.equal(daily.data.shareToken, '');
+  assert.equal((await request(endpoints[0], 'match/finish', owner.session, payload(expiredReceipts.pending))).status, 400);
+  assert.equal((await request(endpoints[1], 'match/finish', user.session, payload(expiredReceipts.pve))).status, 400);
+  assert.equal((await request(endpoints[1], 'match/finish', owner.session, { ...payload(expiredReceipts.pve), token: 'bad' })).status, 400);
+  const repeated = await request(endpoints[0], 'match/finish', owner.session, payload(expiredReceipts.pve));
+  assert.equal(repeated.data.profile.coins, 73); assert.equal(repeated.data.profile.experience, 29);
 });
 
 test('verified friend challenge is shareable across SQLite server instances', async () => {

@@ -52,13 +52,13 @@ sealed class GameApi
         app.MapPost("/api/v3/expedition/start", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => StartExpedition(p, request.index, now)));
         app.MapPost("/api/v3/expedition/claim", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.ClaimExpedition(p, request.id, now)));
         app.MapPost("/api/v3/match/start", (HttpContext context) => service.WithPlayer(context, (p, now) => service.StartRun(p, now, "pve")));
-        app.MapPost("/api/v3/match/finish", (HttpContext context, MatchRequest request) => service.WithPlayer(context, (p, now) => service.FinishPve(p, request, now)));
+        app.MapPost("/api/v3/match/finish", (HttpContext context, MatchRequest request) => service.WithPlayer(context, (p, now) => service.FinishPve(p, request, now), request.runId));
         app.MapPost("/api/v3/challenge/start", (HttpContext context) =>
         {
             string? rules = RequestedDailyRules(context);
             return rules == null ? Fail("挑战规则不存在") : service.WithPlayer(context, (p, now) => service.StartRun(p, now, "daily", rules));
         });
-        app.MapPost("/api/v3/challenge/submit", (HttpContext context, ChallengeRequest request) => service.WithPlayer(context, (p, now) => service.SubmitChallenge(p, request, now)));
+        app.MapPost("/api/v3/challenge/submit", (HttpContext context, ChallengeRequest request) => service.WithPlayer(context, (p, now) => service.SubmitChallenge(p, request, now), request.runId));
         app.MapPost("/api/v3/challenge/share", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.CreateFriendChallenge(p, request.id, now)));
         app.MapGet("/api/v3/challenge/shared", (HttpContext context) => service.WithPlayer(context, (p, now) => service.ResolveFriendChallenge(context.Request.Query["token"].ToString(), now)));
         app.MapGet("/api/v3/challenge/leaderboard", (HttpContext context) =>
@@ -116,7 +116,7 @@ sealed class GameApi
 
     private static string IdentityId(string identity) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant()[..24];
 
-    private IResult WithPlayer(HttpContext context, Func<PlayerProgress, DateTimeOffset, IResult> action)
+    private IResult WithPlayer(HttpContext context, Func<PlayerProgress, DateTimeOffset, IResult> action, string? receiptRunId = null)
     {
         string header = context.Request.Headers.Authorization.ToString();
         string? payload = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? Verify(header[7..]) : null;
@@ -129,10 +129,10 @@ sealed class GameApi
             if (profile.completedMatches == 0 && profile.tutorialComplete) profile.completedMatches = Math.Max(1, profile.dailyMatches);
             ResetDay(profile, now);
             return action(profile, now);
-        });
+        }, receiptRunId);
     }
 
-    private IResult Transact(string? playerId, string?[]? identities, DateTimeOffset now, Func<IResult> action)
+    private IResult Transact(string? playerId, string?[]? identities, DateTimeOffset now, Func<IResult> action, string? receiptRunId = null)
     {
         lock (gate)
         {
@@ -148,7 +148,7 @@ sealed class GameApi
             {
                 activeConnection = connection; activeTransaction = transaction;
                 data = playerId == null ? store.LoadLogin(connection, transaction, identities ?? Array.Empty<string?>())
-                    : store.LoadPlayerState(connection, transaction, playerId, Day(now), now.ToUnixTimeMilliseconds());
+                    : store.LoadPlayerState(connection, transaction, playerId, Day(now), now.ToUnixTimeMilliseconds(), receiptRunId);
                 var result = action();
                 store.Save(connection, transaction, data);
                 transaction.Commit();
@@ -369,7 +369,8 @@ sealed class GameApi
 
     private RunRecord? FindRun(PlayerProgress p, string? id, string? token, string mode, DateTimeOffset now)
     {
-        if (id == null || token == null || !data.runs.TryGetValue(id, out var run) || run.playerId != p.playerId || run.mode != mode || now.ToUnixTimeMilliseconds() > run.expiresAt) return null;
+        if (id == null || token == null || !data.runs.TryGetValue(id, out var run) || run.playerId != p.playerId || run.mode != mode ||
+            (!run.completed && now.ToUnixTimeMilliseconds() > run.expiresAt)) return null;
         return Verify(token) == RunPayload(run) ? run : null;
     }
     private string RunToken(RunRecord run) => Sign(RunPayload(run));

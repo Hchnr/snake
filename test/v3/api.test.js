@@ -68,6 +68,7 @@ before(async () => {
   const oldProfileId = idFor('v3-old-profile');
   const newId = idFor('v3-new-rules');
   const missingId = idFor('v3-missing-rules');
+  const receiptId = idFor('v3-receipt');
   const legacy = { id: 'legacy-run', playerId: legacyId, mode: 'daily', date: chinaDay(), rules: 'daily-1', seed: 1,
     startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   const current = { id: 'capture-run', playerId: newId, mode: 'daily', date: chinaDay(), rules: 'daily-3', seed: 1,
@@ -76,11 +77,16 @@ before(async () => {
     startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   fs.writeFileSync(dataFile, JSON.stringify({
     players: {
+      [receiptId]: { playerId: receiptId, displayName: '回执测试', tutorialComplete: true, coins: 73, experience: 29, dailyKey: chinaDay() },
       [caveId]: { playerId: caveId, displayName: '洞穴测试', dailyKey: chinaDay(), expedition: { id: 'expedition-fixture', cave: 2, durationMinutes: 480, startedAt: Date.now() - 12 * 3600000, bonusPercent: 7 } },
       [oldProfileId]: { playerId: oldProfileId, displayName: '老玩家', tutorialComplete: true, experience: 345, coins: 777, ownedSkins: [0, 2], selectedSkin: 2,
         talents: [1, 0, 0, 0, 0, 0, 0, 0, 0], dailyKey: chinaDay(), expedition: { id: 'old-cave', cave: 1, durationMinutes: 240, startedAt: Date.now() - 10000, bonusPercent: 2 } }
     },
-    runs: { [legacy.id]: legacy, [current.id]: current, [missing.id]: missing }
+    runs: { [legacy.id]: legacy, [current.id]: current, [missing.id]: missing,
+      'receipt-pve': { id: 'receipt-pve', playerId: receiptId, mode: 'pve', date: chinaDay(), rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000, completed: true, coins: 35, experience: 20 },
+      'receipt-daily': { id: 'receipt-daily', playerId: receiptId, mode: 'daily', date: '2000-01-01', rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000, completed: true, coins: 35, experience: 20, score: 123 },
+      'receipt-pending': { id: 'receipt-pending', playerId: receiptId, mode: 'pve', date: chinaDay(), rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000, completed: false }
+    }
   }));
   port = await new Promise((resolve, reject) => {
     const listener = net.createServer(); listener.once('error', reject);
@@ -99,6 +105,21 @@ before(async () => {
 after(async () => {
   await stopServer();
   if (temp) fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test('expired completed receipts recover without re-awarding, but expired unfinished runs remain invalid', async () => {
+  const owner = await login('v3-receipt');
+  const stored = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs;
+  const payload = run => ({ runId: run.id, token: legacyToken(run), seconds: 3, actions: 3, score: 123, inputs: '' });
+  const pve = await request('match/finish', { token: owner.session, body: payload(stored['receipt-pve']) });
+  const daily = await request('challenge/submit', { token: owner.session, body: payload(stored['receipt-daily']) });
+  assert.equal(pve.status, 200); assert.equal(pve.data.coins, 35);
+  assert.equal(daily.status, 200); assert.equal(daily.data.score, 123); assert.equal(daily.data.verified, true); assert.equal(daily.data.shareToken, '');
+  assert.equal((await request('match/finish', { token: owner.session, body: payload(stored['receipt-pending']) })).status, 400);
+  assert.equal((await request('match/finish', { token: bob.session, body: payload(stored['receipt-pve']) })).status, 400);
+  assert.equal((await request('match/finish', { token: owner.session, body: { ...payload(stored['receipt-pve']), token: 'invalid' } })).status, 400);
+  const again = await request('match/finish', { token: owner.session, body: payload(stored['receipt-pve']) });
+  assert.equal(again.data.profile.coins, 73); assert.equal(again.data.profile.experience, 29);
 });
 
 test('authentication, skin inventory and talent points use server authority', async () => {
