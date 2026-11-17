@@ -69,18 +69,32 @@ namespace SnakeClub
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
             if (platformReady) { LoginDouyin(done); return; }
             bool resolved = false;
-            int init = TT.InitSDK((code, env) =>
+            try
             {
-                if (resolved) return;
-                resolved = true;
-                if (code != 0) { done(new ApiReply { error = "抖音环境初始化失败" }); return; }
-                platformReady = true;
-                var launch = TT.GetLaunchOptionsSync();
-                if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("challenge", out var date)) LaunchChallengeDate = date ?? "";
-                if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("rules", out var rules)) LaunchChallengeRules = rules ?? "";
-                LoginDouyin(done);
-            });
-            if (init != 0 && !resolved) { resolved = true; done(new ApiReply { error = "抖音 SDK 或 Unity 版本不受支持" }); }
+                TT.InitSDK((code, env) =>
+                {
+                    if (resolved) return;
+                    resolved = true;
+                    if (code != 0) { done(new ApiReply { error = "抖音环境初始化失败" }); return; }
+                    platformReady = true;
+                    try
+                    {
+                        var launch = TT.GetLaunchOptionsSync();
+                        if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("challenge", out var date)) LaunchChallengeDate = date ?? "";
+                        if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("rules", out var rules)) LaunchChallengeRules = rules ?? "";
+                    }
+                    catch (Exception) { /* Login can proceed without a share query. */ }
+                    LoginDouyin(done);
+                });
+                if (!resolved) StartCoroutine(InitTimeout(() => resolved, () =>
+                {
+                    resolved = true; done(new ApiReply { error = "抖音环境初始化超时" });
+                }));
+            }
+            catch (Exception)
+            {
+                if (!resolved) { resolved = true; done(new ApiReply { error = "抖音 SDK 初始化失败" }); }
+            }
 #else
             if (!Config.allowDevLogin) { done(new ApiReply { error = "当前为离线练习" }); return; }
             string device = PlayerPrefs.GetString("snake.v3.dev.device", "");
@@ -90,6 +104,12 @@ namespace SnakeClub
         }
 
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+        private IEnumerator InitTimeout(Func<bool> resolved, Action timeout)
+        {
+            yield return new WaitForSecondsRealtime(10f);
+            if (!resolved()) timeout();
+        }
+
         private void LoginDouyin(Action<ApiReply> done)
         {
             TT.Login((code, anonymousCode, isLogin) => PostRaw("auth/douyin", new ApiRequest { code = code, anonymousCode = anonymousCode }, reply => FinishLogin(reply, done)),
@@ -155,6 +175,27 @@ namespace SnakeClub
 
     public static class GamePlatform
     {
+        public static bool SupportsHaptics
+        {
+            get
+            {
+#if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+                return true;
+#else
+                return false;
+#endif
+            }
+        }
+
+        public static void VibrateShort()
+        {
+#if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+            // An unsupported device or host must not interrupt a match.
+            try { TT.VibrateShort(new VibrateShortParam()); }
+            catch (Exception) { }
+#endif
+        }
+
         public static bool HasRewardedAds(GameApiClient api)
         {
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR

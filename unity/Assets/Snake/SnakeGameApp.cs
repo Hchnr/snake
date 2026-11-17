@@ -269,7 +269,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
