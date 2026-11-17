@@ -129,6 +129,23 @@ namespace SnakeClub.Core
 
         public static string CaveMilestone(int count) => count >= 7 ? "秘境精通" : count >= 3 ? "探路达人" : count >= 1 ? "初探秘境" : "尚未发现";
 
+        private static readonly int[] CaveStoryThresholds = { 1, 3, 7 };
+        private static readonly string[,] CaveStories = {
+            { "浅晶在晨光中醒来。", "晶石记住了每次出发。", "回家的路一直闪着光。" },
+            { "风纹指向温暖的洞口。", "风把远方的故事带来。", "熟悉的风会陪你归来。" },
+            { "星髓藏着一粒微光。", "星光照亮梦中的足迹。", "每次重逢都是新的星图。" }
+        };
+
+        public static int CaveStoryThreshold(int chapter)
+            => chapter >= 0 && chapter < CaveStoryThresholds.Length ? CaveStoryThresholds[chapter] : 0;
+
+        // Stories are derived from already-persisted fragments; viewing them never consumes inventory.
+        public static string CaveStory(int cave, int chapter, int fragments)
+        {
+            if (cave < 0 || cave >= CaveNames.Length || chapter < 0 || chapter >= CaveStoryThresholds.Length) return "";
+            return fragments >= CaveStoryThresholds[chapter] ? CaveStories[cave, chapter] : "收集 " + CaveStoryThresholds[chapter] + " 碎片解锁";
+        }
+
         public static int ExpeditionCoins(int minutes, int bonusPercent)
             => (Math.Max(0, Math.Min(480, minutes)) / 2) * (100 + Math.Max(0, bonusPercent)) / 100;
 

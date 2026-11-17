@@ -28,14 +28,17 @@ var cases = new (string name, Action run)[]
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
     ("recommended talents allocate available points deterministically", TalentRecommendation),
     ("expedition rewards respect time and bonus limits", ExpeditionRewards),
+    ("expedition fragments unlock stories without spending inventory", CaveAlbum),
     ("wall bounce grants a brief pulse with a cooldown", BouncePulse),
     ("daily replay reproduces states and published score formula", DailyReplay),
     ("daily challenges use their own seed and are bounded", DailySeeds),
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
+    ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
+    ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
     ("depth rooms require the correct living player and objective", DepthGoals),
@@ -51,6 +54,35 @@ foreach (var test in cases)
 static void Check(bool value, string message)
 {
     if (!value) throw new Exception(message);
+}
+static void FullScreenDrag()
+{
+    foreach (var origin in new[] { new Point(0, 0), new Point(1079, 0), new Point(0, 1919), new Point(1079, 1919), new Point(540, 960) })
+    {
+        var drag = new DragSteering(12);
+        Check(drag.Begin(3, origin), "first finger did not start");
+        Check(!drag.Begin(8, origin), "another finger stole control");
+        Check(!drag.Move(3, origin + new Point(5, 0), out _), "jitter moved the player");
+        Check(!drag.Move(8, origin + new Point(40, 0), out _), "other finger changed direction");
+        Check(drag.Move(3, origin + new Point(30, 0), out var right) && right.x > .99f, "right drag failed");
+        Check(drag.Move(3, origin + new Point(30, -30), out var up) && up.y > .99f, "continuous upward drag failed");
+        Check(!drag.End(8) && drag.Active, "other finger ended the drag");
+        Check(drag.End(3) && !drag.Active, "drag release was not reported");
+        Check(drag.Begin(8, origin) && !drag.End(8), "a tap was mistaken for a drag");
+    }
+}
+static void CaveAlbum()
+{
+    var profile = new PlayerProgress { caveFragments = new[] { 1, 3, 7 } };
+    for (int cave = 0; cave < 3; cave++) for (int chapter = 0; chapter < 3; chapter++)
+    {
+        int count = profile.caveFragments[cave];
+        string entry = Progression.CaveStory(cave, chapter, count);
+        bool unlocked = count >= Progression.CaveStoryThreshold(chapter);
+        Check(!string.IsNullOrEmpty(entry) && entry.Contains("收集") != unlocked, "story unlock does not match fragments");
+    }
+    Check(profile.caveFragments.SequenceEqual(new[] { 1, 3, 7 }), "viewing stories spent fragments");
+    Check(Progression.CaveStory(-1, 0, 7) == "" && Progression.CaveStory(0, 3, 7) == "", "invalid story indexes were accepted");
 }
 static void Near(double actual, double expected, double epsilon, string message)
 {
@@ -233,18 +265,19 @@ static void CaptureResolution()
         foreach (var point in points) path.Add(PointAt(point.x, point.y));
     }
     for (int i = 0; i < snakes.Count; i++) { alive.SetValue(snakes[i], false); shield.SetValue(snakes[i], 0); }
-    alive.SetValue(snakes[0], true); alive.SetValue(snakes[1], true); alive.SetValue(snakes[2], true);
+    alive.SetValue(snakes[0], true); alive.SetValue(snakes[1], true); alive.SetValue(snakes[2], true); alive.SetValue(snakes[3], true);
     shield.SetValue(snakes[2], 1);
     SetPath(0, (3000, 1000), (3000, 2000), (3000, 3000), (2000, 4000), (1000, 4000), (0, 4000), (0, 0), (4000, 0));
     SetPath(1, (1000, 1000), (1100, 1000));
     SetPath(2, (1500, 1500), (1600, 1500));
+    SetPath(3, (2000, 2000), (2100, 2000));
     var previous = Array.CreateInstance(pointType, snakes.Count);
     previous.SetValue(PointAt(3000, -1000), 0);
     matchType.GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, new object[] { previous });
-    Check(!(bool)alive.GetValue(snakes[1]) && (bool)alive.GetValue(snakes[2]), "capture failed or ignored spawn protection");
-    Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 1 && ((IList)segments.GetValue(snakes[0])).Count == 9,
+    Check(!(bool)alive.GetValue(snakes[1]) && (bool)alive.GetValue(snakes[2]) && !(bool)alive.GetValue(snakes[3]), "multiple capture failed or ignored spawn protection");
+    Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 2 && ((IList)segments.GetValue(snakes[0])).Count == 10,
         "capture did not credit and immediately grow the survivor");
-    Check(match.State.captureOwner == "you" && match.State.captureCount == 1 && match.State.capturePolygon.Count > 2,
+    Check(match.State.captureOwner == "you" && match.State.captureCount == 2 && match.State.capturePolygon.Count > 2,
         "capture presentation is not derived from the resolved event");
 
     // Both loops are evaluated from the same snapshot; mutual captures do not
@@ -289,6 +322,26 @@ static void DailyEvents()
     }
     Check(observed.SetEquals(new[] { "bounty", "star", "fruit" }), "not all three daily events were observed");
     Check(sawGiant, "no active giant bounty was observed");
+}
+
+static void LocalCaptureResolution()
+{
+    var arena = new Arena(52, fruitCount: 0, enableCaptures: true);
+    var owner = arena.AddSnake("you", "you", false);
+    var first = arena.AddSnake("first", "first", true);
+    var second = arena.AddSnake("second", "second", true);
+    var protectedTarget = arena.AddSnake("protected", "protected", true);
+    owner.shield = first.shield = second.shield = 0;
+    protectedTarget.shield = 1;
+    owner.segments = new List<Point> { new(3, 1), new(3, 2), new(3, 3), new(2, 4), new(1, 4), new(0, 4), new(0, 0), new(4, 0) };
+    first.segments = new List<Point> { new(1, 1), new(1.1f, 1) };
+    second.segments = new List<Point> { new(2, 2), new(2.1f, 2) };
+    protectedTarget.segments = new List<Point> { new(1.5f, 1.5f), new(1.6f, 1.5f) };
+    typeof(Arena).GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic)
+        .Invoke(arena, new object[] { new Dictionary<string, Point> { ["you"] = new Point(3, -1) } });
+    Check(!first.alive && !second.alive && protectedTarget.alive, "local captures did not respect all victims and shields");
+    Check(owner.kills == 2 && owner.segments.Count == 10, "local captures did not immediately credit and grow the owner");
+    Check(arena.State.captureOwner == "you" && arena.State.captureCount == 2, "local capture feedback differs from the resolved state");
 }
 
 static void SkinIdentities()
