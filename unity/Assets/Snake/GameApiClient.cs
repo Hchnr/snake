@@ -174,6 +174,8 @@ namespace SnakeClub
             if (!reply.ok || string.IsNullOrEmpty(reply.session)) { done(reply); return; }
             session = reply.session;
             sessionGeneration.Advance();
+            // A fresh login also permits recovery from a restored server backup.
+            Profile = null;
             Apply(reply);
             Get("bootstrap", done);
         }
@@ -222,7 +224,8 @@ namespace SnakeClub
             // JsonUtility may materialize an empty nested object when a JSON
             // response does not contain a profile (for example, match/start).
             bool hasProfile = reply.profile != null && !string.IsNullOrEmpty(reply.profile.playerId);
-            if (hasProfile) Profile = reply.profile;
+            bool acceptProfile = ProfileSnapshot.ShouldAccept(Profile, reply.profile);
+            if (acceptProfile) Profile = reply.profile;
             // Responses can arrive out of order, including across Beijing midnight.
             bool freshTime = reply.serverTime > 0 && reply.serverTime >= ServerTime;
             if (!string.IsNullOrEmpty(reply.date) && (freshTime || (reply.serverTime <= 0 && (string.IsNullOrEmpty(Date) || string.CompareOrdinal(reply.date, Date) >= 0)))) Date = reply.date;
@@ -230,7 +233,7 @@ namespace SnakeClub
             if (!string.IsNullOrEmpty(reply.date) && reply.date == Date && (reply.serverTime <= 0 || freshTime) &&
                 (reply.seed != 0 || hasProfile || !string.IsNullOrEmpty(reply.runId))) Seed = reply.seed;
             if (freshTime) { ServerTime = reply.serverTime; ServerTimeReceivedAt = Time.realtimeSinceStartup; }
-            if (!string.IsNullOrEmpty(reply.date) && hasProfile) AdEnabled = reply.adEnabled;
+            if (!string.IsNullOrEmpty(reply.date) && acceptProfile) AdEnabled = reply.adEnabled;
         }
 
         public long EstimatedServerTime => ServerTime + (long)((Time.realtimeSinceStartup - ServerTimeReceivedAt) * 1000);

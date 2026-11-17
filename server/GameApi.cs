@@ -109,6 +109,7 @@ sealed class GameApi
                 data.players[id] = profile;
             }
             ResetDay(profile, now);
+            profile.revision++;
             long expiry = now.AddDays(7).ToUnixTimeSeconds();
             return Results.Json(new { ok = true, session = Sign(id + ":" + expiry), profile, serverTime = now.ToUnixTimeMilliseconds() });
         });
@@ -128,6 +129,7 @@ sealed class GameApi
             if (!data.players.TryGetValue(parts[0], out var profile)) return Fail("账号不存在", 401);
             if (profile.completedMatches == 0 && profile.tutorialComplete) profile.completedMatches = Math.Max(1, profile.dailyMatches);
             ResetDay(profile, now);
+            profile.revision++;
             return action(profile, now);
         }, receiptRunId);
     }
