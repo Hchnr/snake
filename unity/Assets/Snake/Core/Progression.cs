@@ -151,6 +151,31 @@ namespace SnakeClub.Core
         }
     }
 
+    // Only explicit validation failures from this API are final. Status 0,
+    // authentication, throttling, server errors, unknown messages and timing
+    // failures may recover; never discard a durable run on those responses.
+    public static class SettlementFailure
+    {
+        public static bool IsTerminal(long status, string error)
+        {
+            if (status != 400) return false;
+            switch (error)
+            {
+                case "对局凭证无效或已过期":
+                case "挑战凭证无效或已过期":
+                case "挑战规则已更新，请重新开始":
+                case "未检测到操作，本局不发放账号奖励":
+                case "回放格式无效":
+                case "回放长度无效":
+                case "回放内容无效":
+                case "成绩与回放不一致":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+    }
+
     // A transient error for one saved run must not block other runs. Retry
     // state is per account and run; the durable queue remains the authority.
     public sealed class PendingSettlementSchedule
