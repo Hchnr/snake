@@ -319,6 +319,7 @@ namespace SnakeClub.Core
             if (world.tick < lastTick) Reset();
             lastTick = world.tick;
             var player = world.snakes.Find(s => s.id == playerId);
+            int count = 0; string firstName = "", commonAction = null;
             foreach (var snake in world.snakes)
             {
                 if (string.IsNullOrEmpty(snake.id)) continue;
@@ -328,10 +329,39 @@ namespace SnakeClub.Core
                 if (action.Length == 0) continue;
                 string name = string.IsNullOrEmpty(snake.name) ? "对手" : snake.name;
                 if (name.Length > 12) name = name.Substring(0, 12) + "…";
-                text = action + " · " + name; untilTick = world.tick + 40;
+                if (count == 0) { firstName = name; commonAction = action; }
+                else if (commonAction != action) commonAction = "";
+                count++;
             }
+            if (count == 1) { text = commonAction + " · " + firstName; untilTick = world.tick + 40; }
+            else if (count > 1) { text = (string.IsNullOrEmpty(commonAction) ? "淘汰" : commonAction) + " · " + count + " 个对手"; untilTick = world.tick + 40; }
         }
         public string Current(ArenaState world) => world != null && world.phase == "running" && world.tick <= untilTick ? text : "";
+    }
+
+    // Captures a real change in the player's kill count and observed length.
+    // Tick-based expiry freezes when the simulation is paused.
+    public sealed class KillFeedback
+    {
+        private string player = "", message = "";
+        private int tick = -1, kills, length, untilTick = -1;
+        private bool baseline = true;
+        public void Reset() { player = ""; message = ""; tick = -1; kills = length = 0; untilTick = -1; baseline = true; }
+        public void Suspend() { baseline = true; }
+        public void Observe(ArenaState world, string playerId)
+        {
+            if (world == null || string.IsNullOrEmpty(playerId)) return;
+            var snake = world.snakes.Find(s => s.id == playerId);
+            if (snake == null) return;
+            if (world.tick < tick || player != playerId) Reset();
+            if (!baseline && snake.kills > kills)
+            {
+                message = snake.segments.Count > length ? "围猎成功  ·  变长！" : "围猎成功！";
+                untilTick = world.tick + 22;
+            }
+            player = playerId; tick = world.tick; kills = snake.kills; length = snake.segments.Count; baseline = false;
+        }
+        public string Current(ArenaState world) => world != null && world.phase == "running" && world.tick < untilTick ? message : "";
     }
 
     // The UI may indicate an off-screen objective, but never invents one.

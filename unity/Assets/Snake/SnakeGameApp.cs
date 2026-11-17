@@ -54,6 +54,7 @@ namespace SnakeClub
         private readonly MatchHighlights matchHighlights = new MatchHighlights();
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
+        private readonly KillFeedback killFeedback = new KillFeedback();
         private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
         private bool firstRun, tutorialHints = true, hasSteered, tutorialClosedLoop, tutorialRebounded, tutorialBoosted;
@@ -64,8 +65,6 @@ namespace SnakeClub
         private Point direction = new Point(1, 0);
         private float stepTimer;
         private float sendTimer;
-        private int visualTick = -1, visualKills;
-        private float killFlashUntil;
         private Texture2D rounded;
         private GUIStyle panelStyle;
         private Font uiFont;
@@ -176,7 +175,7 @@ namespace SnakeClub
                 arena.Start();
             }
             state = arena.State;
-            matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
+            matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId); killFeedback.Reset(); killFeedback.Observe(state, playerId);
             stepTimer = 0;
             direction = new Point(1, 0);
             controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false; tutorialBoosted = false;
@@ -210,6 +209,7 @@ namespace SnakeClub
             state = fixedPve.RenderState();
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
+            killFeedback.Reset(); killFeedback.Observe(state, playerId);
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false; tutorialBoosted = false;
             activeRun = null; activePlayerId = ""; activePracticeAccount = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
@@ -234,6 +234,7 @@ namespace SnakeClub
             depthMode = false;
             arena = null; fixedPve = null;
             state = null;
+            killFeedback.Reset();
             playerId = "";
             room = "";
             pendingType = action;
@@ -305,7 +306,10 @@ namespace SnakeClub
             for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
             feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused && platformVisible, paused, adShowing, interaction);
             if (inGame && !SimulationSuspended)
+            {
                 feedback.RebaselineAfterSuspend(state, playerId);
+                killFeedback.Observe(state, playerId);
+            }
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
             bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
             bool wardrobePreview = homeVisible && frontPage == "skins" && homeScreen != null && homeScreen.ArenaPreview;
@@ -358,7 +362,7 @@ namespace SnakeClub
                 {
                     byte heading = EncodeDirection(direction);
                     daily.Step(heading, pointerBoost);
-                    matchHighlights.Observe(daily.State, playerId); ObserveTutorial(daily.State); eventOutcome.Observe(daily.State, playerId); eliminationFeedback.Observe(daily.State, playerId);
+                    matchHighlights.Observe(daily.State, playerId); ObserveTutorial(daily.State); eventOutcome.Observe(daily.State, playerId); eliminationFeedback.Observe(daily.State, playerId); killFeedback.Observe(daily.State, playerId);
                     runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                     stepTimer -= .05f;
                 }
@@ -381,7 +385,7 @@ namespace SnakeClub
                         else arena.SetInput(playerId, direction, pointerBoost);
                     }
                     arena.Tick(.05f);
-                    if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); eliminationFeedback.Observe(arena.State, playerId); }
+                    if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); eliminationFeedback.Observe(arena.State, playerId); killFeedback.Observe(arena.State, playerId); }
                     if (inGame && depthMode && arena.State.phase == "running" &&
                         DepthChallenge.Evaluate(depthRoom, arena.State, playerId) != DepthChallenge.RoomStatus.InProgress) arena.EndRound();
                     stepTimer -= .05f;
@@ -409,16 +413,6 @@ namespace SnakeClub
             }
             if (inGame && !online && state != null && state.phase == "ended" && !resultRecorded) RecordResult();
             if (inGame && !SimulationSuspended) feedback.Observe(state, playerId);
-            if (inGame && state != null)
-            {
-                var own = state.snakes.Find(s => s.id == playerId);
-                if (own != null)
-                {
-                    if (visualTick < 0 || state.tick < visualTick) { visualKills = own.kills; killFlashUntil = 0; }
-                    else if (own.kills > visualKills) killFlashUntil = Time.unscaledTime + 1.1f;
-                    visualKills = own.kills; visualTick = state.tick;
-                }
-            }
             arenaRenderer.SetPreviewMode(renderWardrobePreview);
             if (wardrobePreview) arenaRenderer.SelectedSkin = previewSkin;
             arenaRenderer.Visible = appFocused && !appPaused && platformVisible && !adShowing &&
@@ -439,7 +433,7 @@ namespace SnakeClub
                 fixedPve.Step(heading, pointerBoost);
                 runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                 state = fixedPve.RenderState();
-                matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId);
+                matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId); killFeedback.Observe(state, playerId);
                 stepTimer -= .05f;
             }
         }
@@ -548,6 +542,7 @@ namespace SnakeClub
         private void SuspendInput()
         {
             dragSteering.Reset(); pointerBoost = false;
+            killFeedback.Suspend();
             if (inGame && !online) paused = true;
         }
 
@@ -645,10 +640,11 @@ namespace SnakeClub
                     Label(new Rect(285, 292, 470, 82), eventMessage, 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
                 }
             }
-            if (Time.unscaledTime < killFlashUntil && state != null && state.phase == "running")
+            string killMessage = killFeedback.Current(state);
+            if (!string.IsNullOrEmpty(killMessage))
             {
-                float flash = reducedEffects ? 1f : 1f + .10f * Mathf.Sin((killFlashUntil - Time.unscaledTime) * 14f);
-                Label(new Rect(250, 430, 580, 110), "围猎成功  ·  变长！", Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
+                float flash = reducedEffects ? 1f : 1f + .10f * Mathf.Sin(state.tick * .7f);
+                Label(new Rect(250, 430, 580, 110), killMessage, Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
             }
             if (state != null && state.phase == "running" && state.captureOwner == playerId && state.captureTick >= 0 && state.tick - state.captureTick < 12)
             {

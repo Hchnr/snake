@@ -262,6 +262,7 @@ namespace SnakeClub
             playerId = "you"; arena = null; fixedPve = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
             state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
+            killFeedback.Reset(); killFeedback.Observe(state, playerId);
             activeRun = run; resultRecorded = false; runInputs.Clear();
             activePracticeAccount = "";
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";

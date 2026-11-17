@@ -62,6 +62,7 @@ var cases = new (string name, Action run)[]
     ("character motion follows real turns, boost and reduced effects", CharacterMotionCases),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("elimination feedback follows observed credited outcomes", EliminationFeedbackCases),
+    ("kill feedback reflects observed growth and freezes with match ticks", KillFeedbackCases),
     ("match outcomes explain actual collision and capture results", MatchOutcomeCases),
     ("capture sweep follows even-odd geometry for concave and crossing loops", CaptureSweepCases),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
@@ -334,6 +335,37 @@ static void EliminationFeedbackCases()
     other.alive = true; state.tick++; feed.Observe(state, "you");
     other.alive = false; you.alive = false; state.tick++; feed.Observe(state, "you");
     Check(feed.Current(state) == "", "dead player was credited with a simultaneous elimination");
+    feed.Reset(); you.alive = true; other.alive = true;
+    var second = new SnakeState { id = "bot-2", name = "AI 2", bot = true };
+    state.snakes.Add(second); state.tick++; feed.Observe(state, "you");
+    other.alive = false; other.eliminatedBy = "you"; other.eliminationReason = "capture";
+    second.alive = false; second.eliminatedBy = "you"; second.eliminationReason = "capture"; state.tick++;
+    feed.Observe(state, "you");
+    Check(feed.Current(state) == "收圈捕获 · 2 个对手", "simultaneous captures did not report the real count");
+    feed.Reset(); other.alive = second.alive = true; state.tick++; feed.Observe(state, "you");
+    other.alive = second.alive = false; second.eliminationReason = "trail"; state.tick++; feed.Observe(state, "you");
+    Check(feed.Current(state) == "淘汰 · 2 个对手", "mixed elimination causes were incorrectly grouped as one action");
+}
+
+static void KillFeedbackCases()
+{
+    var feedback = new KillFeedback();
+    var snake = new SnakeState { id = "you", segments = Enumerable.Repeat(new Point(), 16).ToList() };
+    var world = new ArenaState { phase = "running", tick = 1, snakes = new List<SnakeState> { snake } };
+    feedback.Observe(world, "you"); Check(feedback.Current(world) == "", "initial state invented a kill");
+    snake.kills++; snake.segments.Add(new Point()); world.tick++;
+    feedback.Observe(world, "you"); Check(feedback.Current(world).Contains("变长"), "real growth was not indicated");
+    feedback.Suspend(); feedback.Observe(world, "you");
+    Check(feedback.Current(world).Contains("变长"), "suspending at the same tick lost the current cue");
+    world.tick += 22; Check(feedback.Current(world) == "", "kill cue did not expire by simulation time");
+    while (snake.segments.Count < Arena.MaximumLength) snake.segments.Add(new Point());
+    world.tick++; feedback.Observe(world, "you");
+    snake.kills++; world.tick++; feedback.Observe(world, "you");
+    Check(feedback.Current(world) == "围猎成功！", "maximum length incorrectly claimed growth");
+    feedback.Suspend(); snake.kills++; world.tick++; feedback.Observe(world, "you");
+    Check(feedback.Current(world) == "围猎成功！", "resuming replayed unseen background events");
+    feedback.Reset(); feedback.Observe(world, "you");
+    Check(feedback.Current(world) == "", "previous match cue leaked into a new match");
 }
 
 static void RoundTimerCases()
