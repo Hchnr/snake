@@ -659,6 +659,12 @@ namespace SnakeClub
             }
             if (!paused && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
+            string boostHint = depthMode && !paused ? DepthChallenge.ReboundBoostHint(me) : "";
+            if (!string.IsNullOrEmpty(boostHint))
+            {
+                Panel(new Rect(220, 1510, 640, 70), new Color(.035f, .12f, .17f, .90f));
+                Label(new Rect(235, 1515, 610, 60), boostHint, 24, new Color(.75f, 1f, .90f), TextAnchor.MiddleCenter, true);
+            }
             if (state != null && state.phase == "running") { DrawNames(state); DrawEventTargetEdge(state); }
             if (firstRun && tutorialHints && !online && !paused && state != null && state.phase == "running")
             {

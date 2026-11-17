@@ -35,6 +35,9 @@ namespace SnakeClub.Core
         public bool boosting;
         public int starPoints;
         public float rebound;
+        // Local depth-only presentation; not sent with online room snapshots.
+        internal bool reboundBoostReady, reboundBoostWaitRelease;
+        internal float reboundBoostTime;
         public bool boss, bossRushing;
         public int bossShield;
         public float bossWindup;
@@ -557,6 +560,7 @@ namespace SnakeClub.Core
             public float wander;
             public float rebound;
             public float reboundCooldown, captureCooldown, freeBoostTime;
+            public bool reboundBoostReady, reboundBoostWaitRelease;
             public float bossReady, bossWindup, bossRush, bossHitCooldown;
             public int bossAttack;
             public Point bossDirection;
@@ -709,7 +713,6 @@ namespace SnakeClub.Core
                 control.rebound = Math.Max(0, control.rebound - dt);
                 control.reboundCooldown = Math.Max(0, control.reboundCooldown - dt);
                 control.captureCooldown = Math.Max(0, control.captureCooldown - dt);
-                control.freeBoostTime = Math.Max(0, control.freeBoostTime - dt);
                 control.bossHitCooldown = Math.Max(0, control.bossHitCooldown - dt);
                 snake.rebound = control.rebound;
                 float targetAngle = (float)Math.Atan2(control.target.y, control.target.x);
@@ -721,6 +724,14 @@ namespace SnakeClub.Core
                 snake.angle += Clamp(AngleDelta(snake.angle, targetAngle), -TurnSpeed * (1 + turnBonus) * dt, TurnSpeed * (1 + turnBonus) * dt);
                 var forward = new Point((float)Math.Cos(snake.angle), (float)Math.Sin(snake.angle));
                 snake.boosting = control.boost && snake.segments.Count > MinimumLength;
+                if (!control.boost) control.reboundBoostWaitRelease = false;
+                if (control.reboundBoostReady && snake.boosting && !control.reboundBoostWaitRelease)
+                {
+                    control.freeBoostTime = Math.Max(0, control.bonuses.reboundFreeSeconds);
+                    control.reboundBoostReady = false;
+                }
+                if (!snake.boosting) control.freeBoostTime = 0;
+                bool freeBoost = snake.boosting && control.freeBoostTime > 0;
                 float speedMultiplier = snake.boosting ? BoostMultiplier : control.rebound > 0 ? 1.15f : 1f;
                 if (snake.bossWindup > 0) speedMultiplier *= .45f;
                 if (snake.bossRushing) speedMultiplier *= 1.65f;
@@ -742,7 +753,11 @@ namespace SnakeClub.Core
                     if (control.reboundCooldown <= 0)
                     {
                         control.rebound = .8f; control.reboundCooldown = 8f; snake.rebound = control.rebound;
-                        control.freeBoostTime = Math.Max(control.freeBoostTime, Math.Max(0, control.bonuses.reboundFreeSeconds));
+                        if (control.bonuses.reboundFreeSeconds > 0)
+                        {
+                            control.reboundBoostReady = true;
+                            control.reboundBoostWaitRelease = control.boost;
+                        }
                     }
                 }
                 snake.segments[0] = next;
@@ -752,7 +767,7 @@ namespace SnakeClub.Core
                     float distance = delta.Length;
                     if (distance > SegmentSpacing) snake.segments[i] = snake.segments[i - 1] - delta * (SegmentSpacing / distance);
                 }
-                if (snake.boosting && control.freeBoostTime <= 0)
+                if (snake.boosting && !freeBoost)
                 {
                     float saving = control.bonuses.boostSaving + (snake.segments.Count <= 12 ? control.bonuses.shortBoostSaving : 0);
                     control.boostDebt += dt * 0.4f * (1f - Clamp(saving, 0, Clamp(control.bonuses.boostSavingCap, 0, .20f)));
@@ -762,6 +777,10 @@ namespace SnakeClub.Core
                         control.boostDebt -= 1f;
                     }
                 }
+                if (freeBoost) control.freeBoostTime = Math.Max(0, control.freeBoostTime - dt);
+                snake.reboundBoostReady = control.reboundBoostReady;
+                snake.reboundBoostWaitRelease = control.reboundBoostReady && control.reboundBoostWaitRelease;
+                snake.reboundBoostTime = control.freeBoostTime;
             }
             if (rotatingEvents) BeginRotatingEventIfDue(dt);
             ResolveCollisions();
