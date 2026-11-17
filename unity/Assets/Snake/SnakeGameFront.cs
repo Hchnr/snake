@@ -108,7 +108,7 @@ namespace SnakeClub
 
         private void StartMain()
         {
-            if (api.Config.FixedPvePreview) { RequestPve(); return; }
+            if (api.Config.FixedPvePreview || api.Config.FixedPveServerPreview) { RequestPve(); return; }
             if (!TutorialReady) RequestPve();
             else RequestDaily();
         }
@@ -168,6 +168,20 @@ namespace SnakeClub
             if (busy) return;
             depthMode = false;
             if (api.Config.FixedPvePreview) { BeginFixedPve(); return; }
+            if (api.Config.FixedPveServerPreview)
+            {
+                if (!api.Connected) { BeginFixedPve(); resultNote = "本机验证服务未连接 · 离线试玩，不计奖励"; return; }
+                busy = true;
+                api.Post("internal/fixed-pve/start", new ApiRequest(), reply =>
+                {
+                    busy = false;
+                    if (reply.ok && reply.mode == "fixed-eval" && reply.rules == PveFixedRecording.ExperimentalRules &&
+                        !string.IsNullOrEmpty(reply.runId) && !string.IsNullOrEmpty(reply.token) && reply.startConfig != null && reply.startConfig.Supported)
+                        BeginFixedPveWithRun(reply);
+                    else { BeginFixedPve(); resultNote = "本机实验开局不可用 · 离线试玩，不计奖励"; }
+                });
+                return;
+            }
             if (!api.Connected) { BeginPve(null); resultNote = "离线练习不计账号奖励"; return; }
             busy = true;
             api.Post("match/start", new ApiRequest(), reply =>
@@ -271,7 +285,7 @@ namespace SnakeClub
         private void RecordResult()
         {
             resultRecorded = true;
-            if (fixedPve != null) { resultNote = "整数规则试玩 · 不计账号奖励或排行"; return; }
+            if (fixedPve != null) { VerifyFixedPreview(); return; }
             if (depthMode) { resultNote = "深潜练习 · 不计账号奖励或排行"; return; }
             if (activeRun == null || string.IsNullOrEmpty(activePlayerId))
             {
@@ -291,6 +305,27 @@ namespace SnakeClub
             SavePending(pending);
             resultNote = api.Connected && appFocused && !appPaused && platformVisible && !adShowing ? "正在结算…" : "结果已保存，返回游戏后重试";
             FlushPending();
+        }
+
+        private void VerifyFixedPreview()
+        {
+            var world = fixedPve;
+            var run = activeRun;
+            if (run == null || !api.Config.FixedPveServerPreview || !api.Connected || api.Profile.playerId != activePlayerId)
+            { resultNote = "整数规则试玩 · 不计账号奖励或排行"; return; }
+            string player = activePlayerId;
+            resultNote = "正在验证本机回放 · 不计奖励或排行";
+            api.Post("internal/fixed-pve/verify", new ApiRequest { runId = run.runId, token = run.token,
+                inputs = Convert.ToBase64String(runInputs.ToArray()) }, reply =>
+            {
+                if (fixedPve != world || activeRun != run || activePlayerId != player) return;
+                bool matches = reply.ok && reply.verified && reply.experimental && reply.rules == PveFixedRecording.ExperimentalRules &&
+                    reply.rewards == 0 && reply.ticks == world.Tick && reply.winner == world.Winner &&
+                    reply.kills == world.Fighters[0].kills && reply.length == world.Fighters[0].motion.Length &&
+                    reply.eventPoints == world.Fighters[0].eventPoints;
+                resultNote = matches ? "本机回放一致 · 不计奖励或排行" : reply.ok ?
+                    "本机回放结果不一致 · 不计奖励或排行" : "本机回放未验证 · 不计奖励或排行";
+            });
         }
 
         private static PendingChallenges ReadPending()

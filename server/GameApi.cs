@@ -79,7 +79,7 @@ sealed class GameApi
         app.MapPost("/api/v3/ad/complete", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.CompleteAd(p, request.id, now)));
     }
 
-    private const string FixedPveEvalRules = "fixed-pve-experiment-1";
+    private const string FixedPveEvalRules = PveFixedRecording.ExperimentalRules;
     private static bool IsLocal(HttpContext context) => context.Connection.RemoteIpAddress != null && IPAddress.IsLoopback(context.Connection.RemoteIpAddress);
 
     private IResult DevLogin(HttpContext context, AuthRequest request)

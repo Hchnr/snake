@@ -15,10 +15,22 @@ parser.add_argument('target', choices=('mac', 'webgl'))
 parser.add_argument('--output', required=True, help='new player output path')
 parser.add_argument('--offline-practice', action='store_true', help='disable development login and reference-only characters in the copied project')
 parser.add_argument('--fixed-pve-preview', action='store_true', help='enable experimental integer PvE in an offline practice build')
+parser.add_argument('--fixed-pve-local-api', help='enable local fixed PvE verification against http://127.0.0.1:PORT')
 parser.add_argument('--no-graphics', action='store_true', help='run the build with Unity -nographics (availability depends on build target)')
 args = parser.parse_args()
 if args.fixed_pve_preview and not args.offline_practice:
     parser.error('--fixed-pve-preview requires --offline-practice')
+if args.fixed_pve_local_api and (not args.offline_practice or args.fixed_pve_preview):
+    parser.error('--fixed-pve-local-api requires --offline-practice and cannot be combined with --fixed-pve-preview')
+if args.fixed_pve_local_api:
+    from urllib.parse import urlsplit
+    try:
+        url = urlsplit(args.fixed_pve_local_api)
+        valid = url.scheme == 'http' and url.hostname == '127.0.0.1' and url.port and not url.username and not url.password and url.path in ('', '/') and not url.query and not url.fragment
+    except ValueError:
+        valid = False
+    if not valid:
+        parser.error('--fixed-pve-local-api must be http://127.0.0.1:PORT')
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
 if not editor.is_file():
     sys.exit(f'Unity Editor not found: {editor}; set UNITY_EDITOR.')
@@ -39,6 +51,10 @@ with tempfile.TemporaryDirectory(prefix='snake-unity-build-') as directory:
         config_path = project / 'Assets/Resources/GameConfig.json'
         config = json.loads(config_path.read_text())
         config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=False, experimentalFixedPve=args.fixed_pve_preview)
+        if args.fixed_pve_local_api:
+            config.update(apiUrl=args.fixed_pve_local_api, allowDevLogin=True, experimentalFixedPveServer=True)
+        else:
+            config['experimentalFixedPveServer'] = False
         config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     log = Path(directory) / 'build.log'
     stamp = Path(directory) / 'built'

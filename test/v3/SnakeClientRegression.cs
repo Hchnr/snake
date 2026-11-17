@@ -23,6 +23,13 @@ namespace SnakeClub.Tests.Editor
                 config.serverUrl = ""; config.allowDevLogin = true; Require(!config.FixedPvePreview, "preview allowed developer authentication");
                 config.allowDevLogin = false; config.experimentalFixedPve = false; Require(!config.FixedPvePreview, "preview enabled without explicit flag");
                 Debug.Log("PASS Unity fixed PvE preview requires explicit offline configuration");
+                var local = new GameConfiguration { experimentalFixedPveServer = true, serverUrl = "", apiUrl = "http://127.0.0.1:2568", allowDevLogin = true };
+                Require(local.FixedPveServerPreview, "local verifier configuration rejected");
+                local.apiUrl = "http://127.0.0.1.example.com:2568"; Require(!local.FixedPveServerPreview, "remote host allowed as loopback");
+                local.apiUrl = "http://127.0.0.1:2568/path"; Require(!local.FixedPveServerPreview, "API path allowed in local verifier configuration");
+                local.apiUrl = "http://127.0.0.1:2568"; local.allowDevLogin = false; Require(!local.FixedPveServerPreview, "local verifier allowed without development login");
+                local.allowDevLogin = true; local.serverUrl = "ws://127.0.0.1:2567/ws"; Require(!local.FixedPveServerPreview, "local verifier allowed room backend");
+                Debug.Log("PASS Unity fixed PvE server preview requires explicit loopback configuration");
                 TestFixedPvePreviewFlow();
                 TestPracticeTutorialAccess();
                 TestDepthPracticeIsolation();
@@ -41,6 +48,8 @@ namespace SnakeClub.Tests.Editor
                 Require(client.Seed == 0, "a valid zero seed was not accepted from run start");
                 Apply("{\"ok\":true,\"runId\":\"pve\",\"mode\":\"pve\",\"date\":\"2026-11-16\",\"seed\":789}");
                 Require(client.Seed == 0, "PvE seed overwrote daily challenge seed");
+                Apply("{\"ok\":true,\"runId\":\"fixed\",\"mode\":\"fixed-eval\",\"date\":\"2026-11-16\",\"seed\":654}");
+                Require(client.Seed == 0, "experimental PvE seed overwrote daily challenge seed");
                 Apply("{\"ok\":true,\"date\":\"2026-11-17\",\"seed\":42,\"serverTime\":2000,\"profile\":{\"playerId\":\"test-player\"}}");
                 Apply("{\"ok\":true,\"date\":\"2026-11-16\",\"seed\":99,\"serverTime\":1000,\"runId\":\"late\"}");
                 Apply("{\"ok\":true,\"date\":\"2026-11-16\",\"rank\":1}");
@@ -375,6 +384,19 @@ namespace SnakeClub.Tests.Editor
                 Require(((string)Field("resultNote").GetValue(app)).Contains("试玩"), "preview result was not labelled");
                 Call("BackToMenu");
                 Require(Field("fixedPve").GetValue(app) == null && !(bool)Field("inGame").GetValue(app), "preview did not return to menu");
+                api.Configure(new GameConfiguration { experimentalFixedPveServer = true, apiUrl = "http://127.0.0.1:2568", serverUrl = "", allowDevLogin = true });
+                typeof(GameApiClient).GetProperty("Profile").SetValue(api, new PlayerProgress { playerId = "local-eval" });
+                var snapshot = new PveStartConfig { version = PveStartConfig.CurrentVersion, firstRun = true, skin = 2,
+                    talents = new[] { 1, 2, 1, 0, 1, 0, 0, 0, 0 } };
+                var run = new ApiReply { ok = true, runId = "run", token = "token", seed = 12345,
+                    mode = "fixed-eval", rules = PveFixedRecording.ExperimentalRules, startConfig = snapshot };
+                Call("BeginFixedPveWithRun", run);
+                var actual = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                var expected = new PveFixedWorld(run.seed, snapshot.firstRun, snapshot.MatchProfile());
+                Require(actual.Fighters[0].motion.X == expected.Fighters[0].motion.X && actual.Fighters[0].motion.Y == expected.Fighters[0].motion.Y &&
+                    actual.Fighters[0].shieldTicks == expected.Fighters[0].shieldTicks && (string)Field("activePlayerId").GetValue(app) == "local-eval" &&
+                    renderer.SelectedSkin == 2, "local verifier did not start from the server seed and snapshot");
+                Call("BackToMenu");
                 Debug.Log("PASS Unity offline fixed PvE start, input, pause and isolated settlement");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }

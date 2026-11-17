@@ -15,6 +15,7 @@ namespace SnakeClub.Core
     // verified on the target platforms and must not authorize rewards.
     public static class PveFixedRecording
     {
+        public const string ExperimentalRules = "fixed-pve-experiment-1";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
         {

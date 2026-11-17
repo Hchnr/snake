@@ -20,6 +20,22 @@ namespace SnakeClub
         public bool allowDevLogin;
         public bool allowReferenceSkinPreview;
         public bool experimentalFixedPve;
+        public bool experimentalFixedPveServer;
+        // Explicit development-only loopback preview; no platform identity or remote host.
+        public bool FixedPveServerPreview
+        {
+            get
+            {
+#if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+                return false;
+#else
+                return experimentalFixedPveServer && allowDevLogin &&
+                    string.IsNullOrWhiteSpace(serverUrl) && Uri.TryCreate(apiUrl, UriKind.Absolute, out var url) &&
+                    url.Scheme == Uri.UriSchemeHttp && url.Host == "127.0.0.1" && string.IsNullOrEmpty(url.UserInfo) &&
+                    url.AbsolutePath == "/" && string.IsNullOrEmpty(url.Query) && string.IsNullOrEmpty(url.Fragment);
+#endif
+            }
+        }
         // Preview is allowed only in a deliberately isolated offline build.
         public bool FixedPvePreview => experimentalFixedPve && !allowDevLogin &&
             string.IsNullOrWhiteSpace(apiUrl) && string.IsNullOrWhiteSpace(serverUrl);
@@ -33,10 +49,12 @@ namespace SnakeClub
 
     [Serializable] public sealed class ApiReply
     {
-        public bool ok, verified, adEnabled;
+        public bool ok, verified, adEnabled, experimental;
         [NonSerialized] public long httpStatus;
         public string error = "", session = "", runId = "", token = "", date = "", mode = "", rules = "", id = "", shareToken = "";
         public int seed, score, rank, total, gap, coins, baseCoins, experience, fragments, questCoins, questExperience;
+        public int ticks, kills, length, eventPoints, rewards;
+        public string winner = "";
         public int trialSkin = -1, unlockedSkin = -1;
         public long serverTime, expiresAt;
         public PlayerProgress profile;
@@ -240,7 +258,7 @@ namespace SnakeClub
             bool freshTime = reply.serverTime > 0 && reply.serverTime >= ServerTime;
             if (!string.IsNullOrEmpty(reply.date) && (freshTime || (reply.serverTime <= 0 && (string.IsNullOrEmpty(Date) || string.CompareOrdinal(reply.date, Date) >= 0)))) Date = reply.date;
             // Leaderboards have no seed; stale responses must not restore yesterday's seed.
-            if (reply.mode != "pve" && !string.IsNullOrEmpty(reply.date) && reply.date == Date && (reply.serverTime <= 0 || freshTime) &&
+            if (reply.mode != "pve" && reply.mode != "fixed-eval" && !string.IsNullOrEmpty(reply.date) && reply.date == Date && (reply.serverTime <= 0 || freshTime) &&
                 (reply.seed != 0 || hasProfile || !string.IsNullOrEmpty(reply.runId))) Seed = reply.seed;
             if (freshTime) { ServerTime = reply.serverTime; ServerTimeReceivedAt = Time.realtimeSinceStartup; }
             if (!string.IsNullOrEmpty(reply.date) && acceptProfile) AdEnabled = reply.adEnabled;
