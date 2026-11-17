@@ -532,9 +532,12 @@ namespace SnakeClub
             if (inGame && !online) paused = true;
         }
 
+        private bool ResultOverlayVisible => homeScreen != null && inGame && !online && !depthMode &&
+            state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
+
         private void OnGUI()
         {
-            if (rounded == null) return;
+            if (rounded == null || ResultOverlayVisible) return;
             if (inGame && Event.current.type == EventType.MouseUp && suppressPointerUpFrame == Time.frameCount)
             {
                 // A drag may have started over an IMGUI button. Since its release

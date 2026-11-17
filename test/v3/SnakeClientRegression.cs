@@ -157,6 +157,14 @@ namespace SnakeClub.Tests.Editor
                 var profile = (PlayerProgress)Field("practiceProfile").GetValue(app);
                 int previousMatches = profile.completedMatches;
                 Call("RecordResult");
+                Field("homeScreen").SetValue(app, root.AddComponent<HomeScreen>());
+                state.phase = "ended";
+                var overlay = type.GetProperty("ResultOverlayVisible", flags) ?? throw new Exception("Missing result overlay policy");
+                Require((bool)overlay.GetValue(app), "offline result should suppress the game HUD");
+                Field("status").SetValue(app, "error"); Require(!(bool)overlay.GetValue(app), "error overlay was suppressed");
+                Field("status").SetValue(app, ""); Field("online").SetValue(app, true); Require(!(bool)overlay.GetValue(app), "online result was suppressed");
+                Field("online").SetValue(app, false); Field("depthMode").SetValue(app, true); Require(!(bool)overlay.GetValue(app), "depth result was suppressed");
+                Field("depthMode").SetValue(app, false);
                 Require(PlayerPrefs.GetString("snake.v3.pending", "") == pendingBefore && profile.completedMatches == previousMatches,
                     "preview modified settlement queue or practice progression");
                 Require(((string)Field("resultNote").GetValue(app)).Contains("试玩"), "preview result was not labelled");
