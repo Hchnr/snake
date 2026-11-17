@@ -567,7 +567,7 @@ namespace SnakeClub
             }
             if (!paused && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
-            if (state != null && state.phase == "running") DrawNames(state);
+            if (state != null && state.phase == "running") { DrawNames(state); DrawEventTargetEdge(state); }
             if (firstRun && tutorialHints && !online && !paused && state != null && state.phase == "running")
             {
                 string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills);
@@ -637,7 +637,13 @@ namespace SnakeClub
                 float y = map.y + 15 + (1 - (p.y / world.halfSize + 1) * .5f) * (map.height - 30);
                 float size = snake.id == playerId ? 16 : 10;
                 Color previous = GUI.color;
-                GUI.color = snake.id == playerId ? Color.white : ArenaRenderer.Palette[Mathf.Abs(snake.color % ArenaRenderer.Palette.Length)];
+                bool target = world.eventStatus == "active" && world.eventTarget == snake.id;
+                if (target)
+                {
+                    GUI.color = new Color(1f, .83f, .35f);
+                    GUI.DrawTexture(new Rect(x - 10, y - 10, 20, 20), rounded);
+                }
+                GUI.color = snake.id == playerId ? Color.white : arenaRenderer.TrailColor(snake, playerId);
                 GUI.DrawTexture(new Rect(x - size / 2, y - size / 2, size, size), rounded);
                 GUI.color = previous;
             }
@@ -646,9 +652,27 @@ namespace SnakeClub
                 Point p = world.starPosition;
                 float x = map.x + 15 + (p.x / world.halfSize + 1) * .5f * (map.width - 30);
                 float y = map.y + 15 + (1 - (p.y / world.halfSize + 1) * .5f) * (map.height - 30);
+                if (!string.IsNullOrEmpty(world.starHolder)) { x += 10; y -= 10; }
+                x = Mathf.Clamp(x, map.x + 8, map.xMax - 8); y = Mathf.Clamp(y, map.y + 8, map.yMax - 8);
                 Color previous = GUI.color; GUI.color = new Color(1f, .84f, .32f);
-                GUI.DrawTexture(new Rect(x - 8, y - 8, 16, 16), rounded); GUI.color = previous;
+                GUI.DrawTexture(new Rect(x - 7, y - 7, 14, 14), rounded); GUI.color = previous;
             }
+        }
+
+        private void DrawEventTargetEdge(ArenaState world)
+        {
+            if (!EventTargetIndicator.TryTarget(world, playerId, out var target, out string name)) return;
+            Vector3 screen = arenaRenderer.WorldToScreen(target);
+            if (screen.z <= 0) return;
+            Vector2 projected = ToVirtual(screen);
+            if (!EventTargetIndicator.TryEdge(new Point(projected.x, projected.y), 110, 410, 970, 1450, out var edge)) return;
+            // Keep the marker clear of the minimap in the upper right.
+            if (edge.x > 760 && edge.y < 545) edge.y = 545;
+            Rect box = new Rect(Mathf.Clamp(edge.x - 65, 30, 920), Mathf.Clamp(edge.y - 27, 250, 1550), 130, 54);
+            Panel(box, new Color(.15f, .11f, .06f, .88f));
+            Color previous = GUI.color; GUI.color = new Color(1f, .82f, .35f);
+            GUI.DrawTexture(new Rect(box.x + 13, box.y + 21, 12, 12), rounded); GUI.color = previous;
+            Label(new Rect(box.x + 20, box.y, box.width - 20, box.height), name, 22, new Color(1f, .88f, .55f), TextAnchor.MiddleCenter, true);
         }
 
         private void DrawNames(ArenaState world)

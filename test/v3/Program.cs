@@ -54,6 +54,7 @@ var cases = new (string name, Action run)[]
     ("local arena reuses collision buffers without stale outcomes", ArenaBufferReuse),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
+    ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
     ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
     ("star carriers attract nearby AI without changing daily-3 replay", StarPursuitCases),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
@@ -604,6 +605,28 @@ static void CaptureResolution()
     Check(match.State.snakes[0].eliminationReason == "capture" && match.State.snakes[0].eliminatedBy == "bot-1", "daily capture cause was not projected");
     Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 0 && (int)snakeType.GetField("kills").GetValue(snakes[1]) == 0,
         "an eliminated captor incorrectly received growth");
+}
+
+static void EventTargetIndicatorCases()
+{
+    var world = new ArenaState { phase = "running", eventStatus = "active", eventKind = "bounty", eventTarget = "bot" };
+    var bot = new SnakeState { id = "bot", segments = new List<Point> { new(12, -4) } }; world.snakes.Add(bot);
+    Check(EventTargetIndicator.TryTarget(world, "you", out var target, out var name) && target.x == 12 && target.y == -4 && name == "悬赏", "bounty target not shown");
+    bot.boss = true;
+    Check(EventTargetIndicator.TryTarget(world, "you", out _, out name) && name == "首领", "boss not distinguished");
+    bot.alive = false;
+    Check(!EventTargetIndicator.TryTarget(world, "you", out _, out _), "dead bounty target remained visible");
+    world.eventKind = "star"; world.starVisible = true; world.starHolder = "you"; world.starPosition = new Point(4, 5);
+    Check(!EventTargetIndicator.TryTarget(world, "you", out _, out _), "carried star incorrectly pointed away");
+    world.starHolder = "bot";
+    Check(EventTargetIndicator.TryTarget(world, "you", out target, out name) && name == "星核" && target.x == 4, "star position missing");
+    world.starVisible = false; world.eventKind = "fruit"; world.eventRadius = 14; world.eventPosition = new Point(-7, 9);
+    Check(EventTargetIndicator.TryTarget(world, "you", out target, out name) && name == "果潮" && target.y == 9, "fruit target missing");
+    world.eventStatus = "ended"; Check(!EventTargetIndicator.TryTarget(world, "you", out _, out _), "ended event remained visible");
+    Check(!EventTargetIndicator.TryEdge(new Point(50, 50), 0, 0, 100, 100, out _), "on-screen target gained edge marker");
+    Check(EventTargetIndicator.TryEdge(new Point(150, 100), 0, 0, 100, 100, out var edge) && Math.Abs(edge.x - 100) < .001 && Math.Abs(edge.y - 75) < .001, "diagonal marker lost direction");
+    Check(EventTargetIndicator.TryEdge(new Point(50, -50), 0, 0, 100, 100, out edge) && edge.x == 50 && edge.y == 0, "vertical marker misplaced");
+    Check(!EventTargetIndicator.TryEdge(new Point(float.NaN, 0), 0, 0, 100, 100, out _), "invalid projection accepted");
 }
 
 static void EventOutcomeCases()

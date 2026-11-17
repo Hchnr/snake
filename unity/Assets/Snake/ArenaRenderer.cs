@@ -317,7 +317,6 @@ namespace SnakeClub
             int playerVisual = SkinVisual.ResolveIndex(SelectedSkin);
             VisualFallback = playerVisual != SelectedSkin;
             bool characterMode = playerVisual >= 0;
-            bool referenceMode = characterMode && playerVisual >= SkinCatalog.OwnedSkinCount;
             if (state.tick < lastTick) { shownCaptureTick = -1; captureStarted = -10f; reboundStarted = -10f; previousRebound = 0; }
             if (state.captureTick >= 0 && state.captureTick != shownCaptureTick && state.capturePolygon != null && state.capturePolygon.Count > 2)
             {
@@ -383,19 +382,9 @@ namespace SnakeClub
                     continue;
                 }
                 if (snake.segments.Count == 0) continue;
-                int visualSkin = playerVisual >= 0 ? playerVisual : SelectedSkin;
-                if (snake.id != playerId)
-                {
-                    int first = referenceMode ? SkinCatalog.OwnedSkinCount : 0;
-                    int count = referenceMode ? SkinCatalog.All.Length - first : SkinCatalog.OwnedSkinCount;
-                    int choice = Mathf.Abs(snake.color % (count - 1));
-                    int playerChoice = Mathf.Clamp(playerVisual - first, 0, count - 1);
-                    if (choice >= playerChoice) choice++;
-                    visualSkin = first + choice;
-                }
-                if (characterMode && snake.id != playerId) visualSkin = SkinVisual.ResolveIndex(visualSkin);
+                int visualSkin = ResolveVisualSkin(snake, playerId, playerVisual);
                 Sprite characterSprite = characterMode && visualSkin >= 0 ? SkinVisual.Sprite(visualSkin) : null;
-                int color = characterSprite != null || snake.id == playerId ? SkinPalette[Mathf.Clamp(visualSkin, 0, SkinPalette.Length - 1)] : Mathf.Abs(snake.color % bodies.Length);
+                int color = PaletteIndex(snake, playerId, visualSkin, characterSprite != null);
                 var list = bodies[color];
                 List<Vector3> positions;
                 if (!smoothed.TryGetValue(snake.id, out positions))
@@ -618,6 +607,35 @@ namespace SnakeClub
         private void OnDestroy()
         {
             if (captureSweepMesh != null) Destroy(captureSweepMesh);
+        }
+
+        private int ResolveVisualSkin(SnakeState snake, string playerId, int playerVisual)
+        {
+            int visualSkin = playerVisual >= 0 ? playerVisual : SelectedSkin;
+            if (snake.id != playerId)
+            {
+                bool referenceMode = playerVisual >= SkinCatalog.OwnedSkinCount;
+                int first = referenceMode ? SkinCatalog.OwnedSkinCount : 0;
+                int count = referenceMode ? SkinCatalog.All.Length - first : SkinCatalog.OwnedSkinCount;
+                int choice = Mathf.Abs(snake.color % (count - 1));
+                int playerChoice = Mathf.Clamp(playerVisual - first, 0, count - 1);
+                if (choice >= playerChoice) choice++;
+                visualSkin = first + choice;
+                if (playerVisual >= 0) visualSkin = SkinVisual.ResolveIndex(visualSkin);
+            }
+            return visualSkin;
+        }
+
+        private int PaletteIndex(SnakeState snake, string playerId, int visualSkin, bool hasSprite)
+            => hasSprite || snake.id == playerId ? SkinPalette[Mathf.Clamp(visualSkin, 0, SkinPalette.Length - 1)] : Mathf.Abs(snake.color % Palette.Length);
+
+        // Map dots must use the exact same skin fallback and palette as trails.
+        public Color TrailColor(SnakeState snake, string playerId)
+        {
+            int playerVisual = SkinVisual.ResolveIndex(SelectedSkin);
+            int visualSkin = ResolveVisualSkin(snake, playerId, playerVisual);
+            bool hasSprite = playerVisual >= 0 && visualSkin >= 0 && SkinVisual.Sprite(visualSkin) != null;
+            return Palette[PaletteIndex(snake, playerId, visualSkin, hasSprite)];
         }
 
         private void DrawOpponentMarker(string id, Vector3 center, Color color)
