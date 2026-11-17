@@ -43,9 +43,14 @@ python3 scripts/check-unity-compile.py --douyin
 # 使用临时 Unity 工程检查客户端 JSON 响应和资源导入
 npm run test:unity
 
+# 对比整数 PvE 在桌面 .NET 和无头 Unity WebGL 的样本指纹
+python3 scripts/test-fixed-pve-webgl.py
+
 # 使用图形后端在临时 Unity 工程中验证运行时动画与 UI 命中
 npm run test:unity:play
 ```
+
+WebGL 指纹检查需要 Chrome，可用 `SNAKE_CHROME` 指定可执行文件；它在临时工程中编译并用静音无头浏览器运行，可能耗时数分钟。指纹一致只覆盖脚本样本，不代表抖音手机、所有输入或可信发奖已通过。
 
 每日挑战接口测试按实际局时等待，可能需要约 1 分钟；测试数据放在临时目录，不使用本机游戏存档。Unity 回归检查需要已安装并启用许可证的 Editor；可用 `UNITY_EDITOR` 指定可执行文件。
 
