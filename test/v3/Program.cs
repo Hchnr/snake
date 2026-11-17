@@ -330,6 +330,34 @@ static void NameplateCases()
         "label covered the tutorial panel");
     layout.Reset(); layout.AddAnchor(center);
     Check(layout.TryPlace(center, out var first) && first.y == 732, "layout reset retained old slots");
+
+    // Moving across the overlap threshold must not make the same label jump
+    // between rows every frame; a genuinely unsafe slot still moves immediately.
+    layout.ClearHistory();
+    Point PlacePair(int tick, float opponentX)
+    {
+        var own = new Point(400, 800); var opponent = new Point(opponentX, 800);
+        layout.BeginFrame(tick); layout.AddAnchor(own); layout.AddAnchor(opponent);
+        Check(layout.TryPlace("you", own, out var ownBox) && ownBox.y == 732, "player lost priority");
+        Check(layout.TryPlace("opponent", opponent, out var otherBox), "opponent label unexpectedly hidden");
+        return otherBox;
+    }
+    Check(PlacePair(1, 615).y == 676, "initial overlap was not resolved");
+    for (int t = 2; t <= 25; t++)
+        Check(PlacePair(t, t % 2 == 0 ? 617 : 615).y == 676, "label flickered across the overlap threshold");
+    Check(PlacePair(26, 645).y == 732, "label did not return after sustained clearance");
+    Check(PlacePair(27, 615).y == 676, "new overlap was not resolved immediately");
+    layout.BeginFrame(28); layout.AddAnchor(new Point(615, 800));
+    layout.Reserve(400, 620, 500, 130);
+    Check(!layout.TryPlace("opponent", new Point(615, 800), out var blocked) || blocked.y + NameplateLayout.Height + 6 <= 620,
+        "remembered label remained on a new reserved panel");
+    layout.ClearHistory();
+    Check(PlacePair(1, 645).y == 732, "new match retained an old label slot");
+    layout.ClearHistory(); Check(PlacePair(100, 615).y == 676, "recovery fixture did not overlap");
+    layout.BeginFrame(141); // Opponent absent for more than two seconds.
+    Check(PlacePair(142, 617).y == 732, "absent actor retained a stale slot");
+    layout.ClearHistory(); Check(PlacePair(100, 615).y == 676, "rollback fixture did not overlap");
+    Check(PlacePair(0, 617).y == 732, "rewound simulation retained a stale slot");
 }
 
 static void NearbyDanger()

@@ -408,12 +408,31 @@ namespace SnakeClub.Core
     public sealed class NameplateLayout
     {
         public const float Width = 210f, Height = 48f;
+        private const int HoldTicks = 12, ForgetTicks = 40;
+        private const float ReturnClearance = 12f;
         private static readonly float[] VerticalOffsets = { 0, -56, -112, -168, -224, -280, -336, -392 };
-        private readonly List<Point> placed = new List<Point>(8);
         private struct ReservedArea { public float x, y, width, height; }
+        private struct PreviousSlot { public int index, changedAt, seenAt; }
+        private readonly List<Point> placed = new List<Point>(8);
         private readonly List<Point> anchors = new List<Point>(8);
         private readonly List<ReservedArea> reserved = new List<ReservedArea>(2);
+        private readonly Dictionary<string, PreviousSlot> history = new Dictionary<string, PreviousSlot>();
+        private readonly List<string> expired = new List<string>(8);
+        private int tick = -1;
+
+        // Reset clears only this draw's geometry; ClearHistory is used on a new match.
         public void Reset() { placed.Clear(); anchors.Clear(); reserved.Clear(); }
+        public void ClearHistory() { Reset(); history.Clear(); tick = -1; }
+        public void BeginFrame(int currentTick)
+        {
+            Reset();
+            if (currentTick < tick) history.Clear();
+            tick = currentTick;
+            expired.Clear();
+            foreach (var entry in history)
+                if ((long)tick - entry.Value.seenAt > ForgetTicks) expired.Add(entry.Key);
+            foreach (var id in expired) history.Remove(id);
+        }
         public void Reserve(float x, float y, float width, float height)
         {
             if (width > 0 && height > 0) reserved.Add(new ReservedArea { x = x, y = y, width = width, height = height });
@@ -423,38 +442,61 @@ namespace SnakeClub.Core
             if (!float.IsNaN(anchor.x) && !float.IsNaN(anchor.y) && !float.IsInfinity(anchor.x) && !float.IsInfinity(anchor.y)) anchors.Add(anchor);
         }
 
-        public bool TryPlace(Point anchor, out Point topLeft)
+        public bool TryPlace(Point anchor, out Point topLeft) => TryPlace(null, anchor, out topLeft);
+        public bool TryPlace(string id, Point anchor, out Point topLeft)
         {
             topLeft = default;
             if (float.IsNaN(anchor.x) || float.IsNaN(anchor.y) || float.IsInfinity(anchor.x) || float.IsInfinity(anchor.y) ||
                 anchor.x < 90 || anchor.x > 990 || anchor.y < 260 || anchor.y > 1430) return false;
-            float x = Math.Max(30, Math.Min(840, anchor.x - Width / 2));
-            float preferredY = anchor.y - 68;
-            foreach (float offset in VerticalOffsets)
+            PreviousSlot old = default;
+            bool remembered = !string.IsNullOrEmpty(id) && history.TryGetValue(id, out old);
+            int chosen = -1;
+            if (remembered && Candidate(anchor, old.index, 0, out topLeft))
             {
-                float y = Math.Max(400, Math.Min(1450 - Height, preferredY + offset));
-                // The anchor sits above the avatar; never move a plate down onto its face.
-                if (y + Height > anchor.y - 12) continue;
-                // Reserve the upper-right minimap, including a small margin.
-                if (x + Width > 760 && y < 545) continue;
-                bool blocked = false;
-                foreach (var area in reserved)
-                    if (x < area.x + area.width + 6 && x + Width + 6 > area.x && y < area.y + area.height + 6 && y + Height + 6 > area.y)
-                    { blocked = true; break; }
-                if (blocked) continue;
-                bool coversAnchor = false;
-                foreach (var head in anchors)
-                    if (head.x >= x - 8 && head.x <= x + Width + 8 && head.y >= y - 8 && head.y <= y + Height + 8)
-                    { coversAnchor = true; break; }
-                if (coversAnchor) continue;
-                bool overlaps = false;
-                foreach (var other in placed)
-                    if (x < other.x + Width + 6 && x + Width + 6 > other.x && y < other.y + Height + 6 && y + Height + 6 > other.y)
-                    { overlaps = true; break; }
-                if (overlaps) continue;
-                topLeft = new Point(x, y); placed.Add(topLeft); return true;
+                chosen = old.index;
+                // Return to a better slot only after the hold and with extra clearance.
+                if ((long)tick - old.changedAt >= HoldTicks)
+                    for (int i = 0; i < old.index; i++)
+                        if (Candidate(anchor, i, ReturnClearance, out var preferred))
+                        { chosen = i; topLeft = preferred; break; }
             }
-            return false;
+            if (chosen < 0)
+                for (int i = 0; i < VerticalOffsets.Length; i++)
+                    if (Candidate(anchor, i, 0, out topLeft)) { chosen = i; break; }
+            if (chosen < 0)
+            {
+                if (remembered) { old.seenAt = tick; history[id] = old; }
+                topLeft = default; return false;
+            }
+            placed.Add(topLeft);
+            if (!string.IsNullOrEmpty(id))
+                history[id] = new PreviousSlot { index = chosen, changedAt = !remembered || chosen != old.index ? tick : old.changedAt, seenAt = tick };
+            return true;
+        }
+
+        private bool Candidate(Point anchor, int index, float extra, out Point topLeft)
+        {
+            topLeft = default;
+            if (index < 0 || index >= VerticalOffsets.Length) return false;
+            float x = Math.Max(30, Math.Min(840, anchor.x - Width / 2));
+            float y = Math.Max(400, Math.Min(1450 - Height, anchor.y - 68 + VerticalOffsets[index]));
+            // The anchor sits above the avatar; never move a plate down onto its face.
+            if (y + Height > anchor.y - 12) return false;
+            if (x + Width + extra > 760 && y - extra < 545) return false;
+            foreach (var area in reserved)
+                if (x < area.x + area.width + 6 + extra && x + Width + 6 + extra > area.x &&
+                    y < area.y + area.height + 6 + extra && y + Height + 6 + extra > area.y) return false;
+            foreach (var head in anchors)
+            {
+                // A label's own anchor naturally sits only 20 units below it.
+                float margin = head.x == anchor.x && head.y == anchor.y ? 8 : 8 + extra;
+                if (head.x >= x - margin && head.x <= x + Width + margin &&
+                    head.y >= y - margin && head.y <= y + Height + margin) return false;
+            }
+            foreach (var other in placed)
+                if (x < other.x + Width + 6 + extra && x + Width + 6 + extra > other.x &&
+                    y < other.y + Height + 6 + extra && y + Height + 6 + extra > other.y) return false;
+            topLeft = new Point(x, y); return true;
         }
     }
 

@@ -148,6 +148,7 @@ namespace SnakeClub
 
         private void BeginPve(ApiReply run)
         {
+            nameplates.ClearHistory();
             dragSteering.Reset();
             fixedPve = null;
             connection.Close();
@@ -207,6 +208,7 @@ namespace SnakeClub
 
         private void BeginFixedPveWithRun(ApiReply run)
         {
+            nameplates.ClearHistory();
             dragSteering.Reset(); connection.Close();
             online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = null; depthMode = false;
@@ -228,6 +230,7 @@ namespace SnakeClub
 
         private void StartOnline(string action)
         {
+            nameplates.ClearHistory();
             dragSteering.Reset();
             string address = serverInput.Trim();
             if (!address.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) && !address.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
@@ -289,6 +292,7 @@ namespace SnakeClub
 
         private void BackToMenu()
         {
+            nameplates.ClearHistory();
             dragSteering.Reset();
             connection.Close();
             inGame = false;
@@ -797,7 +801,7 @@ namespace SnakeClub
 
         private void DrawNames(ArenaState world)
         {
-            nameplates.Reset(); nameplateEntries.Clear();
+            nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
             if (firstRun && tutorialHints && !online && !paused)
             {
                 var own = world.snakes.Find(s => s.id == playerId);
@@ -833,7 +837,7 @@ namespace SnakeClub
             Vector3 projected = arenaRenderer.WorldToScreen(snake.segments[0]);
             if (projected.z <= 0) return;
             Vector2 position = ToVirtual(projected);
-            if (!nameplates.TryPlace(new Point(position.x, position.y), out var placed)) return;
+            if (!nameplates.TryPlace(snake.id, new Point(position.x, position.y), out var placed)) return;
             string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
             if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
             if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
