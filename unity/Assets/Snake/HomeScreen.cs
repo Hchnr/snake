@@ -151,14 +151,14 @@ namespace SnakeClub
 
         public void SetState(PlayerProgress profile, Texture character, string message, bool busy, bool connected, bool sound,
             int equipped, int preview, bool referencesEnabled, bool trialAvailable, bool friendChallenge = false,
-            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100)
+            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100, int friendScore = 0, string friendRules = "", string friendDate = "")
         {
             if (canvas == null || profile == null) return;
             reducedEffects = reduce;
             Set(level, "等级 " + Progression.Level(profile.experience));
             Set(coins, "金币  " + profile.coins);
-            Set(primaryText, busy ? "正在准备…" : friendChallenge ? "接受好友挑战" : "开始围猎");
-            Set(primaryHint, !connected ? "离线练习 · 不计排行榜" : !profile.tutorialComplete ? "新手练习 · 学会围猎" : "今日挑战 · 同图 60 秒");
+            Set(primaryText, busy ? "正在准备…" : friendChallenge ? (profile.tutorialComplete ? "接受好友挑战" : "先完成新手练习") : "开始围猎");
+            Set(primaryHint, !connected ? "离线练习 · 不计排行榜" : !profile.tutorialComplete ? (friendChallenge ? "新手练习后可应战好友" : "新手练习 · 学会围猎") : friendChallenge ? friendDate + " · " + friendRules + " · 好友 " + friendScore + " 分" : "今日挑战 · 同图 60 秒");
             Set(caveText, connected && !profile.ownedSkins.Contains(1) && profile.completedMatches < 2 ?
                 "完成 2 场，免费解锁曜焰  " + profile.completedMatches + "/2" :
                 profile.expedition != null && !profile.expedition.claimed ? "梦游探洞进行中，回来可领取奖励" : "派灵蛇去梦游探洞，离线也有收获");
@@ -266,7 +266,7 @@ namespace SnakeClub
             resultPortrait = MakeRaw("Result character", resultCard, new Rect(175, 135, 580, 580), null); resultPortrait.raycastTarget = false;
             resultStats = MakeText("Result stats", resultCard, new Rect(75, 645, 780, 105), "", 34, Color.white, TextAnchor.MiddleCenter, true);
             resultHighlight = MakeText("Result highlight", resultCard, new Rect(95, 750, 740, 48), "", 25, new Color(1f, .88f, .56f), TextAnchor.MiddleCenter, true);
-            resultDetails = MakeText("Result details", resultCard, new Rect(95, 800, 740, 100), "", 24, new Color(.78f, .93f, .90f), TextAnchor.MiddleCenter);
+            resultDetails = MakeText("Result details", resultCard, new Rect(95, 800, 740, 105), "", 21, new Color(.78f, .93f, .90f), TextAnchor.MiddleCenter);
             resultRetry = MakeButton("Result retry", resultCard, new Rect(125, 925, 680, 120), new Color(.08f, .72f, .56f, 1f), () => onResultRetry?.Invoke());
             resultRetryRect = resultRetry.GetComponent<RectTransform>();
             MakeText("Retry label", resultRetry.transform, new Rect(0, 0, 680, 120), "再来一局", 36, Color.white, TextAnchor.MiddleCenter, true);

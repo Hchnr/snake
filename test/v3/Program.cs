@@ -34,6 +34,7 @@ var cases = new (string name, Action run)[]
     ("daily replay reproduces states and published score formula", DailyReplay),
     ("daily fruit projection reuses objects and reflects simulation changes", DailyFruitProjection),
     ("daily challenges use their own seed and are bounded", DailySeeds),
+    ("friend comparison reports the verified score gap", FriendComparisonCases),
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
@@ -320,6 +321,13 @@ static void DailyFruitProjection()
     type.GetMethod("Sync", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, null);
     Check(ReferenceEquals(first, match.State.fruits[0]) && Math.Abs(first.position.x - 1.234f) < .0001f &&
         Math.Abs(first.position.y + 5.678f) < .0001f && first.color == 3, "reused projection did not update its visible values");
+}
+
+static void FriendComparisonCases()
+{
+    Check(FriendChallengeComparison.Format(120, 100).Contains("领先 20 分"), "leading score comparison incorrect");
+    Check(FriendChallengeComparison.Format(70, 100).Contains("落后 30 分"), "trailing score comparison incorrect");
+    Check(FriendChallengeComparison.Format(0, 0).Contains("成绩持平"), "tie comparison incorrect");
 }
 
 static void DailySeeds()

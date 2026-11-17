@@ -67,7 +67,8 @@ before(async () => {
     runs: {
       old: { ...base, id: 'old', playerId, rules: 'daily-1', score: 900 },
       first: { ...base, id: 'first', playerId: otherId, rules: 'daily-2', score: 120 },
-      second: { ...base, id: 'second', playerId, rules: 'daily-2', score: 80 }
+      second: { ...base, id: 'second', playerId, rules: 'daily-2', score: 80 },
+      shareable: { ...base, id: 'shareable', playerId, rules: 'daily-3', score: 321, expiresAt: Date.now() + 300000 }
     }
   }));
   const a = await freePort(); let b = await freePort(); while (b === a) b = await freePort();
@@ -90,6 +91,15 @@ test('legacy JSON imports once and a versioned leaderboard reads the shared data
   assert.deepEqual(board.data.rows.map(row => row.score), [120, 80]);
   const oldBoard = await request(endpoints[1], 'challenge/leaderboard', user.session);
   assert.equal(oldBoard.data.total, 1); assert.equal(oldBoard.data.rows[0].score, 900);
+});
+
+test('verified friend challenge is shareable across SQLite server instances', async () => {
+  const share = await request(endpoints[0], 'challenge/share', user.session, { id: 'shareable' });
+  assert.equal(share.status, 200); assert.equal(share.data.score, 321);
+  const resolved = await request(endpoints[1], 'challenge/shared?token=' + encodeURIComponent(share.data.shareToken), user.session);
+  assert.equal(resolved.status, 200); assert.equal(resolved.data.score, 321); assert.equal(resolved.data.rules, 'daily-3');
+  const invalid = await request(endpoints[1], 'challenge/shared?token=' + encodeURIComponent(share.data.shareToken + 'x'), user.session);
+  assert.equal(invalid.status, 400);
 });
 
 test('concurrent servers settle each run exactly once and preserve both updates', async () => {
