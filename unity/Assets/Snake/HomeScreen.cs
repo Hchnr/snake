@@ -16,7 +16,10 @@ namespace SnakeClub
         private readonly List<Vector2> resultSparkOrigins = new List<Vector2>();
         private Canvas canvas;
         private RectTransform safe, layout, homePage, skinPage, resultPage, resultCard, resultRetryRect, settingsModal;
-        private RawImage background, portrait, skinPortrait, resultPortrait;
+        private RawImage background, portrait, skinPortrait, skinArenaPreview, resultPortrait;
+        private Text skinPreviewModeText, skinPreviewNotice;
+        private bool skinArenaMode;
+        public bool ArenaPreview => skinArenaMode;
         private Text level, coins, notice, primaryText, primaryHint, caveText, soundText;
         private Text skinName, skinDescription, skinActionText, skinNotice, skinTrialText;
         private Text resultTitle, resultStats, resultHighlight, resultDetails, resultAdText, settingsSound, settingsEffects, settingsHaptics, settingsMusic, settingsMusicVolume, settingsEffectsVolume, settingsTutorial;
@@ -139,6 +142,7 @@ namespace SnakeClub
         {
             if (homePage == null || skinPage == null || resultPage == null) return;
             bool showHome = !skins && !results, showSkins = skins && !results;
+            if (!showSkins) skinArenaMode = false;
             if (homePage.gameObject.activeSelf != showHome) homePage.gameObject.SetActive(showHome);
             if (skinPage.gameObject.activeSelf != showSkins) skinPage.gameObject.SetActive(showSkins);
             if (resultPage.gameObject.activeSelf != results)
@@ -147,6 +151,17 @@ namespace SnakeClub
                 if (results) { resultOpenedAt = Time.unscaledTime; resultWon = false; }
             }
             if (background.enabled == results) background.enabled = !results;
+        }
+
+        public void SetArenaPreview(Texture texture)
+        {
+            if (skinArenaPreview == null || skinPortrait == null) return;
+            bool showArena = skinArenaMode && texture != null;
+            skinArenaPreview.texture = showArena ? texture : null;
+            skinArenaPreview.enabled = showArena;
+            skinPortrait.enabled = !showArena;
+            Set(skinPreviewModeText, skinArenaMode ? "查看大图" : "查看局内演示");
+            Set(skinPreviewNotice, skinArenaMode ? (showArena ? "自动演示 · 不改变装备" : "局内演示暂不可用") : "");
         }
 
         public void SetState(PlayerProgress profile, Texture character, string message, bool busy, bool connected, bool sound,
@@ -302,6 +317,12 @@ namespace SnakeClub
             MakeText("Skin title", skinPage, new Rect(245, 72, 610, 78), "灵蛇衣橱", 47, Color.white, TextAnchor.MiddleCenter, true);
             MakeText("Skin subtitle", skinPage, new Rect(210, 158, 660, 45), "选择喜欢的角色，带它去围猎", 23, new Color(.75f, .94f, .90f), TextAnchor.MiddleCenter);
             skinPortrait = MakeRaw("Skin character", skinPage, new Rect(190, 205, 700, 700), null); skinPortrait.raycastTarget = false;
+            skinArenaPreview = MakeRaw("Skin arena preview", skinPage, new Rect(387, 205, 306, 544), null);
+            skinArenaPreview.raycastTarget = false; skinArenaPreview.enabled = false;
+            var previewToggle = MakeButton("Skin preview toggle", skinPage, new Rect(335, 700, 410, 68), new Color(.10f, .32f, .38f, .94f), () => skinArenaMode = !skinArenaMode);
+            skinPreviewModeText = MakeText("Skin preview toggle label", previewToggle.transform, new Rect(0, 0, 410, 68), "查看局内演示", 24, Color.white, TextAnchor.MiddleCenter, true);
+            skinPreviewNotice = MakeText("Skin preview notice", skinPage, new Rect(240, 650, 600, 45), "", 19, new Color(.82f, .95f, .91f), TextAnchor.MiddleCenter);
+            skinPreviewNotice.raycastTarget = false;
             skinName = MakeText("Skin name", skinPage, new Rect(120, 790, 840, 70), "", 39, Color.white, TextAnchor.MiddleCenter, true);
             skinDescription = MakeText("Skin description", skinPage, new Rect(120, 850, 840, 55), "", 23, new Color(.80f, .96f, .92f), TextAnchor.MiddleCenter);
             Color[] swatches = { new Color(.12f, .83f, .69f), new Color(1f, .43f, .20f), new Color(.44f, .39f, .91f),

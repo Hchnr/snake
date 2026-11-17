@@ -60,6 +60,9 @@ namespace SnakeClub
         private readonly List<Color32> sweepColors = new List<Color32>();
         private readonly List<float> sweepRows = new List<float>();
         private Camera view;
+        private RenderTexture previewTexture;
+        private bool previewAttempted;
+        public RenderTexture PreviewTexture => previewTexture != null && previewTexture.IsCreated() ? previewTexture : null;
         private LineRenderer marker, eventRing, captureOutline, captureFlare, reboundRipple, directionArrow, bossWarning, dangerArrow;
         private Transform runtimeRoot;
         private GameObject starObject;
@@ -84,6 +87,37 @@ namespace SnakeClub
                 view.enabled = value;
                 if (!value) { cameraReady = false; eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); presentationTick = -1; }
             }
+        }
+
+        // The wardrobe uses the same camera and renderer as a match, directed
+        // to a bounded off-screen texture only while the player requests it.
+        public void SetPreviewMode(bool enabled)
+        {
+            if (view == null) return;
+            if (enabled && previewTexture != null && !previewTexture.IsCreated())
+            {
+                if (view.targetTexture == previewTexture) view.targetTexture = null;
+                Destroy(previewTexture); previewTexture = null; previewAttempted = false;
+            }
+            if (enabled && previewTexture == null && !previewAttempted)
+            {
+                previewAttempted = true;
+                try
+                {
+                    previewTexture = new RenderTexture(288, 512, 16, RenderTextureFormat.ARGB32) { name = "Wardrobe arena preview" };
+                    if (!previewTexture.Create()) { Destroy(previewTexture); previewTexture = null; }
+                }
+                catch (System.Exception) { if (previewTexture != null) Destroy(previewTexture); previewTexture = null; }
+            }
+            if (!enabled)
+            {
+                previewAttempted = false;
+                if (view.targetTexture != null) { view.targetTexture = null; cameraReady = false; }
+                if (previewTexture != null) { previewTexture.Release(); Destroy(previewTexture); previewTexture = null; }
+                return;
+            }
+            RenderTexture target = PreviewTexture;
+            if (view.targetTexture != target) { view.targetTexture = target; cameraReady = false; }
         }
 
         private void Awake() => Initialize();
@@ -616,6 +650,8 @@ namespace SnakeClub
 
         private void OnDestroy()
         {
+            if (view != null) view.targetTexture = null;
+            if (previewTexture != null) { previewTexture.Release(); Destroy(previewTexture); }
             if (captureSweepMesh != null) Destroy(captureSweepMesh);
             if (trailPulseMaterial != null) Destroy(trailPulseMaterial);
         }
