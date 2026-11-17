@@ -224,14 +224,14 @@ namespace SnakeClub
             if (depthWon && depthRoom < 3)
             {
                 Label(new Rect(150, 835, 780, 55), busy ? "正在准备下一间…" : "选择一个本次深潜增益", 29, new Color(1f, .86f, .56f), TextAnchor.MiddleCenter, true);
-                if (Button(new Rect(175, 900, 730, 100), "收圈护盾  ·  捕获后护盾 2 秒", new Color(.13f, .51f, .46f))) SelectDepthBonus(0);
-                if (Button(new Rect(175, 1020, 730, 100), "反弹冲刺  ·  撞墙后 3 秒加速免费", new Color(.23f, .40f, .62f))) SelectDepthBonus(1);
-                if (Button(new Rect(175, 1140, 730, 100), "猎手长尾  ·  淘汰额外增长 3 节", new Color(.42f, .33f, .60f))) SelectDepthBonus(2);
+                if (Button(new Rect(175, 900, 730, 100), DepthChallenge.BonusChoice(0, depthShield, depthRebound, depthGrowth), new Color(.13f, .51f, .46f))) SelectDepthBonus(0);
+                if (Button(new Rect(175, 1020, 730, 100), DepthChallenge.BonusChoice(1, depthShield, depthRebound, depthGrowth), new Color(.23f, .40f, .62f))) SelectDepthBonus(1);
+                if (Button(new Rect(175, 1140, 730, 100), DepthChallenge.BonusChoice(2, depthShield, depthRebound, depthGrowth), new Color(.42f, .33f, .60f))) SelectDepthBonus(2);
                 if (Button(new Rect(250, 1280, 580, 85), "退出深潜，返回大厅", new Color(.15f, .22f, .31f)) && !busy) BackToMenu();
             }
             else
             {
-                Label(new Rect(150, 850, 780, 80), depthWon ? "三间秘境全部完成" : activeRun == null ? "离线练习不计账号奖励" : "已确认的房间奖励会保留", 28, new Color(.80f, .94f, .90f), TextAnchor.MiddleCenter);
+                Label(new Rect(150, 850, 780, 80), depthWon ? "三间秘境全部完成" : DepthChallenge.FailureReason(depthRoom, state, playerId) + (activeRun != null ? "\n已确认的奖励会保留" : ""), 24, new Color(.80f, .94f, .90f), TextAnchor.MiddleCenter);
                 if (Button(new Rect(210, 980, 660, 105), "再次深潜", new Color(.10f, .60f, .49f))) StartDepth();
                 if (Button(new Rect(210, 1110, 660, 100), "返回大厅", new Color(.17f, .25f, .34f))) BackToMenu();
             }

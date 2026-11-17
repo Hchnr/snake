@@ -16,6 +16,58 @@ namespace SnakeClub.Core
                 Math.Min(2, Math.Max(0, rebound)) * 3 + " 秒 · 淘汰增长 " + Math.Min(2, Math.Max(0, growth)) * 3 + " 节";
         }
 
+        public enum RoomStatus { InProgress, Won, Lost }
+
+        public static string BonusChoice(int choice, int shield, int rebound, int growth)
+        {
+            int current;
+            switch (choice)
+            {
+                case 0:
+                    current = Math.Min(2, Math.Max(0, shield));
+                    return "收圈护盾 " + current * 2 + " → " + Math.Min(2, current + 1) * 2 + " 秒 · 捕获后生效";
+                case 1:
+                    current = Math.Min(2, Math.Max(0, rebound));
+                    return "反弹免费加速 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 秒";
+                case 2:
+                    current = Math.Min(2, Math.Max(0, growth));
+                    return "淘汰额外增长 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 节";
+                default: return "";
+            }
+        }
+
+        public static RoomStatus Evaluate(int room, ArenaState world, string playerId)
+        {
+            if (world == null || room < 1 || room > RoomCount || string.IsNullOrEmpty(playerId)) return RoomStatus.InProgress;
+            var player = world.snakes.Find(s => s.id == playerId);
+            if (player == null) return RoomStatus.InProgress;
+            if (!player.alive) return RoomStatus.Lost;
+            if (GoalReached(room, world, playerId)) return RoomStatus.Won;
+            if (room == 3)
+            {
+                var boss = world.snakes.Find(s => s.id == "bot-0");
+                if (boss != null && !boss.alive) return RoomStatus.Lost;
+            }
+            return world.phase == "ended" ? RoomStatus.Lost : RoomStatus.InProgress;
+        }
+
+        public static string FailureReason(int room, ArenaState world, string playerId)
+        {
+            if (Evaluate(room, world, playerId) != RoomStatus.Lost) return "";
+            var player = world.snakes.Find(s => s.id == playerId);
+            if (player != null && !player.alive)
+            {
+                string reason = MatchOutcome.Explain(world, playerId);
+                return string.IsNullOrEmpty(reason) ? "你已出局，房间目标未完成" : reason + "，房间目标未完成";
+            }
+            if (room == 3)
+            {
+                var boss = world.snakes.Find(s => s.id == "bot-0");
+                if (boss != null && !boss.alive && boss.eliminatedBy != playerId) return "首领被其他对手击败，目标未完成";
+            }
+            return world.remaining <= 0 ? "时间到，房间目标未完成" : "房间结束，目标未完成";
+        }
+
         public static bool GoalReached(int room, ArenaState world, string playerId)
         {
             if (world == null || room < 1 || room > RoomCount) return false;

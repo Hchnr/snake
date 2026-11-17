@@ -326,7 +326,8 @@ namespace SnakeClub
                     if (inGame) arena.SetInput(playerId, direction, pointerBoost);
                     arena.Tick(.05f);
                     if (inGame) matchHighlights.Observe(arena.State, playerId);
-                    if (inGame && depthMode && arena.State.phase == "running" && DepthGoalReached(arena.State)) arena.EndRound();
+                    if (inGame && depthMode && arena.State.phase == "running" &&
+                        DepthChallenge.Evaluate(depthRoom, arena.State, playerId) != DepthChallenge.RoomStatus.InProgress) arena.EndRound();
                     stepTimer -= .05f;
                 }
                 if (!inGame && arena.State.phase == "ended") Demo();
