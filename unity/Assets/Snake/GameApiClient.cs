@@ -19,6 +19,10 @@ namespace SnakeClub
         public string rewardedAdUnitId = "";
         public bool allowDevLogin;
         public bool allowReferenceSkinPreview;
+        public bool experimentalFixedPve;
+        // Preview is allowed only in a deliberately isolated offline build.
+        public bool FixedPvePreview => experimentalFixedPve && !allowDevLogin &&
+            string.IsNullOrWhiteSpace(apiUrl) && string.IsNullOrWhiteSpace(serverUrl);
     }
 
     [Serializable] public sealed class LeaderboardRow

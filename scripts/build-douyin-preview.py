@@ -16,6 +16,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--appid', required=True, help='Douyin mini-game AppID')
 parser.add_argument('--output', required=True, help='new TTSDK build output directory')
 parser.add_argument('--include-reference-skins', action='store_true', help='include local reference art for internal testing only')
+parser.add_argument('--fixed-pve-preview', action='store_true', help='enable experimental integer PvE in this offline preview')
 args = parser.parse_args()
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
 output = Path(args.output).expanduser().resolve()
@@ -45,7 +46,7 @@ with tempfile.TemporaryDirectory(prefix='snake-douyin-preview-') as directory:
         sys.exit(f'Cannot configure Douyin SDK in the isolated project: {error}')
     config_path = project / 'Assets/Resources/GameConfig.json'
     config = json.loads(config_path.read_text())
-    config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=args.include_reference_skins)
+    config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=args.include_reference_skins, experimentalFixedPve=args.fixed_pve_preview)
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     shutil.copy2(root / 'scripts/DouyinPreviewBuild.cs', project / 'Assets/Snake/Editor/DouyinPreviewBuild.cs')
     log = Path(directory) / 'build.log'

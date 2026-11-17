@@ -16,6 +16,13 @@ namespace SnakeClub.Tests.Editor
             var owner = new GameObject("Client regression test");
             try
             {
+                var config = new GameConfiguration { experimentalFixedPve = true, serverUrl = "", apiUrl = "", allowDevLogin = false };
+                Require(config.FixedPvePreview, "offline preview gate rejected isolated configuration");
+                config.apiUrl = "https://example.invalid"; Require(!config.FixedPvePreview, "preview allowed API backend");
+                config.apiUrl = ""; config.serverUrl = "wss://example.invalid"; Require(!config.FixedPvePreview, "preview allowed room backend");
+                config.serverUrl = ""; config.allowDevLogin = true; Require(!config.FixedPvePreview, "preview allowed developer authentication");
+                config.allowDevLogin = false; config.experimentalFixedPve = false; Require(!config.FixedPvePreview, "preview enabled without explicit flag");
+                Debug.Log("PASS Unity fixed PvE preview requires explicit offline configuration");
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");

@@ -52,13 +52,15 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
     def tearDown(self):
         self.temp.cleanup()
 
-    def build(self, include_reference=False):
+    def build(self, include_reference=False, fixed_pve=False):
         capture = self.root / 'capture.json'
         output = self.root / ('internal' if include_reference else 'normal')
         command = [sys.executable, str(self.root / 'scripts/build-douyin-preview.py'),
                    '--appid', 'test-appid', '--output', str(output)]
         if include_reference:
             command.append('--include-reference-skins')
+        if fixed_pve:
+            command.append('--fixed-pve-preview')
         env = {**os.environ, 'UNITY_EDITOR': str(self.editor), 'SNAKE_TEST_CAPTURE': str(capture)}
         completed = subprocess.run(command, capture_output=True, text=True, env=env)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
@@ -71,10 +73,19 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
         self.assertEqual(result['config']['apiUrl'], '')
         self.assertEqual(result['config']['serverUrl'], '')
         self.assertFalse(result['config']['allowDevLogin'])
+        self.assertFalse(result['config']['experimentalFixedPve'])
         self.assertFalse(result['config']['allowReferenceSkinPreview'])
         self.assertFalse(result['referencePresent'])
         self.assertEqual(result['referenceOptIn'], '0')
         self.assertIn('scriptingDefineSymbols: {}', (self.root / 'unity/ProjectSettings/ProjectSettings.asset').read_text())
+
+    def test_fixed_pve_preview_is_explicit_and_offline(self):
+        result = self.build(fixed_pve=True)
+        self.assertTrue(result['config']['experimentalFixedPve'])
+        self.assertEqual(result['config']['apiUrl'], '')
+        self.assertEqual(result['config']['serverUrl'], '')
+        self.assertFalse(result['config']['allowDevLogin'])
+        self.assertFalse(result['referencePresent'])
 
     def test_reference_art_requires_explicit_internal_opt_in(self):
         result = self.build(include_reference=True)
