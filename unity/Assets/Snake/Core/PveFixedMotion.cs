@@ -26,6 +26,7 @@ namespace SnakeClub.Core
         public int Length => segments.Count;
         public int ReboundTicks { get; private set; }
         public int ReboundCooldown { get; private set; }
+        public bool Boosting { get; private set; }
         private long boostDebt;
         public PveFixedMotion(int x, int y, int angle, int length)
         {
@@ -93,6 +94,7 @@ namespace SnakeClub.Core
             int delta = ((target * 256 - Angle + 98304) & 65535) - 32768;
             Angle = (Angle + Clamp(delta, -turn, turn)) & 65535;
             bool boosting = boost && Length > MinimumLength;
+            Boosting = boosting;
             int distance = boosting ? 495 : ReboundTicks > 0 ? 345 : 300;
             int x = X + Sin(Angle + 16384) * distance / 10000;
             int y = Y + Sin(Angle) * distance / 10000;

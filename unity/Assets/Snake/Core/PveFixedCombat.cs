@@ -27,6 +27,9 @@ namespace SnakeClub.Core
         internal readonly int[] killer;
         internal readonly string[] reason;
         internal readonly CaptureLoop[] loops;
+        internal string captureOwner = "";
+        internal int captureCount;
+        internal readonly List<CapturePoint> capturePolygon = new List<CapturePoint>(Arena.MaximumLength + 1);
         public PveFixedCombatWorkspace(int fighterCount)
         {
             if (fighterCount < 0) throw new ArgumentOutOfRangeException(nameof(fighterCount));
@@ -76,6 +79,7 @@ namespace SnakeClub.Core
                 if (fighters[i] == null) throw new ArgumentException("Fighters must have unique IDs", nameof(fighters));
                 for (int j = 0; j < i; j++) if (fighters[j].id == fighters[i].id) throw new ArgumentException("Fighters must have unique IDs", nameof(fighters));
             }
+            workspace.captureOwner = ""; workspace.captureCount = 0; workspace.capturePolygon.Clear();
             var killer = workspace.killer; var reason = workspace.reason; var loops = workspace.loops;
             for (int i = 0; i < killer.Length; i++) { killer[i] = -2; reason[i] = null; loops[i] = null; }
             for (int i = 0; i < fighters.Length; i++)
@@ -120,6 +124,15 @@ namespace SnakeClub.Core
                         (loops[owner].doubleArea == loops[previous].doubleArea && string.CompareOrdinal(fighters[owner].id, fighters[previous].id) < 0))
                     { killer[victim] = owner; reason[victim] = "capture"; }
                 }
+            }
+            int shown = -1;
+            for (int i = 0; i < loops.Length; i++)
+                if (loops[i] != null && (shown < 0 || fighters[i].id == "you")) { shown = i; if (fighters[i].id == "you") break; }
+            if (shown >= 0)
+            {
+                workspace.captureOwner = fighters[shown].id;
+                workspace.capturePolygon.AddRange(loops[shown].polygon);
+                for (int i = 0; i < killer.Length; i++) if (killer[i] == shown) workspace.captureCount++;
             }
             Apply(fighters, killer, reason);
             Array.Clear(loops, 0, loops.Length);
