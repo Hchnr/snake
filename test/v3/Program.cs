@@ -24,6 +24,7 @@ if (args.Length >= 2 && args[0] == "replay")
 
 var cases = new (string name, Action run)[]
 {
+    ("incoming friend challenges deduplicate, retry and reject stale replies", IncomingFriendCases),
     ("Douyin login handles valid, malformed and unavailable upstream responses", DouyinExchangeCases),
     ("first seven active days grow linearly and later growth slows", GrowthCurve),
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
@@ -100,6 +101,26 @@ static void DouyinExchangeCases()
     var failed = new FakeHttpHandler((_, _) => Task.FromException<HttpResponseMessage>(new HttpRequestException("secret do-not-leak")));
     result = new DouyinSessionExchange(new HttpClient(failed)).Exchange("app", "do-not-leak", "code", null).GetAwaiter().GetResult();
     Check(result.Status == 503 && !result.Error.Contains("do-not-leak"), "network exception exposed credentials or did not degrade gracefully");
+}
+
+static void IncomingFriendCases()
+{
+    var incoming = new IncomingFriendChallenge();
+    incoming.Offer(""); incoming.Offer(new string('x', 257));
+    Check(!incoming.Pending, "invalid link was queued");
+    incoming.Offer("first");
+    Check(incoming.Begin(0, out var first, out var oldVersion) && first == "first", "first link was not queued");
+    incoming.Offer("first");
+    Check(!incoming.Begin(0, out _, out _), "duplicate link started a second request");
+    incoming.Offer("second");
+    Check(incoming.Begin(0, out var second, out var newVersion) && second == "second", "new link did not replace old link");
+    Check(!incoming.Complete(oldVersion, false, 0), "stale response was accepted");
+    Check(incoming.Complete(newVersion, true, 0), "retryable response was ignored");
+    Check(!incoming.Begin(1, out _, out _), "retry occurred too early");
+    Check(incoming.Begin(2, out _, out var retryVersion), "retry backoff failed");
+    Check(incoming.Complete(retryVersion, false, 2) && !incoming.Pending, "finished challenge remained pending");
+    incoming.Offer("second");
+    Check(incoming.Begin(2, out _, out _), "a later invocation of the same link was ignored");
 }
 
 static void PendingRetries()

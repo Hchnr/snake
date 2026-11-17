@@ -23,7 +23,7 @@ namespace SnakeClub
         private HomeAvatar homeAvatar;
         private HomeScreen homeScreen;
         private string frontPage = "home", frontNotice = "", resultNote = "", lastRewardId = "", lastRewardKind = "", activePlayerId = "", friendDate = "";
-        private bool busy, resultRecorded, flushing, adShowing, connecting, launchChallengeHandled, verifiedDaily;
+        private bool busy, resultRecorded, flushing, adShowing, connecting, verifiedDaily;
         private int friendScore, activeFriendScore = -1;
         private string friendRules = "", activeFriendDate = "", activeFriendRules = "", verifiedShareToken = "";
         private int verifiedShareScore;
@@ -34,6 +34,8 @@ namespace SnakeClub
         private ApiReply board;
         private const string PendingKey = "snake.v3.pending";
         private readonly PendingRetrySchedule pendingRetry = new PendingRetrySchedule();
+        private readonly IncomingFriendChallenge incomingFriend = new IncomingFriendChallenge();
+        private int observedChallengeRevision;
         private float nextPendingPoll;
         private PlayerProgress CurrentProfile => api != null && api.Connected ? api.Profile : practiceProfile;
         private bool ReferencePreviewEnabled => api != null && api.Config.allowReferenceSkinPreview && SkinVisual.ReferenceAvailable;
@@ -127,20 +129,6 @@ namespace SnakeClub
                 if (reply.ok)
                 {
                     pendingRetry.Reset();
-                    if (!launchChallengeHandled && !string.IsNullOrEmpty(api.LaunchChallengeToken))
-                    {
-                        launchChallengeHandled = true;
-                        string token = api.LaunchChallengeToken;
-                        api.Get("challenge/shared?token=" + Uri.EscapeDataString(token), shared =>
-                        {
-                            if (shared.ok && shared.date == api.Date && shared.rules == DailyMatch.RulesVersion)
-                            {
-                                friendDate = shared.date; friendRules = shared.rules; friendScore = shared.score;
-                                frontNotice = "好友今日挑战 " + friendScore + " 分 · 点击接受挑战";
-                            }
-                            else frontNotice = "好友挑战无效、已过期或暂时无法验证";
-                        });
-                    }
                     FlushPending();
                 }
                 else pendingRetry.Fail(Time.unscaledTime);
@@ -293,6 +281,35 @@ namespace SnakeClub
         {
             PlayerPrefs.SetString(PendingKey, JsonUtility.ToJson(data));
             PlayerPrefs.Save();
+        }
+
+        private void PumpIncomingFriend()
+        {
+            if (api.ChallengeRevision != observedChallengeRevision)
+            {
+                observedChallengeRevision = api.ChallengeRevision;
+                incomingFriend.Offer(api.LaunchChallengeToken);
+            }
+            if (!incomingFriend.Pending || !appFocused || appPaused || adShowing || connecting || busy ||
+                (inGame && state != null && state.phase == "running")) return;
+            if (!incomingFriend.Begin(Time.unscaledTime, out string token, out int version)) return;
+            if (!api.Connected)
+            {
+                incomingFriend.Complete(version, true, Time.unscaledTime);
+                ConnectProfile();
+                return;
+            }
+            api.Get("challenge/shared?token=" + Uri.EscapeDataString(token), shared =>
+            {
+                bool retryable = !shared.ok && (shared.httpStatus == 0 || shared.httpStatus == 401 || shared.httpStatus == 429 || shared.httpStatus >= 500);
+                if (!incomingFriend.Complete(version, retryable, Time.unscaledTime)) return;
+                if (shared.ok && shared.date == api.Date && shared.rules == DailyMatch.RulesVersion)
+                {
+                    friendDate = shared.date; friendRules = shared.rules; friendScore = shared.score;
+                    frontNotice = "好友今日挑战 " + friendScore + " 分 · 点击接受挑战";
+                }
+                else frontNotice = retryable ? "好友挑战暂时无法验证，将自动重试" : "好友挑战无效或已过期";
+            });
         }
 
         private void PumpPending()

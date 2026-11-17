@@ -4,6 +4,35 @@ using System.Collections.Generic;
 
 namespace SnakeClub.Core
 {
+    // Keeps the newest incoming link and rejects callbacks from older requests.
+    public sealed class IncomingFriendChallenge
+    {
+        private string token = "";
+        private int generation;
+        private bool inFlight;
+        private readonly PendingRetrySchedule retry = new PendingRetrySchedule();
+        public bool Pending => token.Length != 0;
+        public void Offer(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length > 256 || value == token) return;
+            token = value; generation++; inFlight = false; retry.Reset();
+        }
+        public bool Begin(double now, out string value, out int version)
+        {
+            value = token; version = generation;
+            if (!Pending || inFlight || !retry.Due(now)) return false;
+            inFlight = true; return true;
+        }
+        public bool Complete(int version, bool retryable, double now)
+        {
+            if (version != generation || !inFlight) return false;
+            inFlight = false;
+            if (retryable) retry.Fail(now);
+            else { token = ""; retry.Reset(); }
+            return true;
+        }
+    }
+
     public static class FriendChallengeComparison
     {
         public static string Format(int score, int target)
