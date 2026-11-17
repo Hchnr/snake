@@ -1054,6 +1054,7 @@ static void EventTargetIndicatorCases()
     var world = new ArenaState { phase = "running", eventStatus = "active", eventKind = "bounty", eventTarget = "bot" };
     var bot = new SnakeState { id = "bot", segments = new List<Point> { new(12, -4) } }; world.snakes.Add(bot);
     Check(EventTargetIndicator.TryTarget(world, "you", out var target, out var name) && target.x == 12 && target.y == -4 && name == "悬赏", "bounty target not shown");
+    Check(!EventTargetIndicator.TryTarget(world, "bot", out _, out _), "player was directed toward their own bounty");
     bot.boss = true;
     Check(EventTargetIndicator.TryTarget(world, "you", out _, out name) && name == "首领", "boss not distinguished");
     bot.alive = false;

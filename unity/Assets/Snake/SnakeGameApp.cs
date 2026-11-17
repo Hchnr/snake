@@ -793,17 +793,21 @@ namespace SnakeClub
         {
             box = default;
             if (!EventTargetIndicator.TryTarget(world, playerId, out var target, out string name)) return false;
-            Vector3 screen = arenaRenderer.WorldToScreen(target);
-            if (screen.z <= 0) return false;
+            var player = world.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive || player.segments == null || player.segments.Count == 0) return false;
+            Vector3 screen = arenaRenderer.HeadToScreen(target);
+            Vector3 playerScreen = arenaRenderer.HeadToScreen(player.segments[0]);
+            if (screen.z <= 0 || playerScreen.z <= 0) return false;
             Vector2 projected = ToVirtual(screen);
             if (!EventTargetIndicator.TryEdge(new Point(projected.x, projected.y), 110, 410, 970, 1450, out var edge)) return false;
-            // Keep the marker clear of the minimap in the upper right.
-            if (edge.x > 760 && edge.y < 545) edge.y = 545;
-            box = new Rect(Mathf.Clamp(edge.x - 65, 30, 920), Mathf.Clamp(edge.y - 27, 250, 1550), 130, 54);
+            Vector2 direction = projected - ToVirtual(playerScreen);
+            if (direction.sqrMagnitude < .01f) return false;
+            Point origin = OpponentEdgeIndicator.BoxOrigin(edge);
+            box = new Rect(origin.x, origin.y, 140, 54);
+            foreach (var entry in nameplateEntries) if (box.Overlaps(entry.box)) { box = default; return false; }
             Panel(box, new Color(.15f, .11f, .06f, .88f));
-            Color previous = GUI.color; GUI.color = new Color(1f, .82f, .35f);
-            GUI.DrawTexture(new Rect(box.x + 13, box.y + 21, 12, 12), rounded); GUI.color = previous;
-            Label(new Rect(box.x + 20, box.y, box.width - 20, box.height), name, 22, new Color(1f, .88f, .55f), TextAnchor.MiddleCenter, true);
+            DrawEdgeArrow(box, direction, new Color(1f, .88f, .55f));
+            Label(new Rect(box.x + 48, box.y, box.width - 48, box.height), name, 22, new Color(1f, .88f, .55f), TextAnchor.MiddleCenter, true);
             return true;
         }
 
@@ -840,12 +844,17 @@ namespace SnakeClub
             opponentEdgeId = selected.id;
             Panel(selectedBox, new Color(.035f, .085f, .12f, .90f));
             Color color = Color.Lerp(arenaRenderer.TrailColor(selected, playerId), Color.white, .55f);
-            Vector2 tip = new Vector2(selectedBox.x + 30, selectedBox.center.y);
-            Vector2 direction = selectedDirection.normalized, side = new Vector2(-direction.y, direction.x);
-            DrawEdgeLine(tip - direction * 18 + side * 11, tip, color);
-            DrawEdgeLine(tip - direction * 18 - side * 11, tip, color);
+            DrawEdgeArrow(selectedBox, selectedDirection, color);
             Label(new Rect(selectedBox.x + 48, selectedBox.y, selectedBox.width - 48, selectedBox.height),
                 selected.bot ? "AI" : "玩家", 22, Color.white, TextAnchor.MiddleCenter, true);
+        }
+
+        private void DrawEdgeArrow(Rect box, Vector2 heading, Color color)
+        {
+            Vector2 tip = new Vector2(box.x + 30, box.center.y);
+            Vector2 direction = heading.normalized, side = new Vector2(-direction.y, direction.x);
+            DrawEdgeLine(tip - direction * 18 + side * 11, tip, color);
+            DrawEdgeLine(tip - direction * 18 - side * 11, tip, color);
         }
 
         private void DrawEdgeLine(Vector2 start, Vector2 end, Color color)

@@ -374,7 +374,7 @@ namespace SnakeClub.Core
         {
             target = default; label = "";
             if (world == null || world.phase != "running") return false;
-            if (world.eventStatus == "active" && world.eventKind == "bounty" && !string.IsNullOrEmpty(world.eventTarget))
+            if (world.eventStatus == "active" && world.eventKind == "bounty" && !string.IsNullOrEmpty(world.eventTarget) && world.eventTarget != playerId)
             {
                 var snake = world.snakes.Find(s => s.id == world.eventTarget && s.alive && s.segments.Count > 0);
                 if (snake == null) return false;
