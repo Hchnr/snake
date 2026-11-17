@@ -57,6 +57,7 @@ namespace SnakeClub
         private Mesh cylinder;
         private Mesh cone;
         private Mesh captureSweepMesh;
+        private Color32 captureSweepColor = new Color32(255, 239, 146, 0);
         private MeshRenderer captureSweepRenderer;
         private readonly List<float> sweepIntersections = new List<float>();
         private readonly List<Vector3> sweepVertices = new List<Vector3>();
@@ -384,6 +385,11 @@ namespace SnakeClub
             if (state.captureTick >= 0 && state.captureTick != shownCaptureTick && state.capturePolygon != null && state.capturePolygon.Count > 2)
             {
                 shownCaptureTick = state.captureTick; captureStarted = visualClock.Time;
+                var captureOwner = state.snakes.Find(s => s.id == state.captureOwner);
+                Color captureColor = captureOwner == null ? new Color(1f, .94f, .60f) : Color.Lerp(TrailColor(captureOwner, playerId), Color.white, .35f);
+                captureOutline.startColor = captureOutline.endColor = captureColor;
+                captureFlare.startColor = captureFlare.endColor = captureColor;
+                captureSweepColor = (Color32)captureColor;
                 BuildCaptureSweep(state.capturePolygon, state.captureCount > 0);
                 captureOutline.positionCount = state.capturePolygon.Count;
                 for (int i = 0; i < state.capturePolygon.Count; i++)
@@ -658,7 +664,7 @@ namespace SnakeClub
                     sweepVertices.Add(new Vector3(right, .025f, z - halfWidth));
                     sweepTriangles.Add(start); sweepTriangles.Add(start + 1); sweepTriangles.Add(start + 2);
                     sweepTriangles.Add(start); sweepTriangles.Add(start + 2); sweepTriangles.Add(start + 3);
-                    for (int v = 0; v < 4; v++) { sweepRows.Add((row + .5f) / bands); sweepColors.Add(new Color32(255, 239, 146, 0)); }
+                    for (int v = 0; v < 4; v++) { sweepRows.Add((row + .5f) / bands); sweepColors.Add(new Color32(captureSweepColor.r, captureSweepColor.g, captureSweepColor.b, 0)); }
                 }
             }
             captureSweepMesh.SetVertices(sweepVertices); captureSweepMesh.SetTriangles(sweepTriangles, 0);
@@ -671,7 +677,7 @@ namespace SnakeClub
             for (int i = 0; i < sweepRows.Count; i++)
             {
                 float intensity = Mathf.Clamp01(1f - Mathf.Abs(sweepRows[i] - wave) / .24f);
-                sweepColors[i] = new Color32(255, 239, 146, (byte)(intensity * 105f));
+                sweepColors[i] = new Color32(captureSweepColor.r, captureSweepColor.g, captureSweepColor.b, (byte)(intensity * 105f));
             }
             captureSweepMesh.SetColors(sweepColors);
         }

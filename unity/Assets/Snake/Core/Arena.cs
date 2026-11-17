@@ -545,6 +545,20 @@ namespace SnakeClub.Core
 
     // Presentation summary sampled from resolved simulation ticks. It never
     // affects scores, rewards, collisions or replay verification.
+    public static class CaptureNotice
+    {
+        public static string Text(ArenaState state, string playerId, bool opponentVisible)
+        {
+            if (state == null || state.phase != "running" || state.captureTick < 0 ||
+                state.tick < state.captureTick || state.tick - state.captureTick >= 12 || string.IsNullOrEmpty(state.captureOwner)) return "";
+            if (state.captureOwner == playerId)
+                return state.captureCount > 0 ? "收圈捕获 " + state.captureCount + " 个对手！" : "轨迹闭合！";
+            if (!opponentVisible || state.captureCount <= 0) return "";
+            var owner = state.snakes.Find(s => s.id == state.captureOwner);
+            return owner == null ? "" : (owner.bot ? "AI" : "玩家") + " 收圈捕获 " + state.captureCount + " 个对手";
+        }
+    }
+
     public sealed class MatchHighlights
     {
         public int PeakLength { get; private set; }

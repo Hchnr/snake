@@ -102,6 +102,7 @@ var cases = new (string name, Action run)[]
     ("integer PvE events respect real outcomes and timing", PveFixedEventsCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
+    ("capture notices identify the actual visible owner and count", CaptureNoticeCases),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
     ("nearby off-screen opponent indicators use real actors and safe placement", OpponentEdgeCases),
     ("nameplates avoid overlap, anchors and the minimap", NameplateCases),
@@ -1055,6 +1056,24 @@ static void OpponentEdgeCases()
     Check(safe.x + 140 <= 1050 && safe.y >= 656 && safe.y + 54 <= 1504, "upper-right indicator obscured HUD or tutorial");
     safe = OpponentEdgeIndicator.BoxOrigin(new Point(110, 580));
     Check(safe.y >= 656, "side indicator covered tutorial panel");
+}
+
+static void CaptureNoticeCases()
+{
+    var world = new ArenaState { phase = "running", tick = 100, captureTick = 100, captureOwner = "you", captureCount = 0 };
+    world.snakes.Add(new SnakeState { id = "you" });
+    var bot = new SnakeState { id = "bot", bot = true }; world.snakes.Add(bot);
+    Check(CaptureNotice.Text(world, "you", false) == "轨迹闭合！", "empty own loop gave a capture notice");
+    world.captureCount = 2;
+    Check(CaptureNotice.Text(world, "you", false).Contains("2"), "own capture count missing");
+    world.captureOwner = "bot";
+    Check(CaptureNotice.Text(world, "you", true).StartsWith("AI") && CaptureNotice.Text(world, "you", false) == "", "bot ownership or visibility incorrect");
+    bot.bot = false; Check(CaptureNotice.Text(world, "you", true).StartsWith("玩家"), "human capture attributed to AI");
+    world.captureCount = 0; Check(CaptureNotice.Text(world, "you", true) == "", "empty opponent loop announced a capture");
+    world.captureCount = 1; world.captureOwner = "missing"; Check(CaptureNotice.Text(world, "you", true) == "", "unknown owner announced");
+    world.captureOwner = "you"; world.tick = 99; Check(CaptureNotice.Text(world, "you", true) == "", "future capture announced");
+    world.tick = 112; Check(CaptureNotice.Text(world, "you", true) == "", "expired capture announced");
+    world.tick = 100; world.phase = "ended"; Check(CaptureNotice.Text(world, "you", true) == "", "ended match announced capture");
 }
 
 static void EventTargetIndicatorCases()
