@@ -30,6 +30,7 @@ namespace SnakeClub
     [Serializable] public sealed class ApiReply
     {
         public bool ok, verified, adEnabled;
+        [NonSerialized] public long httpStatus;
         public string error = "", session = "", runId = "", token = "", date = "", rules = "", id = "", shareToken = "";
         public int seed, score, rank, total, gap, coins, baseCoins, experience, fragments, questCoins, questExperience;
         public int trialSkin = -1, unlockedSkin = -1;
@@ -55,10 +56,12 @@ namespace SnakeClub
         public long ServerTime { get; private set; }
         public float ServerTimeReceivedAt { get; private set; }
         public string LaunchChallengeToken { get; private set; } = "";
+        public int ChallengeRevision { get; private set; }
         private string session = "";
         private bool reachable;
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
         private bool platformReady;
+        private TTAppLifeCycle lifecycle;
 #endif
 
         public void Configure(GameConfiguration config) { if (config != null) Config = config; }
@@ -78,8 +81,14 @@ namespace SnakeClub
                     platformReady = true;
                     try
                     {
+                        lifecycle = TT.GetAppLifeCycle();
+                        if (lifecycle != null) lifecycle.OnShow += OnPlatformShow;
+                    }
+                    catch (Exception) { /* Cold launch still works without lifecycle callbacks. */ }
+                    try
+                    {
                         var launch = TT.GetLaunchOptionsSync();
-                        if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("challenge", out var token)) LaunchChallengeToken = token ?? "";
+                        if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("challenge", out var token)) AcceptChallenge(token);
                     }
                     catch (Exception) { /* Login can proceed without a share query. */ }
                     LoginDouyin(done);
@@ -102,6 +111,33 @@ namespace SnakeClub
         }
 
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+        private void AcceptChallenge(string token)
+        {
+            if (string.IsNullOrEmpty(token) || token.Length > 256) return;
+            LaunchChallengeToken = token;
+            ChallengeRevision++;
+        }
+
+        private void OnPlatformShow(Dictionary<string, object> data)
+        {
+            try
+            {
+                if (data == null || !data.TryGetValue("query", out var query) || query == null) return;
+                if (query is IDictionary<string, object> objects && objects.TryGetValue("challenge", out var value))
+                    AcceptChallenge(value as string);
+                else if (query is IDictionary<string, string> strings && strings.TryGetValue("challenge", out var token))
+                    AcceptChallenge(token);
+                else if (query is JsonData json && json.IsObject && json.Keys.Contains("challenge"))
+                    AcceptChallenge(json["challenge"].ToString());
+            }
+            catch (Exception) { /* Ignore malformed platform parameters. */ }
+        }
+
+        private void OnDestroy()
+        {
+            if (lifecycle != null) lifecycle.OnShow -= OnPlatformShow;
+        }
+
         private IEnumerator InitTimeout(Func<bool> resolved, Action timeout)
         {
             yield return new WaitForSecondsRealtime(10f);
@@ -147,6 +183,7 @@ namespace SnakeClub
                 if (!string.IsNullOrEmpty(request.downloadHandler.text))
                     try { reply = JsonUtility.FromJson<ApiReply>(request.downloadHandler.text); } catch (Exception) { }
                 if (reply == null) reply = new ApiReply { error = "网络不可用，当前为离线练习" };
+                reply.httpStatus = request.responseCode;
                 if (!reply.ok && string.IsNullOrEmpty(reply.error)) reply.error = "网络请求失败";
                 if (request.responseCode == 401) { session = ""; Profile = null; reachable = false; }
                 Apply(reply);

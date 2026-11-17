@@ -262,6 +262,7 @@ namespace SnakeClub
 
         private void Update()
         {
+            PumpIncomingFriend();
             PumpPending();
             bool interaction = Input.anyKeyDown || Input.GetMouseButtonDown(0);
             for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
