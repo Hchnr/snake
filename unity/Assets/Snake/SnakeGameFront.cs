@@ -252,7 +252,7 @@ namespace SnakeClub
             connection.Close(); online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
-            state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
+            state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset();
             activeRun = run; resultRecorded = false; dailyInputs.Clear();
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;

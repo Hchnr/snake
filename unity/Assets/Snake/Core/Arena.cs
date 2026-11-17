@@ -118,6 +118,36 @@ namespace SnakeClub.Core
         }
     }
 
+    // Records only a witnessed active-to-ended event. This is presentation
+    // state, separate from scoring and from the deterministic replay.
+    public sealed class EventOutcomeNotice
+    {
+        private bool active;
+        private string kind = "", notice = "";
+        private int untilTick = -1;
+        public void Reset() { active = false; kind = ""; notice = ""; untilTick = -1; }
+        public void Observe(ArenaState world, string playerId)
+        {
+            if (world == null) return;
+            if (world.eventStatus == "active")
+            {
+                if (world.eventKind == "bounty" || world.eventKind == "star" || world.eventKind == "fruit")
+                { active = true; kind = world.eventKind; }
+                return;
+            }
+            if (!active || world.eventStatus != "ended") return;
+            active = false;
+            var player = world.snakes.Find(s => s.id == playerId);
+            if (player == null) return;
+            int points = Math.Max(0, player.starPoints);
+            string name = kind == "bounty" ? "巨蛇悬赏" : kind == "star" ? "星核争夺" : "果潮混战";
+            notice = name + (points > 0 ? "结束 · 获得 " + points + " 事件点" : "结束 · 本次未得事件点");
+            untilTick = world.tick + 60;
+        }
+        public string Current(ArenaState world)
+            => world != null && world.phase == "running" && world.tick < untilTick ? notice : "";
+    }
+
     // Presentation-only transition: only a previously displayed living
     // character can produce an exit; resets prevent events leaking between matches.
     public sealed class EliminationTransition
