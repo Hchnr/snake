@@ -32,6 +32,7 @@ namespace SnakeClub.Core
         public int EventTicksRemaining => eventActive ? Math.Max(0, 800 - Tick) : 0;
         private readonly PveFixedBonuses playerBonuses;
         private readonly PveFixedFighter[] fighters = new PveFixedFighter[8];
+        private readonly PveFixedCombatWorkspace combatWorkspace = new PveFixedCombatWorkspace(8);
         private readonly int[] botTimer = new int[8];
         private readonly byte[] botDirection = new byte[8];
         private readonly bool[] botBoost = new bool[8];
@@ -90,8 +91,9 @@ namespace SnakeClub.Core
         internal static void AccumulateTrailAvoidance(PveFixedFighter self, IReadOnlyList<PveFixedFighter> opponents, ref long vx, ref long vy)
         {
             if (self == null || !self.alive || self.shieldTicks > 0) return;
-            foreach (var other in opponents)
+            for (int i = 0; i < opponents.Count; i++)
             {
+                var other = opponents[i];
                 if (other == null || other == self || !other.alive || other.shieldTicks > 0) continue;
                 for (int part = 2; part < other.motion.Length; part += 2)
                 {
@@ -233,7 +235,7 @@ namespace SnakeClub.Core
                 fighter.motion.Step(i == 0 ? heading : BotHeading(i), i == 0 ? boost : botBoost[i],
                     i == 0 ? playerBonuses : new PveFixedBonuses());
             }
-            PveFixedCombat.Resolve(fighters);
+            PveFixedCombat.Resolve(fighters, combatWorkspace);
             if (eventActive)
                 for (int i = 0; i < fighters.Length; i++)
                     if (previouslyAlive[i] && !fighters[i].alive && fighters[i].credited)

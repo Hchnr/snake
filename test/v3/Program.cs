@@ -73,6 +73,7 @@ var cases = new (string name, Action run)[]
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
     ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
+    ("integer combat workspace does not leak prior outcomes", PveFixedCombatWorkspaceCases),
     ("integer PvE world replays AI and fruit deterministically", PveFixedWorldCases),
     ("integer PvE bots avoid real dangerous trails", PveBotAvoidanceCases),
     ("integer PvE events respect real outcomes and timing", PveFixedEventsCases),
@@ -994,6 +995,23 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveFixedCombatWorkspaceCases()
+{
+    var workspace = new PveFixedCombatWorkspace(2);
+    var first = new[] { new PveFixedFighter("a", new PveFixedMotion(0, 0, 0, 10)), new PveFixedFighter("b", new PveFixedMotion(0, 0, 0, 10)) };
+    PveFixedCombat.Resolve(first, workspace);
+    Check(!first[0].alive && !first[1].alive, "setup did not produce deaths");
+    var second = new[] { new PveFixedFighter("a", new PveFixedMotion(-30000, 0, 0, 10)), new PveFixedFighter("b", new PveFixedMotion(30000, 0, 0, 10)) };
+    PveFixedCombat.Resolve(second, workspace);
+    Check(second[0].alive && second[1].alive && second[0].kills == 0 && second[1].kills == 0, "workspace retained deaths");
+    bool rejected = false;
+    try { PveFixedCombat.Resolve(second, new PveFixedCombatWorkspace(1)); } catch (ArgumentException) { rejected = true; }
+    Check(rejected, "wrong workspace size accepted");
+    rejected = false;
+    try { PveFixedCombat.Resolve(new[] { second[0], second[0] }, workspace); } catch (ArgumentException) { rejected = true; }
+    Check(rejected, "duplicate fighter IDs accepted");
 }
 
 static void PveBotAvoidanceCases()

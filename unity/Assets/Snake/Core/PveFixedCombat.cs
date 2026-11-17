@@ -21,6 +21,19 @@ namespace SnakeClub.Core
         }
     }
 
+    // Per-world scratch buffers; never share one instance across simultaneous worlds.
+    public sealed class PveFixedCombatWorkspace
+    {
+        internal readonly int[] killer;
+        internal readonly string[] reason;
+        internal readonly CaptureLoop[] loops;
+        public PveFixedCombatWorkspace(int fighterCount)
+        {
+            if (fighterCount < 0) throw new ArgumentOutOfRangeException(nameof(fighterCount));
+            killer = new int[fighterCount]; reason = new string[fighterCount]; loops = new CaptureLoop[fighterCount];
+        }
+    }
+
     public static class PveFixedCombat
     {
         private const long HeadRadiusSquared = 1440L * 1440L;
@@ -52,11 +65,19 @@ namespace SnakeClub.Core
         public static void Resolve(PveFixedFighter[] fighters)
         {
             if (fighters == null) throw new ArgumentNullException(nameof(fighters));
-            var ids = new HashSet<string>();
-            foreach (var fighter in fighters)
-                if (fighter == null || !ids.Add(fighter.id)) throw new ArgumentException("Fighters must have unique IDs", nameof(fighters));
-            var killer = new int[fighters.Length]; var reason = new string[fighters.Length];
-            for (int i = 0; i < killer.Length; i++) killer[i] = -2;
+            Resolve(fighters, new PveFixedCombatWorkspace(fighters.Length));
+        }
+        public static void Resolve(PveFixedFighter[] fighters, PveFixedCombatWorkspace workspace)
+        {
+            if (fighters == null) throw new ArgumentNullException(nameof(fighters));
+            if (workspace == null || workspace.killer.Length != fighters.Length) throw new ArgumentException("Workspace size must match fighters", nameof(workspace));
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                if (fighters[i] == null) throw new ArgumentException("Fighters must have unique IDs", nameof(fighters));
+                for (int j = 0; j < i; j++) if (fighters[j].id == fighters[i].id) throw new ArgumentException("Fighters must have unique IDs", nameof(fighters));
+            }
+            var killer = workspace.killer; var reason = workspace.reason; var loops = workspace.loops;
+            for (int i = 0; i < killer.Length; i++) { killer[i] = -2; reason[i] = null; loops[i] = null; }
             for (int i = 0; i < fighters.Length; i++)
             {
                 var a = fighters[i]; if (!Active(a)) continue;
@@ -80,7 +101,6 @@ namespace SnakeClub.Core
                 }
             }
             Apply(fighters, killer, reason);
-            var loops = new CaptureLoop[fighters.Length];
             for (int i = 0; i < fighters.Length; i++)
             {
                 var fighter = fighters[i];
@@ -102,6 +122,7 @@ namespace SnakeClub.Core
                 }
             }
             Apply(fighters, killer, reason);
+            Array.Clear(loops, 0, loops.Length);
         }
     }
 }
