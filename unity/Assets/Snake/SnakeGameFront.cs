@@ -17,7 +17,7 @@ namespace SnakeClub
         private GameApiClient api;
         private readonly PlayerProgress practiceProfile = new PlayerProgress();
         private DailyMatch daily;
-        private readonly List<byte> dailyInputs = new List<byte>();
+        private readonly List<byte> runInputs = new List<byte>();
         private ApiReply activeRun;
         private Texture2D caveBackground;
         private HomeAvatar homeAvatar;
@@ -257,7 +257,7 @@ namespace SnakeClub
             playerId = "you"; arena = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
             state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
-            activeRun = run; resultRecorded = false; dailyInputs.Clear();
+            activeRun = run; resultRecorded = false; runInputs.Clear();
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; firstRun = !CurrentProfile.tutorialComplete;
@@ -277,7 +277,7 @@ namespace SnakeClub
             string runId = activeRun.runId;
             var pending = ReadPending();
             pending.entries.Add(new PendingChallenge { playerId = activePlayerId, runId = runId, token = activeRun.token,
-                mode = daily != null ? "daily" : "pve", rules = activeRun.rules, inputs = daily != null ? Convert.ToBase64String(dailyInputs.ToArray()) : "",
+                mode = daily != null ? "daily" : "pve", rules = activeRun.rules, inputs = daily != null || !depthMode ? Convert.ToBase64String(runInputs.ToArray()) : "",
                 score = daily != null ? daily.Score : 0, seconds = state.tick / 20, actions = controlActions });
             SavePending(pending);
             resultNote = api.Connected ? "正在结算…" : "结果已保存，联网后重试";

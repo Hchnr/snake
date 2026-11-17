@@ -63,6 +63,7 @@ var cases = new (string name, Action run)[]
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("local arena reuses collision buffers without stale outcomes", ArenaBufferReuse),
     ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
+    ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
@@ -981,6 +982,32 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveRecordingCases()
+{
+    var live = Arena.CreateStandardPve(793, false, "玩家");
+    var tape = new List<byte>();
+    for (int tick = 0; tick < 500 && live.State.phase == "running"; tick++)
+    {
+        byte heading = (byte)(tick / 75 * 40);
+        byte boost = (byte)(tick % 100 >= 80 ? 1 : 0);
+        live.SetInput("you", PveRecording.Direction(heading), boost != 0);
+        live.Tick(.05f); tape.Add(heading); tape.Add(boost);
+    }
+    Check(PveRecording.TryReplay(793, false, null, tape.ToArray(), out var replay), "valid recording rejected");
+    Check(replay.State.tick == live.State.tick && replay.State.phase == live.State.phase, "replay timeline differs");
+    for (int i = 0; i < live.State.snakes.Count; i++)
+    {
+        var a = live.State.snakes[i]; var b = replay.State.snakes[i];
+        Check(a.alive == b.alive && a.kills == b.kills && a.segments.Count == b.segments.Count, "replay outcome differs");
+        for (int j = 0; j < a.segments.Count; j++)
+            Check(a.segments[j].x == b.segments[j].x && a.segments[j].y == b.segments[j].y, "replay trajectory differs");
+    }
+    Check(!PveRecording.TryReplay(1, false, null, null, out _), "null recording accepted");
+    Check(!PveRecording.TryReplay(1, false, null, new byte[] { 1 }, out _), "partial frame accepted");
+    Check(!PveRecording.TryReplay(1, false, null, new byte[] { 1, 2 }, out _), "invalid boost accepted");
+    Check(!PveRecording.TryReplay(1, false, null, new byte[(PveRecording.MaxTicks + 1) * 2], out _), "oversized recording accepted");
 }
 
 static void PveReplayFoundation()

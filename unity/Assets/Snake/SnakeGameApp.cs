@@ -174,6 +174,7 @@ namespace SnakeClub
             direction = new Point(1, 0);
             controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
             daily = null;
+            runInputs.Clear();
             activeRun = run;
             activePlayerId = api.Profile != null ? api.Profile.playerId : "";
             lastRewardId = "";
@@ -332,7 +333,7 @@ namespace SnakeClub
                     byte heading = EncodeDirection(direction);
                     daily.Step(heading, pointerBoost);
                     matchHighlights.Observe(daily.State, playerId); ObserveTutorial(daily.State); eventOutcome.Observe(daily.State, playerId); eliminationFeedback.Observe(daily.State, playerId);
-                    dailyInputs.Add(heading); dailyInputs.Add(pointerBoost ? (byte)1 : (byte)0);
+                    runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                     stepTimer -= .05f;
                 }
                 state = daily.State;
@@ -342,7 +343,16 @@ namespace SnakeClub
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
                 while (stepTimer >= .05f)
                 {
-                    if (inGame) arena.SetInput(playerId, direction, pointerBoost);
+                    if (inGame)
+                    {
+                        if (!depthMode && arena.State.phase == "running")
+                        {
+                            byte heading = EncodeDirection(direction);
+                            arena.SetInput(playerId, PveRecording.Direction(heading), pointerBoost);
+                            runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
+                        }
+                        else arena.SetInput(playerId, direction, pointerBoost);
+                    }
                     arena.Tick(.05f);
                     if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); eliminationFeedback.Observe(arena.State, playerId); }
                     if (inGame && depthMode && arena.State.phase == "running" &&
