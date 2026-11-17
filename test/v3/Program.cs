@@ -75,6 +75,7 @@ var cases = new (string name, Action run)[]
     ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
     ("integer combat workspace does not leak prior outcomes", PveFixedCombatWorkspaceCases),
     ("integer PvE world replays AI and fruit deterministically", PveFixedWorldCases),
+    ("integer PvE render projection follows real state", PveFixedProjectionCases),
     ("integer PvE bots avoid real dangerous trails", PveBotAvoidanceCases),
     ("integer PvE events respect real outcomes and timing", PveFixedEventsCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
@@ -1032,6 +1033,28 @@ static void PveBotAvoidanceCases()
     Check(x == 0 && y == 0, "dead trail incorrectly affected bot");
 }
 
+static void PveFixedProjectionCases()
+{
+    var world = new PveFixedWorld(1, false, new PlayerProgress());
+    var comparison = new PveFixedWorld(1, false, new PlayerProgress());
+    var view = world.RenderState(); var snake = view.snakes[0]; var fruit = view.fruits[0];
+    Check(view.phase == "running" && view.snakes.Count == 8 && view.fruits.Count == Arena.FruitCount && snake.id == "you", "initial projection missing entities");
+    for (int i = 0; i < 360 && !world.Finished; i++)
+    {
+        world.Step((byte)(i * 3), i % 40 > 30); comparison.Step((byte)(i * 3), i % 40 > 30);
+        var current = world.RenderState();
+        Check(ReferenceEquals(view, current) && ReferenceEquals(snake, current.snakes[0]) && ReferenceEquals(fruit, current.fruits[0]), "projection objects were not reused");
+        Check(current.tick == world.Tick && current.eventKind == world.EventKind && current.eventStatus == world.EventStatus, "projection timeline or event differed");
+        for (int j = 0; j < world.Fighters.Count; j++)
+        {
+            var fighter = world.Fighters[j]; var rendered = current.snakes[j];
+            Check(rendered.alive == fighter.alive && rendered.kills == fighter.kills && rendered.starPoints == fighter.eventPoints && rendered.segments.Count == fighter.motion.Length, "projected fighter differs");
+            Check(Math.Abs(rendered.segments[0].x - fighter.motion.X / 1000f) < .0001f && Math.Abs(rendered.segments[0].y - fighter.motion.Y / 1000f) < .0001f, "projected head differs");
+        }
+        Check(world.Fighters[0].motion.X == comparison.Fighters[0].motion.X && world.Fighters[0].motion.Y == comparison.Fighters[0].motion.Y, "projection changed simulation");
+    }
+}
+
 static void PveFixedEventsCases()
 {
     foreach (int seed in new[] { 0, 1, 2 })
@@ -1042,6 +1065,9 @@ static void PveFixedEventsCases()
         Check(world.EventStatus == "", "event started too early");
         world.Step(0, false);
         Check(world.EventStatus == "active" && world.EventKind == new[] { "bounty", "star", "fruit" }[seed], "wrong event started");
+        var view = world.RenderState();
+        Check(view.eventStatus == "active" && view.eventKind == world.EventKind && view.eventTarget == world.EventTarget, "active event projection differed");
+        Check(view.starVisible == (seed == 1) && view.eventRadius == (seed == 2 ? 14f : 0f), "event visual geometry differed");
         if (seed == 0) Check(world.EventTarget.StartsWith("bot-") && world.Fighters.Any(f => f.id == world.EventTarget && f.motion.Length >= 20), "bounty target missing");
         if (seed == 2) Check(world.Fruit.Take(12).Count(f => Math.Abs(f.position.x - world.EventCenter.x) <= 14000 && Math.Abs(f.position.y - world.EventCenter.y) <= 14000) >= 6, "fruit event spawn outside region");
         if (seed == 1)
@@ -1131,9 +1157,14 @@ static void PveFixedCombatCases()
             PveFixedCombat.Resolve(new[] { owner, victim });
             Check(victim.alive, "protected snake was captured");
             owner.captureCooldown = 0; victim.shieldTicks = 0;
-            PveFixedCombat.Resolve(new[] { owner, victim });
+            var workspace = new PveFixedCombatWorkspace(2);
+            PveFixedCombat.Resolve(new[] { owner, victim }, workspace);
             if (!victim.alive && victim.eliminationReason == "capture")
-            { Check(victim.eliminatedBy == owner.id && owner.kills == 1, "capture ownership incorrect"); captured = true; }
+            {
+                Check(victim.eliminatedBy == owner.id && owner.kills == 1, "capture ownership incorrect");
+                Check(workspace.captureOwner == owner.id && workspace.captureCount == 1 && workspace.capturePolygon.Count >= 3, "capture projection did not retain real geometry");
+                captured = true;
+            }
         }
     }
     Check(captured, "closed trail failed to capture an unprotected opponent");

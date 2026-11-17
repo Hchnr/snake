@@ -37,6 +37,10 @@ namespace SnakeClub.Core
         private readonly byte[] botDirection = new byte[8];
         private readonly bool[] botBoost = new bool[8];
         private readonly bool[] previouslyAlive = new bool[8];
+        private ArenaState projection;
+        private int lastCaptureTick = -1, lastCaptureCount;
+        private string lastCaptureOwner = "";
+        private readonly List<CapturePoint> lastCapturePolygon = new List<CapturePoint>(Arena.MaximumLength + 1);
         private readonly List<PveFixedFruit> fruit = new List<PveFixedFruit>(Arena.FruitCount);
         public IReadOnlyList<PveFixedFighter> Fighters => fighters;
         public IReadOnlyList<PveFixedFruit> Fruit => fruit;
@@ -222,6 +226,43 @@ namespace SnakeClub.Core
                     if (fighters[i].alive && DistanceSquared(fighters[i].motion.X - star.x, fighters[i].motion.Y - star.y) <= 1500L * 1500L)
                     { starHolder = i; break; }
         }
+        // Renderer-facing projection only. Integer simulation never reads it;
+        // objects are reused so a renderer may request it once per frame.
+        public ArenaState RenderState()
+        {
+            if (projection == null)
+            {
+                projection = new ArenaState { halfSize = Arena.WorldHalfSize };
+                for (int i = 0; i < fighters.Length; i++)
+                    projection.snakes.Add(new SnakeState { id = fighters[i].id, name = i == 0 ? "玩家" : "AI " + i, bot = i != 0, color = i });
+                for (int i = 0; i < fruit.Count; i++) projection.fruits.Add(new FruitState());
+            }
+            projection.tick = Tick; projection.remaining = Math.Max(0, maxTicks - Tick) / (float)TickRate;
+            projection.phase = Finished ? "ended" : "running"; projection.winner = Winner;
+            projection.eventKind = EventKind; projection.eventStatus = EventStatus; projection.eventTarget = EventTarget;
+            projection.eventPosition = ToPoint(eventCenter); projection.eventRadius = eventActive && eventType == 2 ? 14f : 0f;
+            projection.eventRemaining = EventTicksRemaining / (float)TickRate;
+            projection.starVisible = eventActive && eventType == 1; projection.starPosition = ToPoint(star);
+            projection.starHolder = StarHolder; projection.starProgress = starTicks / (8f * TickRate);
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                var source = fighters[i]; var target = projection.snakes[i];
+                target.alive = source.alive; target.shield = source.shieldTicks / (float)TickRate;
+                target.kills = source.kills; target.starPoints = source.eventPoints;
+                target.eliminatedBy = source.eliminatedBy; target.eliminationReason = source.eliminationReason;
+                target.angle = source.motion.Angle * (float)(Math.PI * 2 / 65536); target.boosting = source.alive && source.motion.Boosting;
+                target.rebound = source.motion.ReboundTicks / (float)TickRate;
+                target.segments.Clear();
+                for (int j = 0; j < source.motion.Length; j++) target.segments.Add(ToPoint(source.motion.Segments[j]));
+            }
+            for (int i = 0; i < fruit.Count; i++) { projection.fruits[i].position = ToPoint(fruit[i].position); projection.fruits[i].color = fruit[i].color; }
+            projection.captureTick = lastCaptureTick; projection.captureCount = lastCaptureCount; projection.captureOwner = lastCaptureOwner;
+            projection.capturePolygon.Clear();
+            for (int i = 0; i < lastCapturePolygon.Count; i++) projection.capturePolygon.Add(ToPoint(lastCapturePolygon[i]));
+            return projection;
+        }
+        private static Point ToPoint(CapturePoint point) => new Point(point.x / 1000f, point.y / 1000f);
+
         public void Step(byte heading, bool boost)
         {
             if (Finished) return;
@@ -236,6 +277,11 @@ namespace SnakeClub.Core
                     i == 0 ? playerBonuses : new PveFixedBonuses());
             }
             PveFixedCombat.Resolve(fighters, combatWorkspace);
+            if (combatWorkspace.captureOwner.Length != 0)
+            {
+                lastCaptureTick = Tick; lastCaptureCount = combatWorkspace.captureCount; lastCaptureOwner = combatWorkspace.captureOwner;
+                lastCapturePolygon.Clear(); lastCapturePolygon.AddRange(combatWorkspace.capturePolygon);
+            }
             if (eventActive)
                 for (int i = 0; i < fighters.Length; i++)
                     if (previouslyAlive[i] && !fighters[i].alive && fighters[i].credited)
