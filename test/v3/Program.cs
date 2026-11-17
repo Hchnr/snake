@@ -72,6 +72,7 @@ var cases = new (string name, Action run)[]
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
+    ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
@@ -990,6 +991,44 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveFixedCombatCases()
+{
+    PveFixedFighter Fighter(string id, int x, int y, int length) => new PveFixedFighter(id, new PveFixedMotion(x, y, 0, length));
+    var a = Fighter("a", 0, 0, 10); var b = Fighter("b", 0, 0, 10);
+    PveFixedCombat.Resolve(new[] { a, b });
+    Check(!a.alive && !b.alive && a.eliminationReason == "head_tie" && a.kills == 0 && b.kills == 0, "equal heads did not eliminate both without reward");
+    a = Fighter("a", 0, 0, 10); b = Fighter("b", 0, 0, 16);
+    PveFixedCombat.Resolve(new[] { a, b });
+    Check(!a.alive && b.alive && a.eliminatedBy == "b" && b.kills == 1 && b.motion.Length == 21, "unequal head collision or growth incorrect");
+    a = Fighter("a", 0, 0, 10); b = Fighter("b", 1800, 0, 16);
+    PveFixedCombat.Resolve(new[] { a, b });
+    Check(!a.alive && a.eliminationReason == "trail" && b.kills == 1, "trail collision not resolved");
+    a = Fighter("a", 0, 0, 10); b = Fighter("b", 1800, 0, 16); b.shieldTicks = 1;
+    PveFixedCombat.Resolve(new[] { a, b });
+    Check(a.alive && b.alive, "protected defender caused a collision");
+    bool captured = false;
+    for (int turn = 1; turn <= 8 && !captured; turn++)
+    {
+        var owner = Fighter("owner", 0, 0, 16);
+        for (int i = 1; i <= 200 && !captured; i++)
+        {
+            owner.motion.Step((byte)(i * turn), false, new PveFixedBonuses());
+            if (!owner.motion.TryCapture(out var loop)) continue;
+            long sx = 0, sy = 0; foreach (var point in loop.polygon) { sx += point.x; sy += point.y; }
+            int x = (int)(sx / loop.polygon.Count), y = (int)(sy / loop.polygon.Count);
+            if (!CaptureGeometry.Contains(loop.polygon, new CapturePoint(x, y))) continue;
+            var victim = Fighter("victim", x, y, 5); victim.shieldTicks = 1;
+            PveFixedCombat.Resolve(new[] { owner, victim });
+            Check(victim.alive, "protected snake was captured");
+            owner.captureCooldown = 0; victim.shieldTicks = 0;
+            PveFixedCombat.Resolve(new[] { owner, victim });
+            if (!victim.alive && victim.eliminationReason == "capture")
+            { Check(victim.eliminatedBy == owner.id && owner.kills == 1, "capture ownership incorrect"); captured = true; }
+        }
+    }
+    Check(captured, "closed trail failed to capture an unprotected opponent");
 }
 
 static void PveFixedMotionCases()
