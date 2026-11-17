@@ -316,13 +316,15 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 var profile = (PlayerProgress)Field("practiceProfile").GetValue(app);
                 Call("StartMain"); Require((string)Field("frontPage").GetValue(app) == "comparison", "main entry did not open comparison");
-                for (int variant = 0; variant < 3; variant++)
+                for (int variant = 0; variant < 4; variant++)
                 {
                     Call("BeginComparison", variant);
                     var daily = (DailyMatch)Field("daily").GetValue(app);
                     bool capture = (bool)typeof(DailyMatch).GetField("captures", flags).GetValue(daily);
-                    Require((int)Field("comparisonVariant").GetValue(app) == variant && capture == (variant == 1) && Field("activeRun").GetValue(app) == null,
+                    Require((int)Field("comparisonVariant").GetValue(app) == variant && capture == (variant == 1 || variant == 3) && Field("activeRun").GetValue(app) == null,
                         "comparison variant was not isolated or had incorrect capture rules");
+                    foreach (var snake in daily.State.snakes)
+                        Require(Mathf.Abs(snake.shield - (variant == 3 ? 4f : 3f)) < .001f, "opening shield was asymmetric or used by another variant");
                     Field("controlActions").SetValue(app, 1); Call("RecordResult");
                     Require(profile.completedMatches == 0 && !profile.tutorialComplete && PlayerPrefs.GetString("snake.v3.pending", "") == pending,
                         "comparison modified account or practice progression");

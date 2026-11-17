@@ -50,7 +50,7 @@ python3 scripts/build-unity-isolated.py webgl --offline-practice --no-graphics -
 # 使用 SNAKE_PREVIEW_ROOT=/tmp/snake-fixed-local-preview npm run preview:unity 启动浏览器预览。
 # 实验接口为 POST /api/v3/internal/fixed-pve/start 和 /verify，需登录及完整回放。
 
-# 仅离线试玩 A/B/C 方案，输出路径必须不存在
+# 仅离线试玩 A/B/C 和可选的开局实验 D，输出路径必须不存在
 python3 scripts/build-unity-isolated.py webgl --offline-practice --comparison-preview --no-graphics --output /tmp/snake-abc-preview
 # 抽样检查三方案开局（桌面脚本，不代替真人试玩）
 python3 scripts/evaluate-daily-comparison.py

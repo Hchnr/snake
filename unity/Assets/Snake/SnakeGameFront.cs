@@ -270,11 +270,11 @@ namespace SnakeClub
 
         private void BeginComparison(int variant)
         {
-            if (!api.Config.ComparisonPreview || variant < 0 || variant > 2) return;
+            if (!api.Config.ComparisonPreview || variant < 0 || variant > 3) return;
             comparisonVariant = variant;
             int seed = PracticeSeed();
             var match = variant == 0 ? new DailyMatch(seed, DailyMatch.PreviousRulesVersion) :
-                variant == 1 ? new DailyMatch(seed, DailyMatch.RulesVersion) : DailyMatch.CreateNoCaptureComparison(seed);
+                variant == 1 ? new DailyMatch(seed, DailyMatch.RulesVersion) : variant == 2 ? DailyMatch.CreateNoCaptureComparison(seed) : DailyMatch.CreateOpeningExperiment(seed);
             BeginDailyWithMatch(null, match);
             firstRun = false;
             resultNote = "对照试玩 · 不计账号奖励或排行";
@@ -499,10 +499,11 @@ namespace SnakeClub
         {
             Panel(new Rect(75, 320, 930, 1160), new Color(.035f, .065f, .12f, .96f));
             Label(new Rect(120, 370, 840, 80), "玩法对照试玩", 45, Color.white, TextAnchor.MiddleCenter, true);
-            Label(new Rect(140, 465, 800, 95), "请选择一个方案 · 不计奖励或排行\n三种方案使用同一角色和当日种子", 25, new Color(.75f, .88f, .91f), TextAnchor.MiddleCenter);
-            if (Button(new Rect(180, 610, 720, 135), "试玩方案 A", new Color(.13f, .48f, .45f))) BeginComparison(0);
-            if (Button(new Rect(180, 790, 720, 135), "试玩方案 B", new Color(.21f, .36f, .58f))) BeginComparison(1);
-            if (Button(new Rect(180, 970, 720, 135), "试玩方案 C", new Color(.40f, .31f, .57f))) BeginComparison(2);
+            Label(new Rect(140, 465, 800, 95), "请选择一个方案 · 不计奖励或排行\n各方案使用同一角色和当日种子", 25, new Color(.75f, .88f, .91f), TextAnchor.MiddleCenter);
+            if (Button(new Rect(180, 585, 720, 115), "试玩方案 A", new Color(.13f, .48f, .45f))) BeginComparison(0);
+            if (Button(new Rect(180, 730, 720, 115), "试玩方案 B", new Color(.21f, .36f, .58f))) BeginComparison(1);
+            if (Button(new Rect(180, 875, 720, 115), "试玩方案 C", new Color(.40f, .31f, .57f))) BeginComparison(2);
+            if (Button(new Rect(180, 1020, 720, 115), "试玩方案 D", new Color(.48f, .34f, .25f))) BeginComparison(3);
             if (Button(new Rect(250, 1210, 580, 90), "返回大厅", new Color(.15f, .22f, .31f))) frontPage = "home";
         }
 

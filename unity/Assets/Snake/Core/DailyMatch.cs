@@ -80,7 +80,7 @@ namespace SnakeClub.Core
         private int starHolder = -1;
         private int starTicks;
         private int peak;
-        private readonly bool legacy, captures, captureLayout, pursueStarHolder;
+        private readonly bool legacy, captures, captureLayout, pursueStarHolder, openingExperiment;
         private readonly int startingLength, scoreLimit;
         private readonly int eventType;
         private bool eventActive, eventDone;
@@ -119,15 +119,17 @@ namespace SnakeClub.Core
         public int Score => Math.Min(scoreLimit, 10 * (peak - startingLength) + 100 * snakes[0].kills + State.tick / TickRate + 30 * snakes[0].stars);
         public int PeakLength => peak;
 
-        public DailyMatch(int seed, string rulesVersion = RulesVersion) : this(seed, rulesVersion, false) { }
+        public DailyMatch(int seed, string rulesVersion = RulesVersion) : this(seed, rulesVersion, false, false) { }
 
         // Offline research only: never advertised as a server-accepted rules version.
-        public static DailyMatch CreateNoCaptureComparison(int seed) => new DailyMatch(seed, RulesVersion, true);
+        public static DailyMatch CreateNoCaptureComparison(int seed) => new DailyMatch(seed, RulesVersion, true, false);
+        public static DailyMatch CreateOpeningExperiment(int seed) => new DailyMatch(seed, RulesVersion, false, true);
 
-        private DailyMatch(int seed, string rulesVersion, bool noCaptureComparison)
+        private DailyMatch(int seed, string rulesVersion, bool noCaptureComparison, bool openingExperiment)
         {
             if (!SupportsRules(rulesVersion))
                 throw new ArgumentException("Unknown daily challenge rules", nameof(rulesVersion));
+            this.openingExperiment = openingExperiment;
             legacy = rulesVersion == LegacyRulesVersion;
             captureLayout = SupportsFriendChallenge(rulesVersion);
             captures = captureLayout && !noCaptureComparison;
@@ -225,7 +227,8 @@ namespace SnakeClub.Core
                 if (clear) break;
             }
             int angle = Next(256);
-            var snake = new SimSnake { id = index == 0 ? "you" : "bot-" + index, bot = index != 0, color = index, angle = angle, target = angle, wander = angle };
+            var snake = new SimSnake { id = index == 0 ? "you" : "bot-" + index, bot = index != 0, color = index, angle = angle, target = angle, wander = angle,
+                shield = (openingExperiment ? 4 : 3) * TickRate };
             for (int i = 0; i < startingLength; i++)
                 snake.segments.Add(new SimPoint(head.x - Cos(angle) * i * Spacing / 10000, head.y - Sin(angle) * i * Spacing / 10000));
             snakes.Add(snake);
