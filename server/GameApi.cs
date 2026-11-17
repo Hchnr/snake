@@ -52,6 +52,14 @@ sealed class GameApi
         app.MapPost("/api/v3/skin/equip", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => EquipSkin(p, request.index)));
         app.MapPost("/api/v3/expedition/start", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => StartExpedition(p, request.index, now)));
         app.MapPost("/api/v3/expedition/claim", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.ClaimExpedition(p, request.id, now)));
+        // Experimental diagnostics are absent from production and never issue rewards.
+        if (!service.production && Environment.GetEnvironmentVariable("SNAKE_FIXED_PVE_EVAL") == "1")
+        {
+            app.MapPost("/api/v3/internal/fixed-pve/start", (HttpContext context) =>
+                IsLocal(context) ? service.WithPlayer(context, (p, now) => service.StartRun(p, now, "fixed-eval", FixedPveEvalRules)) : Fail("仅限本机测试", 403));
+            app.MapPost("/api/v3/internal/fixed-pve/verify", (HttpContext context, FixedPveEvalRequest request) =>
+                IsLocal(context) ? service.WithPlayer(context, (p, now) => service.VerifyFixedPve(p, request, now), request.runId) : Fail("仅限本机测试", 403));
+        }
         app.MapPost("/api/v3/match/start", (HttpContext context) => service.WithPlayer(context, (p, now) => service.StartRun(p, now, "pve")));
         app.MapPost("/api/v3/match/finish", (HttpContext context, MatchRequest request) => service.WithPlayer(context, (p, now) => service.FinishPve(p, request, now), request.runId));
         app.MapPost("/api/v3/challenge/start", (HttpContext context) =>
@@ -70,6 +78,9 @@ sealed class GameApi
         app.MapPost("/api/v3/ad/prepare", (HttpContext context, AdRequest request) => service.WithPlayer(context, (p, now) => service.PrepareAd(p, request, now)));
         app.MapPost("/api/v3/ad/complete", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.CompleteAd(p, request.id, now)));
     }
+
+    private const string FixedPveEvalRules = "fixed-pve-experiment-1";
+    private static bool IsLocal(HttpContext context) => context.Connection.RemoteIpAddress != null && IPAddress.IsLoopback(context.Connection.RemoteIpAddress);
 
     private IResult DevLogin(HttpContext context, AuthRequest request)
     {
@@ -220,13 +231,13 @@ sealed class GameApi
         if (production && mode == "pve") return Fail("普通对局奖励验证尚未开放，请先进行练习", 503);
         string date = Day(now);
         string rules = requestedRules ?? DailyMatch.RulesVersion;
-        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
+        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" || mode == "fixed-eval" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
         if (mode == "pve" && p.trialSkin > 0)
         {
             bool reserved = !string.IsNullOrEmpty(p.trialRunId) && data.runs.TryGetValue(p.trialRunId, out var trialRun) && !trialRun.completed && now.ToUnixTimeMilliseconds() - trialRun.startedAt < 190000;
             if (!reserved) { run.trialSkin = p.trialSkin; p.trialRunId = run.id; }
         }
-        if (mode == "pve") run.startConfig = PveStartConfig.Capture(p, run.trialSkin);
+        if (mode == "pve" || mode == "fixed-eval") run.startConfig = PveStartConfig.Capture(p, run.trialSkin);
         data.runs[run.id] = run;
         return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules, trialSkin = run.trialSkin, startConfig = run.startConfig, serverTime = run.startedAt, expiresAt = run.expiresAt });
     }
@@ -253,6 +264,33 @@ sealed class GameApi
         if (run.coins > 0) data.rewards[run.id] = new RewardSource { playerId = p.playerId, kind = "match", baseCoins = run.coins };
         return Results.Json(new { ok = true, profile = p, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin });
     }
+
+    private IResult VerifyFixedPve(PlayerProgress p, FixedPveEvalRequest request, DateTimeOffset now)
+    {
+        var run = FindRun(p, request.runId, request.token, "fixed-eval", now);
+        if (run == null) return Fail("实验对局凭证无效或已过期");
+        if (run.rules != FixedPveEvalRules || run.startConfig == null || !run.startConfig.Supported)
+            return Fail("实验规则或开局快照不受支持");
+        if (run.completed) return FixedPveReceipt(run);
+        // Reject oversized text before allocating a decoded buffer.
+        if (string.IsNullOrEmpty(request.inputs) || request.inputs.Length > ((PveFixedRecording.MaxTicks * 2 + 2) / 3) * 4)
+            return Fail("实验回放长度无效");
+        byte[] inputs;
+        try { inputs = Convert.FromBase64String(request.inputs); }
+        catch (FormatException) { return Fail("实验回放格式无效"); }
+        if (!PveFixedRecording.TryReplay(run.seed, run.startConfig.firstRun, run.startConfig.MatchProfile(), inputs, out var world))
+            return Fail("实验回放不完整或无效");
+        if (now.ToUnixTimeMilliseconds() - run.startedAt + 2000 < world.Tick * 50L)
+            return Fail("实验对局时长无效");
+        run.completed = true; run.finishedAt = now.ToUnixTimeMilliseconds(); run.score = world.Tick;
+        run.fixedWinner = world.Winner; run.fixedKills = world.Fighters[0].kills;
+        run.fixedLength = world.Fighters[0].motion.Length; run.fixedEventPoints = world.Fighters[0].eventPoints;
+        return FixedPveReceipt(run);
+    }
+
+    private static IResult FixedPveReceipt(RunRecord run) => Results.Json(new { ok = true, verified = true, experimental = true,
+        rules = run.rules, ticks = run.score, winner = run.fixedWinner, kills = run.fixedKills,
+        length = run.fixedLength, eventPoints = run.fixedEventPoints, rewards = 0 });
 
     private IResult CreateFriendChallenge(PlayerProgress p, string? id, DateTimeOffset now)
     {
@@ -434,12 +472,15 @@ sealed class RunRecord
     public long startedAt, finishedAt, expiresAt;
     public bool completed;
     public PveStartConfig? startConfig;
+    public string fixedWinner = "";
+    public int fixedKills, fixedLength, fixedEventPoints;
 }
 sealed class RewardSource { public string playerId = "", kind = ""; public int baseCoins; public bool adClaimed; }
 sealed class AdRecord { public string id = "", playerId = "", sourceId = "", kind = "", day = ""; public int skin = -1; public long createdAt, completedAt; public bool completed; }
 sealed class AuthRequest { public string? code { get; set; } public string? anonymousCode { get; set; } public string? deviceId { get; set; } }
 sealed class IndexRequest { public int index { get; set; } }
 sealed class IdRequest { public string id { get; set; } = ""; }
+sealed class FixedPveEvalRequest { public string? runId { get; set; } public string? token { get; set; } public string? inputs { get; set; } }
 sealed class MatchRequest { public string? runId { get; set; } public string? token { get; set; } public int seconds { get; set; } public int actions { get; set; } }
 sealed class ChallengeRequest { public string? runId { get; set; } public string? token { get; set; } public int score { get; set; } public int actions { get; set; } public string? inputs { get; set; } }
 sealed class AdRequest { public string? sourceId { get; set; } public string? kind { get; set; } public int index { get; set; } }

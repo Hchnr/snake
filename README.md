@@ -43,6 +43,10 @@ python3 scripts/check-unity-compile.py --douyin
 # 使用临时 Unity 工程检查客户端 JSON 响应和资源导入
 npm run test:unity
 
+# 本地整数 PvE 服务端实验验证（仅本机、无奖励）
+# 启动开发服务器时设置 SNAKE_FIXED_PVE_EVAL=1；生产环境不会注册实验接口。
+# 实验接口为 POST /api/v3/internal/fixed-pve/start 和 /verify，需登录及完整回放。
+
 # 对比整数 PvE 在桌面 .NET 和无头 Unity WebGL 的样本指纹
 python3 scripts/test-fixed-pve-webgl.py
 
