@@ -49,6 +49,7 @@ namespace SnakeClub
         private bool pointerBoost;
         private bool reducedEffects;
         private readonly DragSteering dragSteering = new DragSteering();
+        private readonly MatchHighlights matchHighlights = new MatchHighlights();
         private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
         private bool firstRun;
@@ -160,6 +161,7 @@ namespace SnakeClub
             }
             arena.Start();
             state = arena.State;
+            matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             stepTimer = 0;
             direction = new Point(1, 0);
             controlActions = 0;
@@ -282,10 +284,11 @@ namespace SnakeClub
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
                         string title = daily != null ? "挑战结束" : state.winner == playerId ? "围猎胜利" : "围猎结束";
                         string stats = daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
-                            own == null ? "" : "长度 " + own.segments.Count + "   ·   淘汰 " + own.kills;
+                            own == null ? "" : "最长 " + matchHighlights.PeakLength + "   ·   淘汰 " + own.kills;
                         bool share = daily != null && activeRun != null && api.Connected;
                         int adCoins = !string.IsNullOrEmpty(lastRewardId) && GamePlatform.HasRewardedAds(api) ? lastRewardCoins : 0;
-                        homeScreen.SetResult(title, stats, resultNote, busy, share, adCoins);
+                        string highlight = matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
+                        homeScreen.SetResult(title, stats, resultNote, busy, share, adCoins, highlight);
                     }
                 }
             }
@@ -305,6 +308,7 @@ namespace SnakeClub
                 {
                     byte heading = EncodeDirection(direction);
                     daily.Step(heading, pointerBoost);
+                    matchHighlights.Observe(daily.State, playerId);
                     dailyInputs.Add(heading); dailyInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                     stepTimer -= .05f;
                 }
@@ -317,6 +321,7 @@ namespace SnakeClub
                 {
                     if (inGame) arena.SetInput(playerId, direction, pointerBoost);
                     arena.Tick(.05f);
+                    if (inGame) matchHighlights.Observe(arena.State, playerId);
                     if (inGame && depthMode && arena.State.phase == "running" && DepthGoalReached(arena.State)) arena.EndRound();
                     stepTimer -= .05f;
                 }

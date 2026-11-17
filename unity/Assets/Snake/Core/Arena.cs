@@ -77,6 +77,30 @@ namespace SnakeClub.Core
         public List<Point> capturePolygon = new List<Point>();
     }
 
+    // Presentation summary sampled from resolved simulation ticks. It never
+    // affects scores, rewards, collisions or replay verification.
+    public sealed class MatchHighlights
+    {
+        public int PeakLength { get; private set; }
+        public int BestCapture { get; private set; }
+        private int lastCaptureTick = -1;
+
+        public void Reset() { PeakLength = 0; BestCapture = 0; lastCaptureTick = -1; }
+
+        public void Observe(ArenaState state, string playerId)
+        {
+            if (state == null || string.IsNullOrEmpty(playerId)) return;
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null) return;
+            PeakLength = Math.Max(PeakLength, player.segments.Count);
+            if (state.captureTick < 0 || state.captureTick == lastCaptureTick) return;
+            lastCaptureTick = state.captureTick;
+            // Captors eliminated simultaneously receive no kill or growth.
+            if (player.alive && state.captureOwner == playerId && state.captureCount > 0)
+                BestCapture = Math.Max(BestCapture, state.captureCount);
+        }
+    }
+
     // Presentation-only proximity query: use the same head/body radii and
     // shield rules as the simulation, without affecting movement or outcomes.
     public static class DangerProbe
