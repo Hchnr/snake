@@ -39,6 +39,7 @@ capture.write_text(json.dumps({
     'config': json.loads((project / 'Assets/Resources/GameConfig.json').read_text()),
     'referencePresent': (project / 'Assets/Editor/ReferenceSkins/wenda.png').exists(),
     'referenceOptIn': os.environ['SNAKE_DOUYIN_REFERENCE_PREVIEW'],
+    'noGraphics': '-nographics' in sys.argv,
     'guard': '#error Douyin preview' in (project / 'Assets/Snake/Editor/DouyinPreviewBuild.cs').read_text()
 }))
 artifact = pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_OUTPUT']) / 'tt-minigame'
@@ -52,7 +53,7 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
     def tearDown(self):
         self.temp.cleanup()
 
-    def build(self, include_reference=False, fixed_pve=False):
+    def build(self, include_reference=False, fixed_pve=False, no_graphics=False, graphics=False):
         capture = self.root / 'capture.json'
         output = self.root / ('internal' if include_reference else 'normal')
         command = [sys.executable, str(self.root / 'scripts/build-douyin-preview.py'),
@@ -61,6 +62,10 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
             command.append('--include-reference-skins')
         if fixed_pve:
             command.append('--fixed-pve-preview')
+        if no_graphics:
+            command.append('--no-graphics')
+        if graphics:
+            command.append('--graphics')
         env = {**os.environ, 'UNITY_EDITOR': str(self.editor), 'SNAKE_TEST_CAPTURE': str(capture)}
         completed = subprocess.run(command, capture_output=True, text=True, env=env)
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
@@ -77,6 +82,7 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
         self.assertFalse(result['config']['allowReferenceSkinPreview'])
         self.assertFalse(result['referencePresent'])
         self.assertEqual(result['referenceOptIn'], '0')
+        self.assertTrue(result['noGraphics'])
         self.assertIn('scriptingDefineSymbols: {}', (self.root / 'unity/ProjectSettings/ProjectSettings.asset').read_text())
 
     def test_fixed_pve_preview_is_explicit_and_offline(self):
@@ -93,6 +99,15 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
         self.assertTrue(result['config']['allowReferenceSkinPreview'])
         self.assertEqual(result['referenceOptIn'], '1')
         self.assertIn('WebGL: SNAKE_DOUYIN_TTSDK', result['settings'])
+
+    def test_no_graphics_is_forwarded_to_unity(self):
+        result = self.build(no_graphics=True)
+        self.assertTrue(result['noGraphics'])
+        self.assertFalse(result['referencePresent'])
+
+    def test_graphics_requires_explicit_opt_in(self):
+        result = self.build(graphics=True)
+        self.assertFalse(result['noGraphics'])
 
 
 if __name__ == '__main__':

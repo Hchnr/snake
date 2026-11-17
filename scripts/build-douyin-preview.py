@@ -17,6 +17,10 @@ parser.add_argument('--appid', required=True, help='Douyin mini-game AppID')
 parser.add_argument('--output', required=True, help='new TTSDK build output directory')
 parser.add_argument('--include-reference-skins', action='store_true', help='include local reference art for internal testing only')
 parser.add_argument('--fixed-pve-preview', action='store_true', help='enable experimental integer PvE in this offline preview')
+graphics = parser.add_mutually_exclusive_group()
+graphics.add_argument('--no-graphics', dest='no_graphics', action='store_true', help='run Unity without graphics (default)')
+graphics.add_argument('--graphics', dest='no_graphics', action='store_false', help='allow graphics if the installed TTSDK needs them')
+parser.set_defaults(no_graphics=True)
 args = parser.parse_args()
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
 output = Path(args.output).expanduser().resolve()
@@ -54,7 +58,10 @@ with tempfile.TemporaryDirectory(prefix='snake-douyin-preview-') as directory:
     environment = {**os.environ, 'SNAKE_DOUYIN_PREVIEW_APPID': args.appid,
                    'SNAKE_DOUYIN_PREVIEW_OUTPUT': str(output), 'SNAKE_DOUYIN_PREVIEW_STAMP': str(stamp),
                    'SNAKE_DOUYIN_REFERENCE_PREVIEW': '1' if args.include_reference_skins else '0'}
-    command = [str(editor), '-batchmode', '-projectPath', str(project), '-buildTarget', 'WebGL',
+    command = [str(editor), '-batchmode']
+    if args.no_graphics:
+        command.append('-nographics')
+    command += ['-projectPath', str(project), '-buildTarget', 'WebGL',
                '-executeMethod', 'DouyinPreviewBuild.Run', '-logFile', str(log)]
     print(f'Building an offline Douyin preview: {output}', flush=True)
     try:
