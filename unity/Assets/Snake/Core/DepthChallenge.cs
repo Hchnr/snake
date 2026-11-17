@@ -18,6 +18,14 @@ namespace SnakeClub.Core
 
         public enum RoomStatus { InProgress, Won, Lost }
 
+        public static string ReboundBoostHint(SnakeState player)
+        {
+            if (player == null || !player.alive) return "";
+            if (player.reboundBoostTime > 0) return "免费加速中 · " + (int)Math.Ceiling(player.reboundBoostTime) + " 秒";
+            if (!player.reboundBoostReady) return "";
+            return player.reboundBoostWaitRelease ? "反弹蓄能 · 松开后再次按住加速" : "反弹蓄能 · 下次加速免消耗";
+        }
+
         public static string BonusChoice(int choice, int shield, int rebound, int growth)
         {
             int current;
@@ -28,7 +36,7 @@ namespace SnakeClub.Core
                     return "收圈护盾 " + current * 2 + " → " + Math.Min(2, current + 1) * 2 + " 秒 · 捕获后生效";
                 case 1:
                     current = Math.Min(2, Math.Max(0, rebound));
-                    return "反弹免费加速 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 秒";
+                    return "反弹免费加速 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 秒\n下次使用 · 松开结束 · 8 秒冷却";
                 case 2:
                     current = Math.Min(2, Math.Max(0, growth));
                     return "淘汰额外增长 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 节";
