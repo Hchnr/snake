@@ -66,6 +66,21 @@ namespace SnakeClub.Core
             return loop != null;
         }
 
+        // Even-odd scanline intersections match Contains for concave and
+        // self-intersecting loops. Used only for non-authoritative feedback.
+        public static void Scanline(IReadOnlyList<Point> polygon, float y, List<float> intersections)
+        {
+            intersections.Clear();
+            if (polygon == null || polygon.Count < 3) return;
+            for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i++)
+            {
+                var a = polygon[j]; var b = polygon[i];
+                if ((a.y > y) == (b.y > y)) continue;
+                intersections.Add(a.x + (b.x - a.x) * (y - a.y) / (b.y - a.y));
+            }
+            intersections.Sort();
+        }
+
         public static bool Contains(IReadOnlyList<CapturePoint> polygon, CapturePoint point)
         {
             bool inside = false;
