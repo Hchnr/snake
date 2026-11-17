@@ -391,7 +391,7 @@ namespace SnakeClub
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
                 while (stepTimer >= .05f && arena.State.phase == "running")
                 {
-                    if (inGame && !online && FinishEliminatedLocalPlayer()) break;
+                    if (inGame && !online && LocalPveRound.EndIfPlayerEliminated(arena, playerId)) break;
                     if (inGame)
                     {
                         if (!depthMode && arena.State.phase == "running")
@@ -406,7 +406,7 @@ namespace SnakeClub
                     if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); eliminationFeedback.Observe(arena.State, playerId); killFeedback.Observe(arena.State, playerId); }
                     if (inGame && depthMode && arena.State.phase == "running" &&
                         DepthChallenge.Evaluate(depthRoom, arena.State, playerId) != DepthChallenge.RoomStatus.InProgress) arena.EndRound();
-                    if (inGame && !online) FinishEliminatedLocalPlayer();
+                    if (inGame && !online) LocalPveRound.EndIfPlayerEliminated(arena, playerId);
                     stepTimer -= .05f;
                 }
                 if (!inGame && (arena.State.phase == "ended" || (wardrobePreview && (arena.Find("demo-0") == null || !arena.Find("demo-0").alive)))) Demo();
@@ -457,14 +457,6 @@ namespace SnakeClub
             if (state == null || state.phase != "running" || string.IsNullOrEmpty(playerId)) return false;
             var player = state.snakes.Find(s => s.id == playerId);
             return player != null && player.alive;
-        }
-
-        private bool FinishEliminatedLocalPlayer()
-        {
-            var player = arena.State.snakes.Find(s => s.id == playerId);
-            if (player == null || player.alive) return false;
-            arena.EndRound();
-            return true;
         }
 
         private void ReadControls()

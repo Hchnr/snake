@@ -91,6 +91,7 @@ var cases = new (string name, Action run)[]
     ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
     ("ordinary PvE bots avoid head threats and pursue visible players", ArenaBotEncounterCases),
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
+    ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
     ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
@@ -1589,6 +1590,44 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void CompletedPveRecordingCases()
+{
+    int eliminated = 0;
+    foreach (int seed in new[] { 0, 1, 793, 12345 })
+    foreach (bool firstRun in new[] { true, false })
+    {
+        var live = Arena.CreateStandardPve(seed, firstRun, "玩家");
+        var tape = new List<byte>();
+        for (int tick = 0; tick < PveRecording.MaxTicks && live.State.phase == "running"; tick++)
+        {
+            byte heading = (byte)(tick / 53 * 37 + seed);
+            byte boost = (byte)(tick % 120 >= 95 ? 1 : 0);
+            live.SetInput("you", PveRecording.Direction(heading), boost != 0);
+            live.Tick(.05f); tape.Add(heading); tape.Add(boost);
+            LocalPveRound.EndIfPlayerEliminated(live, "you");
+        }
+        Check(live.State.phase == "ended", "sampled local match did not end within recording limit");
+        if (!live.Find("you").alive) eliminated++;
+        Check(PveRecording.TryReplayCompleted(seed, firstRun, null, tape.ToArray(), out var replay), "completed local recording was rejected");
+        Check(replay.State.tick == live.State.tick && replay.State.phase == live.State.phase && replay.State.winner == live.State.winner,
+            "local replay produced a different terminal state");
+        foreach (var a in live.State.snakes)
+        {
+            var b = replay.Find(a.id);
+            Check(b != null && a.alive == b.alive && a.kills == b.kills && a.eliminationReason == b.eliminationReason &&
+                a.eliminatedBy == b.eliminatedBy && a.segments.Count == b.segments.Count, "local replay changed an outcome");
+            for (int i = 0; i < a.segments.Count; i++)
+                Check(a.segments[i].x == b.segments[i].x && a.segments[i].y == b.segments[i].y, "local replay changed a trajectory");
+        }
+        Check(!PveRecording.TryReplayCompleted(seed, firstRun, null, tape.Take(tape.Count - 2).ToArray(), out _), "truncated local recording was accepted");
+        tape.Add(0); tape.Add(0);
+        Check(!PveRecording.TryReplayCompleted(seed, firstRun, null, tape.ToArray(), out _), "post-finish input was accepted");
+    }
+    Check(eliminated > 0, "samples did not exercise player elimination");
+    Check(!PveRecording.TryReplayCompleted(1, false, null, null, out _), "missing input was accepted");
+    Check(!PveRecording.TryReplayCompleted(1, false, null, new byte[] { 1, 2 }, out _), "invalid boost was accepted");
 }
 
 static void PveRecordingCases()
