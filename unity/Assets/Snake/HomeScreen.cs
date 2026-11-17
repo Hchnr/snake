@@ -161,7 +161,7 @@ namespace SnakeClub
             Set(caveText, connected && !profile.ownedSkins.Contains(1) && profile.completedMatches < 2 ?
                 "完成 2 场，免费解锁曜焰  " + profile.completedMatches + "/2" :
                 profile.expedition != null && !profile.expedition.claimed ? "梦游探洞进行中，回来可领取奖励" : "派灵蛇去梦游探洞，离线也有收获");
-            Set(notice, message ?? "");
+            Set(notice, SkinVisual.Texture(equipped) == null ? "当前造型素材不可用，已切换备用显示" : message ?? "");
             Set(soundText, sound ? "音效：开" : "音效：关");
             Set(settingsSound, sound ? "音效：开" : "音效：关");
             Set(settingsMusic, music ? "音乐：开" : "音乐：关");
@@ -205,12 +205,13 @@ namespace SnakeClub
             skinNext.interactable = skinPageIndex + 1 < pages;
             Set(skinPageLabel, (skinPageIndex + 1) + " / " + pages);
             bool owned = profile.ownedSkins.Contains(selectedPreview);
-            bool available = !skin.ReferencePreview || (referencesEnabled && SkinVisual.Texture(selectedPreview) != null);
-            Set(skinActionText, !available ? "素材不可用" : equipped == selectedPreview ? "使用中" : skin.ReferencePreview ? "本机试用" : owned ? "使用造型" :
+            bool available = SkinVisual.Texture(selectedPreview) != null && (!skin.ReferencePreview || referencesEnabled);
+            bool canEquip = available || (owned && !skin.ReferencePreview);
+            Set(skinActionText, equipped == selectedPreview ? "使用中" : !available ? (canEquip ? "使用备用显示" : "素材不可用") : skin.ReferencePreview ? "本机试用" : owned ? "使用造型" :
                 skin.Price + (selectedPreview == 1 ? " 金币提前解锁" : " 金币解锁"));
-            Set(skinNotice, string.IsNullOrEmpty(message) ? "金币 " + profile.coins : message);
-            skinAction.interactable = available && !busy && equipped != selectedPreview;
-            skinTrial.gameObject.SetActive(trialAvailable && !skin.ReferencePreview && !owned);
+            Set(skinNotice, !available ? (owned ? "素材暂不可用，使用备用显示；拥有状态保留" : "素材暂不可用，请稍后再试") : string.IsNullOrEmpty(message) ? "金币 " + profile.coins : message);
+            skinAction.interactable = canEquip && !busy && equipped != selectedPreview;
+            skinTrial.gameObject.SetActive(available && trialAvailable && !skin.ReferencePreview && !owned);
             Set(skinTrialText, "看 1 次广告，试穿 1 局");
         }
 

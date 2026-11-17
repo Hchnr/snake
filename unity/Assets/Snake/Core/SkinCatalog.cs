@@ -49,6 +49,13 @@ namespace SnakeClub.Core
         };
 
         public static SkinDefinition Get(int index) => All[Math.Max(0, Math.Min(All.Length - 1, index))];
+        // Visual resolution never changes the persistent equipped/owned ID.
+        public static int ResolveVisual(int requested, Func<int, bool> available)
+        {
+            if (available == null) return -1;
+            if (requested >= 0 && requested < All.Length && available(requested)) return requested;
+            return available(0) ? 0 : -1;
+        }
         public static int IndexOf(string id)
         {
             for (int i = 0; i < All.Length; i++) if (All[i].Id == id) return i;

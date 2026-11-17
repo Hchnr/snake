@@ -29,6 +29,13 @@ namespace SnakeClub
             return texture;
         }
 
+        public static int ResolveIndex(int index) => SkinCatalog.ResolveVisual(index, i => Texture(i) != null);
+        public static Sprite DisplaySprite(int index)
+        {
+            int resolved = ResolveIndex(index);
+            return resolved < 0 ? null : Sprite(resolved);
+        }
+
         public static Sprite Sprite(int index)
         {
             if (Sprites.TryGetValue(index, out var sprite) && sprite != null) return sprite;
