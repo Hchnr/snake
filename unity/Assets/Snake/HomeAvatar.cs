@@ -229,7 +229,7 @@ namespace SnakeClub
         {
             skin = Mathf.Clamp(index, 0, SkinCatalog.All.Length - 1);
             if (body == null || head == null) return;
-            var reference = SkinVisual.Sprite(skin);
+            var reference = SkinVisual.DisplaySprite(skin);
             if (referenceCharacter != null)
             {
                 referenceCharacter.sprite = reference;

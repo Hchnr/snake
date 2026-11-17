@@ -60,6 +60,7 @@ namespace SnakeClub
         private Vector3 reboundPosition;
         public int SelectedSkin { get; set; }
         public bool ReducedEffects { get; set; }
+        public bool VisualFallback { get; private set; }
         public bool Visible
         {
             get => view != null && view.enabled;
@@ -292,8 +293,10 @@ namespace SnakeClub
             foreach (var character in characters.Values) if (character != null) character.enabled = false;
             foreach (var pair in characterTrails.Values) foreach (var line in pair) if (line != null) line.enabled = false;
             foreach (var ring in opponentMarkers.Values) if (ring != null) ring.enabled = false;
-            bool characterMode = SkinVisual.Sprite(SelectedSkin) != null;
-            bool referenceMode = characterMode && SelectedSkin >= SkinCatalog.OwnedSkinCount;
+            int playerVisual = SkinVisual.ResolveIndex(SelectedSkin);
+            VisualFallback = playerVisual != SelectedSkin;
+            bool characterMode = playerVisual >= 0;
+            bool referenceMode = characterMode && playerVisual >= SkinCatalog.OwnedSkinCount;
             if (state.tick < lastTick) { shownCaptureTick = -1; captureStarted = -10f; reboundStarted = -10f; previousRebound = 0; }
             if (state.captureTick >= 0 && state.captureTick != shownCaptureTick && state.capturePolygon != null && state.capturePolygon.Count > 2)
             {
@@ -339,17 +342,18 @@ namespace SnakeClub
             foreach (var snake in state.snakes)
             {
                 if (!snake.alive || snake.segments.Count == 0) continue;
-                int visualSkin = SelectedSkin;
+                int visualSkin = playerVisual >= 0 ? playerVisual : SelectedSkin;
                 if (snake.id != playerId)
                 {
                     int first = referenceMode ? SkinCatalog.OwnedSkinCount : 0;
                     int count = referenceMode ? SkinCatalog.All.Length - first : SkinCatalog.OwnedSkinCount;
                     int choice = Mathf.Abs(snake.color % (count - 1));
-                    int playerChoice = Mathf.Clamp(SelectedSkin - first, 0, count - 1);
+                    int playerChoice = Mathf.Clamp(playerVisual - first, 0, count - 1);
                     if (choice >= playerChoice) choice++;
                     visualSkin = first + choice;
                 }
-                Sprite characterSprite = characterMode ? SkinVisual.Sprite(visualSkin) : null;
+                if (characterMode && snake.id != playerId) visualSkin = SkinVisual.ResolveIndex(visualSkin);
+                Sprite characterSprite = characterMode && visualSkin >= 0 ? SkinVisual.Sprite(visualSkin) : null;
                 int color = characterSprite != null || snake.id == playerId ? SkinPalette[Mathf.Clamp(visualSkin, 0, SkinPalette.Length - 1)] : Mathf.Abs(snake.color % bodies.Length);
                 var list = bodies[color];
                 List<Vector3> positions;

@@ -498,6 +498,8 @@ namespace SnakeClub
             Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
             Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + (depthMode ? "  星核 " : "  事件 ") + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
 
+            if (arenaRenderer.VisualFallback)
+                Label(new Rect(300, 235, 500, 45), "造型素材不可用 · 备用显示", 19, new Color(.9f, .92f, .84f), TextAnchor.MiddleCenter);
             if (state != null) DrawMiniMap(state);
             if (state != null && state.eventStatus == "active")
             {

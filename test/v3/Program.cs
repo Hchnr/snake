@@ -45,6 +45,7 @@ var cases = new (string name, Action run)[]
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
     ("single-player events rotate, award real captures and end cleanly", LocalRotatingEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
+    ("missing skin visuals fall back without changing ownership", SkinVisualFallback),
     ("depth rooms require the correct living player and objective", DepthGoals),
     ("depth star and displayed bonus caps match each room", DepthRoomFlow),
     ("depth bonuses change growth and make rebound boosts free", DepthBonuses),
@@ -461,6 +462,18 @@ static void LocalCaptureResolution()
     Check(!first.alive && !second.alive && protectedTarget.alive, "local captures did not respect all victims and shields");
     Check(owner.kills == 2 && owner.segments.Count == 10, "local captures did not immediately credit and grow the owner");
     Check(arena.State.captureOwner == "you" && arena.State.captureCount == 2, "local capture feedback differs from the resolved state");
+}
+
+static void SkinVisualFallback()
+{
+    var profile = new PlayerProgress { selectedSkin = 2, ownedSkins = new List<int> { 0, 2 } };
+    bool Available(int index) => index == 0 || index == 1;
+    Check(SkinCatalog.ResolveVisual(1, Available) == 1, "available visual unexpectedly changed");
+    Check(SkinCatalog.ResolveVisual(profile.selectedSkin, Available) == 0, "missing owned visual did not use default");
+    Check(SkinCatalog.ResolveVisual(4, Available) == 0, "missing reference did not use default");
+    Check(SkinCatalog.ResolveVisual(100, Available) == 0 && SkinCatalog.ResolveVisual(-1, Available) == 0, "invalid index did not use default");
+    Check(SkinCatalog.ResolveVisual(2, _ => false) == -1 && SkinCatalog.ResolveVisual(2, null) == -1, "missing default was reported as available");
+    Check(profile.selectedSkin == 2 && profile.ownedSkins.SequenceEqual(new[] { 0, 2 }), "visual fallback changed saved ownership");
 }
 
 static void SkinIdentities()
