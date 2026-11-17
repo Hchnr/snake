@@ -297,7 +297,8 @@ namespace SnakeClub
             daily = null;
             fixedPve = null;
             activeRun = null;
-            frontPage = "home";
+            frontPage = api.Config.ComparisonPreview && comparisonVariant >= 0 ? "comparison" : "home";
+            comparisonVariant = -1;
             arenaRenderer.SelectedSkin = EffectiveSkin;
             Demo();
         }
@@ -334,8 +335,10 @@ namespace SnakeClub
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
-                        string title = daily != null ? "挑战结束" : state.winner == playerId ? "围猎胜利" : "围猎结束";
-                        string stats = daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
+                        string title = comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : state.winner == playerId ? "围猎胜利" : "围猎结束";
+                        string stats = comparisonVariant >= 0 && api.Config.ComparisonPreview ?
+                            "最长 " + daily.PeakLength + "   ·   淘汰 " + (own != null ? own.kills : 0) :
+                            daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
                             own == null ? "" : "最长 " + matchHighlights.PeakLength + "   ·   淘汰 " + own.kills;
                         if (own != null && (state.eventStatus == "active" || state.eventStatus == "ended") &&
                             (state.eventKind == "bounty" || state.eventKind == "star" || state.eventKind == "fruit"))
@@ -608,14 +611,14 @@ namespace SnakeClub
         {
             Panel(new Rect(48, 50, 984, 188), new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
-            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? "整数规则试玩" : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
+            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? "整数规则试玩" : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
-            else Label(new Rect(88, 135, 410, 52), depthMode ? "练习 · " + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
+            else Label(new Rect(88, 135, 410, 52), comparisonVariant >= 0 && api.Config.ComparisonPreview ? "试玩 · 不计奖励或排行" : depthMode ? "练习 · " + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             bool urgent = RoundTimerPresentation.IsUrgent(state);
             int timerSize = urgent ? (reducedEffects ? 44 : Mathf.RoundToInt(42 + 2 * Mathf.Sin(state.remaining * Mathf.PI * 2))) : 40;
             Color timerColor = urgent ? new Color(1f, .76f, .40f) : Color.white;
             Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), timerSize, timerColor, TextAnchor.MiddleCenter, true);
-            Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
+            Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null && !(comparisonVariant >= 0 && api.Config.ComparisonPreview) ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
             Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + (depthMode ? "  星核 " : "  事件 ") + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
 
             if (arenaRenderer.VisualFallback)
@@ -717,13 +720,15 @@ namespace SnakeClub
         {
             if (depthMode) { DrawDepthResult(me); return; }
             Panel(new Rect(125, 610, 830, 690), new Color(.035f, .065f, .12f, .96f));
-            string result = daily != null ? "挑战结束" : state.winner == playerId ? "竞技胜利" : state.winner == "" ? "对局结束" : "对局结束";
+            bool comparison = comparisonVariant >= 0 && api.Config.ComparisonPreview;
+            string result = comparison ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : state.winner == playerId ? "竞技胜利" : state.winner == "" ? "对局结束" : "对局结束";
             Label(new Rect(170, 665, 740, 100), result, 58, Color.white, TextAnchor.MiddleCenter, true);
-            Label(new Rect(170, 790, 740, 75), daily != null ? "挑战得分 " + daily.Score : me == null ? "" : "长度 " + me.segments.Count + "     淘汰 " + me.kills, 34, new Color(.64f, .80f, .83f), TextAnchor.MiddleCenter);
+            Label(new Rect(170, 790, 740, 75), daily != null && !comparison ? "挑战得分 " + daily.Score : me == null ? "" : "长度 " + me.segments.Count + "     淘汰 " + me.kills, 34, new Color(.64f, .80f, .83f), TextAnchor.MiddleCenter);
             if (!string.IsNullOrEmpty(resultNote)) Label(new Rect(170, 850, 740, 85), resultNote, 22, new Color(.72f, .82f, .87f), TextAnchor.MiddleCenter);
             if (Button(new Rect(230, 950, 620, 105), "再来一局", new Color(.10f, .60f, .49f)))
             {
                 if (online) { Send(new Request { type = "restart" }); status = ""; }
+                else if (comparison) BeginComparison(comparisonVariant);
                 else if (daily != null) RequestDaily(); else RequestPve();
             }
             if (Button(new Rect(230, 1080, 620, 95), "返回菜单", new Color(.17f, .25f, .34f))) BackToMenu();

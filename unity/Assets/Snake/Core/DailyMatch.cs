@@ -80,7 +80,7 @@ namespace SnakeClub.Core
         private int starHolder = -1;
         private int starTicks;
         private int peak;
-        private readonly bool legacy, captures, pursueStarHolder;
+        private readonly bool legacy, captures, captureLayout, pursueStarHolder;
         private readonly int startingLength, scoreLimit;
         private readonly int eventType;
         private bool eventActive, eventDone;
@@ -119,12 +119,18 @@ namespace SnakeClub.Core
         public int Score => Math.Min(scoreLimit, 10 * (peak - startingLength) + 100 * snakes[0].kills + State.tick / TickRate + 30 * snakes[0].stars);
         public int PeakLength => peak;
 
-        public DailyMatch(int seed, string rulesVersion = RulesVersion)
+        public DailyMatch(int seed, string rulesVersion = RulesVersion) : this(seed, rulesVersion, false) { }
+
+        // Offline research only: never advertised as a server-accepted rules version.
+        public static DailyMatch CreateNoCaptureComparison(int seed) => new DailyMatch(seed, RulesVersion, true);
+
+        private DailyMatch(int seed, string rulesVersion, bool noCaptureComparison)
         {
             if (!SupportsRules(rulesVersion))
                 throw new ArgumentException("Unknown daily challenge rules", nameof(rulesVersion));
             legacy = rulesVersion == LegacyRulesVersion;
-            captures = SupportsFriendChallenge(rulesVersion);
+            captureLayout = SupportsFriendChallenge(rulesVersion);
+            captures = captureLayout && !noCaptureComparison;
             pursueStarHolder = rulesVersion == RulesVersion;
             startingLength = StartingLengthFor(rulesVersion); scoreLimit = MaxScoreFor(rulesVersion); peak = startingLength;
             uint selection = unchecked((uint)seed);
@@ -208,14 +214,14 @@ namespace SnakeClub.Core
                 if (!legacy && index > 0 && index <= 2)
                 {
                     int direction = Next(256);
-                    int radius = captures ? (index == 1 ? 9000 : 12000) + Next(2001) : (index == 1 ? 13500 : 17500) + Next(4001);
+                    int radius = captureLayout ? (index == 1 ? 9000 : 12000) + Next(2001) : (index == 1 ? 13500 : 17500) + Next(4001);
                     var player = snakes[0].segments[0];
                     head = new SimPoint(player.x + Cos(direction) * radius / 10000, player.y + Sin(direction) * radius / 10000);
                 }
                 else head = new SimPoint(Next(72001) - 36000, Next(72001) - 36000);
                 bool clear = true;
                 foreach (var other in snakes)
-                    if (Distance(head.x - other.segments[0].x, head.y - other.segments[0].y) < (captures ? 8000 : 12000)) { clear = false; break; }
+                    if (Distance(head.x - other.segments[0].x, head.y - other.segments[0].y) < (captureLayout ? 8000 : 12000)) { clear = false; break; }
                 if (clear) break;
             }
             int angle = Next(256);

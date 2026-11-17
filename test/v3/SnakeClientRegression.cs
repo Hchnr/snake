@@ -31,6 +31,7 @@ namespace SnakeClub.Tests.Editor
                 local.allowDevLogin = true; local.serverUrl = "ws://127.0.0.1:2567/ws"; Require(!local.FixedPveServerPreview, "local verifier allowed room backend");
                 Debug.Log("PASS Unity fixed PvE server preview requires explicit loopback configuration");
                 TestFixedPvePreviewFlow();
+                TestGameplayComparison();
                 TestPracticeTutorialAccess();
                 TestDepthPracticeIsolation();
                 TestBackgroundSimulation();
@@ -289,6 +290,47 @@ namespace SnakeClub.Tests.Editor
                 apiType.GetField("reachable", flags).SetValue(api, true);
                 Require(!Ready(), "offline practice or another account unlocked a fresh account");
                 Debug.Log("PASS Unity practice completion unlocks only its account challenge entry");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestGameplayComparison()
+        {
+            var root = new GameObject("Offline comparison regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>();
+                var api = root.AddComponent<GameApiClient>();
+                var config = new GameConfiguration { experimentalComparison = true, apiUrl = "", serverUrl = "", allowDevLogin = false };
+                Require(config.ComparisonPreview, "offline comparison was not enabled");
+                config.apiUrl = "https://example.invalid"; Require(!config.ComparisonPreview, "comparison allowed a backend");
+                config.apiUrl = ""; config.allowDevLogin = true; Require(!config.ComparisonPreview, "comparison allowed development login");
+                config.allowDevLogin = false; config.experimentalFixedPve = true; Require(!config.ComparisonPreview, "comparison allowed overlapping modes");
+                config.experimentalFixedPve = false; api.Configure(config);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, root.AddComponent<ArenaRenderer>());
+                Field("connection").SetValue(app, root.AddComponent<RoomConnection>());
+                string pending = PlayerPrefs.GetString("snake.v3.pending", "");
+                var profile = (PlayerProgress)Field("practiceProfile").GetValue(app);
+                Call("StartMain"); Require((string)Field("frontPage").GetValue(app) == "comparison", "main entry did not open comparison");
+                for (int variant = 0; variant < 3; variant++)
+                {
+                    Call("BeginComparison", variant);
+                    var daily = (DailyMatch)Field("daily").GetValue(app);
+                    bool capture = (bool)typeof(DailyMatch).GetField("captures", flags).GetValue(daily);
+                    Require((int)Field("comparisonVariant").GetValue(app) == variant && capture == (variant == 1) && Field("activeRun").GetValue(app) == null,
+                        "comparison variant was not isolated or had incorrect capture rules");
+                    Field("controlActions").SetValue(app, 1); Call("RecordResult");
+                    Require(profile.completedMatches == 0 && !profile.tutorialComplete && PlayerPrefs.GetString("snake.v3.pending", "") == pending,
+                        "comparison modified account or practice progression");
+                    Require(((string)Field("resultNote").GetValue(app)).Contains("不计账号奖励"), "comparison reward state missing");
+                    Call("BackToMenu");
+                    Require((string)Field("frontPage").GetValue(app) == "comparison", "comparison did not return to selection");
+                }
+                Debug.Log("PASS Unity offline comparison is isolated and selectable");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
