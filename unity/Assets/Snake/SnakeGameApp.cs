@@ -46,7 +46,8 @@ namespace SnakeClub
         private bool online;
         private bool onlineMenu;
         private bool paused;
-        private bool appFocused = true, appPaused;
+        private bool appFocused = true, appPaused, platformVisible = true;
+        private bool SimulationSuspended => paused || appPaused || !appFocused || !platformVisible || adShowing;
         private bool pointerBoost;
         private bool reducedEffects;
         private readonly DragSteering dragSteering = new DragSteering();
@@ -79,6 +80,7 @@ namespace SnakeClub
             connection = gameObject.AddComponent<RoomConnection>();
             connection.OnEvent = HandleSocket;
             api = gameObject.AddComponent<GameApiClient>();
+            api.PlatformVisibilityChanged += OnPlatformVisibilityChanged;
             LoadConfiguration();
             LoadPreferences();
             uiFont = Resources.Load<Font>("NotoSansSC");
@@ -99,6 +101,8 @@ namespace SnakeClub
             if (feedback == null) feedback = gameObject.AddComponent<ArenaFeedback>();
             if (connection == null) connection = gameObject.AddComponent<RoomConnection>();
             if (api == null) api = gameObject.AddComponent<GameApiClient>();
+            api.PlatformVisibilityChanged -= OnPlatformVisibilityChanged;
+            api.PlatformVisibilityChanged += OnPlatformVisibilityChanged;
             connection.OnEvent = HandleSocket;
             LoadConfiguration();
             LoadPreferences();
@@ -299,13 +303,13 @@ namespace SnakeClub
             PumpCaveSync();
             bool interaction = Input.anyKeyDown || Input.GetMouseButtonDown(0);
             for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
-            feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused, paused, adShowing, interaction);
-            if (inGame && !paused && appFocused && !appPaused && !adShowing)
+            feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused && platformVisible, paused, adShowing, interaction);
+            if (inGame && !SimulationSuspended)
                 feedback.RebaselineAfterSuspend(state, playerId);
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
             bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
             bool wardrobePreview = homeVisible && frontPage == "skins" && homeScreen != null && homeScreen.ArenaPreview;
-            bool renderWardrobePreview = wardrobePreview && appFocused && !appPaused;
+            bool renderWardrobePreview = wardrobePreview && appFocused && !appPaused && platformVisible && !adShowing;
             bool resultVisible = inGame && !online && !depthMode && state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
             bool resultWon = resultVisible && MatchOutcome.IsVictory(state, playerId);
             if (homeScreen != null)
@@ -338,16 +342,16 @@ namespace SnakeClub
             }
             if (homeAvatar != null)
             {
-                homeAvatar.Visible = (homeVisible || resultVisible || caveVisible) && appFocused && !appPaused &&
+                homeAvatar.Visible = (homeVisible || resultVisible || caveVisible) && appFocused && !appPaused && platformVisible && !adShowing &&
                     (!renderWardrobePreview || arenaRenderer.PreviewTexture == null);
                 homeAvatar.ReducedEffects = reducedEffects;
                 homeAvatar.SetResult(resultVisible, resultWon);
                 if (homeAvatar.Visible) homeAvatar.Skin = homeVisible && frontPage == "skins" ? previewSkin :
                     resultVisible && activeRun != null && activeRun.trialSkin > 0 && EffectiveSkin < SkinCatalog.OwnedSkinCount ? activeRun.trialSkin : EffectiveSkin;
             }
-            if (inGame && !paused && state != null && state.phase == "running") ReadControls();
+            if (inGame && !SimulationSuspended && state != null && state.phase == "running") ReadControls();
             else { dragSteering.Reset(); pointerBoost = false; }
-            if (daily != null && inGame && !paused)
+            if (daily != null && inGame && !SimulationSuspended)
             {
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
                 while (stepTimer >= .05f && !daily.Finished)
@@ -361,7 +365,7 @@ namespace SnakeClub
                 state = daily.State;
             }
             AdvanceFixedPve(Time.deltaTime);
-            if (arena != null && !paused && (!homeVisible || renderWardrobePreview))
+            if (arena != null && !SimulationSuspended && (!homeVisible || renderWardrobePreview))
             {
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
                 while (stepTimer >= .05f)
@@ -391,7 +395,7 @@ namespace SnakeClub
                     if (ownSnake != null && !ownSnake.alive) arena.EndRound();
                 }
             }
-            if (inGame && !paused && state != null && state.phase == "running")
+            if (inGame && !SimulationSuspended && state != null && state.phase == "running")
             {
                 if (online && !string.IsNullOrEmpty(playerId))
                 {
@@ -404,7 +408,7 @@ namespace SnakeClub
                 }
             }
             if (inGame && !online && state != null && state.phase == "ended" && !resultRecorded) RecordResult();
-            if (inGame && !paused && appFocused && !appPaused && !adShowing) feedback.Observe(state, playerId);
+            if (inGame && !SimulationSuspended) feedback.Observe(state, playerId);
             if (inGame && state != null)
             {
                 var own = state.snakes.Find(s => s.id == playerId);
@@ -417,16 +421,17 @@ namespace SnakeClub
             }
             arenaRenderer.SetPreviewMode(renderWardrobePreview);
             if (wardrobePreview) arenaRenderer.SelectedSkin = previewSkin;
-            arenaRenderer.Visible = !homeVisible || (renderWardrobePreview && arenaRenderer.PreviewTexture != null);
+            arenaRenderer.Visible = appFocused && !appPaused && platformVisible && !adShowing &&
+                (!homeVisible || (renderWardrobePreview && arenaRenderer.PreviewTexture != null));
             if (homeScreen != null) homeScreen.SetArenaPreview(renderWardrobePreview ? arenaRenderer.PreviewTexture : null);
             arenaRenderer.ReducedEffects = reducedEffects;
-            arenaRenderer.MotionPaused = paused || appPaused || !appFocused;
+            arenaRenderer.MotionPaused = SimulationSuspended;
             if (arenaRenderer.Visible) arenaRenderer.Draw(state, wardrobePreview ? "demo-0" : playerId);
         }
 
         private void AdvanceFixedPve(float deltaTime)
         {
-            if (fixedPve == null || !inGame || paused) return;
+            if (fixedPve == null || !inGame || SimulationSuspended) return;
             stepTimer += Mathf.Min(Mathf.Max(0, deltaTime), .2f);
             while (stepTimer >= .05f && !fixedPve.Finished)
             {
@@ -527,6 +532,17 @@ namespace SnakeClub
         {
             appFocused = hasFocus;
             if (!hasFocus) { caveSync.Invalidate(); feedback?.SuspendAudio(); SuspendInput(); }
+        }
+
+        private void OnPlatformVisibilityChanged(bool visible)
+        {
+            platformVisible = visible;
+            if (!visible) { caveSync.Invalidate(); feedback?.SuspendAudio(); SuspendInput(); }
+        }
+
+        private void OnDestroy()
+        {
+            if (api != null) api.PlatformVisibilityChanged -= OnPlatformVisibilityChanged;
         }
 
         private void SuspendInput()

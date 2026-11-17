@@ -62,6 +62,8 @@ namespace SnakeClub
         public float ServerTimeReceivedAt { get; private set; }
         public string LaunchChallengeToken { get; private set; } = "";
         public int ChallengeRevision { get; private set; }
+        public event Action<bool> PlatformVisibilityChanged;
+        private void NotifyPlatformVisibility(bool visible) => PlatformVisibilityChanged?.Invoke(visible);
         private string session = "";
         private readonly SessionGeneration sessionGeneration = new SessionGeneration();
         private bool reachable;
@@ -88,7 +90,7 @@ namespace SnakeClub
                     try
                     {
                         lifecycle = TT.GetAppLifeCycle();
-                        if (lifecycle != null) lifecycle.OnShow += OnPlatformShow;
+                        if (lifecycle != null) { lifecycle.OnShow += OnPlatformShow; lifecycle.OnHide += OnPlatformHide; }
                     }
                     catch (Exception) { /* Cold launch still works without lifecycle callbacks. */ }
                     try
@@ -126,6 +128,7 @@ namespace SnakeClub
 
         private void OnPlatformShow(Dictionary<string, object> data)
         {
+            NotifyPlatformVisibility(true);
             try
             {
                 if (data == null || !data.TryGetValue("query", out var query) || query == null) return;
@@ -139,9 +142,11 @@ namespace SnakeClub
             catch (Exception) { /* Ignore malformed platform parameters. */ }
         }
 
+        private void OnPlatformHide() => NotifyPlatformVisibility(false);
+
         private void OnDestroy()
         {
-            if (lifecycle != null) lifecycle.OnShow -= OnPlatformShow;
+            if (lifecycle != null) { lifecycle.OnShow -= OnPlatformShow; lifecycle.OnHide -= OnPlatformHide; }
         }
 
         private IEnumerator InitTimeout(Func<bool> resolved, Action timeout)

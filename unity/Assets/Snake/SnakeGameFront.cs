@@ -292,7 +292,7 @@ namespace SnakeClub
                 mode = daily != null ? "daily" : "pve", rules = activeRun.rules, inputs = daily != null || !depthMode ? Convert.ToBase64String(runInputs.ToArray()) : "",
                 score = daily != null ? daily.Score : 0, seconds = state.tick / 20, actions = controlActions });
             SavePending(pending);
-            resultNote = api.Connected ? "正在结算…" : "结果已保存，联网后重试";
+            resultNote = api.Connected && appFocused && !appPaused && platformVisible && !adShowing ? "正在结算…" : "结果已保存，返回游戏后重试";
             FlushPending();
         }
 
@@ -316,7 +316,7 @@ namespace SnakeClub
                 observedChallengeRevision = api.ChallengeRevision;
                 incomingFriend.Offer(api.LaunchChallengeToken);
             }
-            if (!incomingFriend.Pending || !appFocused || appPaused || adShowing || connecting || busy ||
+            if (!incomingFriend.Pending || !appFocused || appPaused || !platformVisible || adShowing || connecting || busy ||
                 (inGame && state != null && state.phase == "running")) return;
             if (!incomingFriend.Begin(Time.unscaledTime, out string token, out int version)) return;
             if (!api.Connected)
@@ -340,7 +340,7 @@ namespace SnakeClub
 
         private void PumpPending()
         {
-            if (!appFocused || appPaused || adShowing || flushing || connecting || busy ||
+            if (!appFocused || appPaused || !platformVisible || adShowing || flushing || connecting || busy ||
                 (inGame && state != null && state.phase == "running") || Time.unscaledTime < nextPendingPoll ||
                 !pendingRetry.Due(Time.unscaledTime)) return;
             nextPendingPoll = Time.unscaledTime + 2f;
@@ -357,7 +357,7 @@ namespace SnakeClub
 
         private void FlushPending()
         {
-            if (flushing || !api.Connected) return;
+            if (!appFocused || appPaused || !platformVisible || adShowing || flushing || !api.Connected) return;
             var pending = ReadPending();
             var entry = pending.entries.Find(item => item != null && PendingRetrySchedule.OwnedBy(item.playerId, api.Profile.playerId) &&
                 settlementRetry.Due(item.playerId, item.runId, Time.unscaledTime));
@@ -584,7 +584,7 @@ namespace SnakeClub
 
         private void PumpCaveSync()
         {
-            if (inGame || frontPage != "caves" || !appFocused || appPaused || !api.Connected ||
+            if (inGame || frontPage != "caves" || !appFocused || appPaused || !platformVisible || !api.Connected ||
                 busy || connecting || flushing || adShowing || !caveSync.TryBegin(Time.unscaledTime, out int version)) return;
             busy = true;
             api.Get("bootstrap", reply =>
@@ -753,6 +753,7 @@ namespace SnakeClub
                 if (!prepared.ok) { after?.Invoke(prepared); return; }
                 adShowing = true;
                 feedback.SuspendAudio();
+                if (inGame && state != null && state.phase == "running") SuspendInput();
                 GamePlatform.ShowRewarded(api, (completed, error) =>
                 {
                     adShowing = false;
