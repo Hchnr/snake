@@ -26,6 +26,28 @@ namespace SnakeClub.Core
             return player.reboundBoostWaitRelease ? "反弹蓄能 · 松开后再次按住加速" : "反弹蓄能 · 下次加速免消耗";
         }
 
+        // Depth star holding lasts ten seconds; boss has no timed event countdown.
+        public static string ObjectiveHint(int room, ArenaState world, string playerId)
+        {
+            if (world == null || world.phase != "running") return "";
+            if (room == 2)
+            {
+                if (!world.starVisible) return "星核即将出现 · 靠近自动拾取";
+                if (string.IsNullOrEmpty(world.starHolder)) return "星核出现 · 靠近自动拾取";
+                if (world.starHolder != playerId) return "对手携带星核 · 围猎后争夺";
+                int remaining = (int)Math.Ceiling(Math.Max(0f, Math.Min(1f, 1f - world.starProgress)) * 10f);
+                return "守住星核 · 还需 " + remaining + " 秒";
+            }
+            if (room == 3)
+            {
+                var boss = world.snakes.Find(s => s.boss && s.alive);
+                if (boss == null) return "";
+                return boss.bossWindup > 0 ? "首领蓄力！躲开方向线 · 护盾 " + boss.bossShield :
+                    "首领护盾 " + boss.bossShield + " · 拦截或收圈";
+            }
+            return "";
+        }
+
         public static string BonusChoice(int choice, int shield, int rebound, int growth)
         {
             int current;

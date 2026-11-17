@@ -616,7 +616,13 @@ namespace SnakeClub
             if (arenaRenderer.VisualFallback)
                 Label(new Rect(300, 235, 500, 45), "造型素材不可用 · 备用显示", 19, new Color(.9f, .92f, .84f), TextAnchor.MiddleCenter);
             if (state != null) DrawMiniMap(state);
-            if (state != null && state.eventStatus == "active")
+            string depthHint = depthMode ? DepthChallenge.ObjectiveHint(depthRoom, state, playerId) : "";
+            if (!string.IsNullOrEmpty(depthHint))
+            {
+                Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
+                Label(new Rect(285, 292, 470, 82), depthHint, 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
+            }
+            else if (!depthMode && state != null && state.eventStatus == "active")
             {
                 string eventHint = state.eventKind == "bounty" ? "巨蛇悬赏 · 围猎标记对手" : state.eventKind == "star" ? "星核争夺 · 携带得事件点" : "果潮混战 · 圈内淘汰得事件点";
                 var boss = state.snakes.Find(s => s.boss && s.alive);
@@ -626,12 +632,12 @@ namespace SnakeClub
                 Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
                 Label(new Rect(285, 292, 470, 82), eventHint + "  " + Mathf.CeilToInt(state.eventRemaining) + "秒", 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
             }
-            else if (state != null && state.starVisible)
+            else if (!depthMode && state != null && state.starVisible)
             {
                 string starHint = string.IsNullOrEmpty(state.starHolder) ? "星核出现" : state.starHolder == playerId ? "携带星核 " + Mathf.CeilToInt((1f - state.starProgress) * 10f) + " 秒" : "对手携带星核";
                 Label(new Rect(275, 300, 490, 60), starHint, 25, new Color(1f, .85f, .48f), TextAnchor.MiddleCenter, true);
             }
-            if (state != null && state.eventStatus != "active")
+            if (!depthMode && state != null && state.eventStatus != "active")
             {
                 string eventMessage = eventOutcome.Current(state);
                 if (!string.IsNullOrEmpty(eventMessage))
