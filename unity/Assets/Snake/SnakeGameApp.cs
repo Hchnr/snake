@@ -290,7 +290,9 @@ namespace SnakeClub
                             activeRun.date == api.Date && activeRun.rules == DailyMatch.RulesVersion && !string.IsNullOrEmpty(verifiedShareToken);
                         int adCoins = !string.IsNullOrEmpty(lastRewardId) && GamePlatform.HasRewardedAds(api) ? lastRewardCoins : 0;
                         string highlight = matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
-                        homeScreen.SetResult(title, stats, resultNote, busy, share, adCoins, highlight);
+                        string outcome = MatchOutcome.Explain(state, playerId);
+                        string details = string.IsNullOrEmpty(outcome) ? resultNote : outcome + "\n" + resultNote;
+                        homeScreen.SetResult(title, stats, details, busy, share, adCoins, highlight);
                     }
                 }
             }

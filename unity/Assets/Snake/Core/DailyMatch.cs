@@ -68,6 +68,7 @@ namespace SnakeClub.Core
         // private to the match and cleared before reuse on each simulation step.
         private readonly SimPoint[] previousHeadBuffer = new SimPoint[8];
         private readonly int[] deathBuffer = new int[8], captureKillerBuffer = new int[8];
+        private readonly string[] deathReasons = new string[8];
         private readonly CaptureLoop[] captureLoopBuffer = new CaptureLoop[8];
         private readonly List<CapturePoint> capturePathBuffer = new List<CapturePoint>(Arena.MaximumLength);
         private uint random;
@@ -102,7 +103,7 @@ namespace SnakeClub.Core
 
         private sealed class SimSnake
         {
-            public string id;
+            public string id, eliminatedBy = "", eliminationReason = "";
             public bool bot;
             public bool alive = true;
             public int color, angle, target, shield = 3 * TickRate, kills, stars;
@@ -270,13 +271,15 @@ namespace SnakeClub.Core
         private void ResolveCollisions()
         {
             int[] deaths = deathBuffer;
-            for (int i = 0; i < deaths.Length; i++) deaths[i] = -2;
+            for (int i = 0; i < deaths.Length; i++) { deaths[i] = -2; deathReasons[i] = ""; }
             for (int i = 0; i < snakes.Count; i++) for (int j = i + 1; j < snakes.Count; j++)
             {
                 var a = snakes[i]; var b = snakes[j];
                 if (!a.alive || !b.alive || a.shield > 0 || b.shield > 0 || Dist(a.segments[0], b.segments[0]) >= Collision * 2) continue;
-                if (a.segments.Count <= b.segments.Count && deaths[i] == -2) deaths[i] = a.segments.Count == b.segments.Count ? -1 : j;
-                if (b.segments.Count <= a.segments.Count && deaths[j] == -2) deaths[j] = a.segments.Count == b.segments.Count ? -1 : i;
+                if (a.segments.Count <= b.segments.Count && deaths[i] == -2)
+                { deaths[i] = a.segments.Count == b.segments.Count ? -1 : j; deathReasons[i] = deaths[i] == -1 ? "head_tie" : "head"; }
+                if (b.segments.Count <= a.segments.Count && deaths[j] == -2)
+                { deaths[j] = a.segments.Count == b.segments.Count ? -1 : i; deathReasons[j] = deaths[j] == -1 ? "head_tie" : "head"; }
             }
             for (int i = 0; i < snakes.Count; i++)
             {
@@ -287,10 +290,14 @@ namespace SnakeClub.Core
                     var b = snakes[j];
                     if (i == j || !b.alive || b.shield > 0) continue;
                     for (int k = 2; k < b.segments.Count; k++)
-                        if (Dist(a.segments[0], b.segments[k]) < 1116) { deaths[i] = j; break; }
+                        if (Dist(a.segments[0], b.segments[k]) < 1116) { deaths[i] = j; deathReasons[i] = "trail"; break; }
                 }
             }
-            for (int i = 0; i < snakes.Count; i++) if (deaths[i] != -2) snakes[i].alive = false;
+            for (int i = 0; i < snakes.Count; i++) if (deaths[i] != -2)
+            {
+                snakes[i].alive = false; snakes[i].eliminationReason = deathReasons[i];
+                snakes[i].eliminatedBy = deaths[i] < 0 ? "" : snakes[deaths[i]].id;
+            }
             for (int i = 0; i < snakes.Count; i++)
             {
                 int winner = deaths[i];
@@ -341,7 +348,11 @@ namespace SnakeClub.Core
                         (loops[owner].doubleArea == loops[previous].doubleArea && string.CompareOrdinal(snakes[owner].id, snakes[previous].id) < 0)) killer[victim] = owner;
                 }
             }
-            for (int i = 0; i < snakes.Count; i++) if (killer[i] >= 0) snakes[i].alive = false;
+            for (int i = 0; i < snakes.Count; i++) if (killer[i] >= 0)
+            {
+                snakes[i].alive = false; snakes[i].eliminationReason = "capture";
+                snakes[i].eliminatedBy = snakes[killer[i]].id;
+            }
             for (int i = 0; i < snakes.Count; i++) if (killer[i] >= 0 && snakes[killer[i]].alive) AwardKill(killer[i], i);
 
             int shown = loops[0] != null ? 0 : Array.FindIndex(loops, value => value != null);
@@ -473,6 +484,7 @@ namespace SnakeClub.Core
                 var source = snakes[i]; var target = State.snakes[i];
                 target.id = source.id; target.name = source.bot ? "AI " + i : "玩家"; target.bot = source.bot;
                 target.alive = source.alive; target.color = source.color; target.kills = source.kills;
+                target.eliminationReason = source.eliminationReason; target.eliminatedBy = source.eliminatedBy;
                 target.angle = source.angle * (float)(Math.PI * 2 / 256); target.shield = source.shield / (float)TickRate;
                 target.boosting = source.boosting; target.starPoints = source.stars; target.rebound = source.pulse / (float)TickRate;
                 target.segments.Clear();

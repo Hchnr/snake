@@ -43,6 +43,7 @@ var cases = new (string name, Action run)[]
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
+    ("match outcomes explain actual collision and capture results", MatchOutcomeCases),
     ("capture sweep follows even-odd geometry for concave and crossing loops", CaptureSweepCases),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
@@ -392,6 +393,39 @@ static void PreviousDailyReplay()
     Check(DailyMatch.MaxScoreFor(DailyMatch.PreviousRulesVersion) == 1540 && DailyMatch.MaxScoreFor(DailyMatch.RulesVersion) == 1460, "score bounds not versioned");
 }
 
+static void MatchOutcomeCases()
+{
+    Arena Setup(out SnakeState player, out SnakeState bot)
+    {
+        var arena = new Arena(71, fruitCount: 0, enableCaptures: true);
+        player = arena.AddSnake("you", "玩家", false); bot = arena.AddSnake("bot", "AI", true);
+        player.shield = bot.shield = 0;
+        return arena;
+    }
+    void Collide(Arena arena) => typeof(Arena).GetMethod("ResolveCollisions", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(arena, null);
+    var arena = Setup(out var player, out var bot);
+    player.segments = new() { new(0, 0), new(-1, 0), new(-2, 0) };
+    bot.segments = new() { new(0, 0), new(1, 0), new(2, 0), new(3, 0) };
+    Collide(arena); arena.State.phase = "ended";
+    Check(player.eliminationReason == "head" && player.eliminatedBy == "bot" && MatchOutcome.Explain(arena.State, "you").Contains("长度较短"), "unequal head collision not explained");
+    arena = Setup(out player, out bot);
+    player.segments = new() { new(0, 0), new(-1, 0), new(-2, 0) };
+    bot.segments = new() { new(0, 0), new(1, 0), new(2, 0) };
+    Collide(arena); arena.State.phase = "ended";
+    Check(player.eliminationReason == "head_tie" && !bot.alive && MatchOutcome.Explain(arena.State, "you").Contains("双方出局"), "equal head collision not explained");
+    arena = Setup(out player, out bot);
+    player.segments = new() { new(0, 0), new(-1, 0), new(-2, 0) };
+    bot.segments = new() { new(5, 0), new(3, 0), new(0, 0) };
+    Collide(arena); arena.State.phase = "ended";
+    Check(player.eliminationReason == "trail" && MatchOutcome.Explain(arena.State, "you").Contains("轨迹"), "trail collision not explained");
+    player.eliminationReason = "capture";
+    Check(MatchOutcome.Explain(arena.State, "you").Contains("收圈"), "capture not explained");
+    player.eliminationReason = "unknown";
+    Check(MatchOutcome.Explain(arena.State, "you") == "本局已出局", "unknown cause invented a reason");
+    player.alive = true; arena.State.remaining = 0;
+    Check(MatchOutcome.Explain(arena.State, "you").Contains("时间到"), "time limit not explained");
+}
+
 static void CaptureSweepCases()
 {
     var shapes = new[]
@@ -498,6 +532,8 @@ static void CaptureResolution()
     previous.SetValue(PointAt(3000, -1000), 0); previous.SetValue(PointAt(1000, -1000), 1);
     matchType.GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, new object[] { previous });
     Check(!(bool)alive.GetValue(snakes[0]) && !(bool)alive.GetValue(snakes[1]), "mutual captures must resolve simultaneously");
+    matchType.GetMethod("Sync", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(match, null);
+    Check(match.State.snakes[0].eliminationReason == "capture" && match.State.snakes[0].eliminatedBy == "bot-1", "daily capture cause was not projected");
     Check((int)snakeType.GetField("kills").GetValue(snakes[0]) == 0 && (int)snakeType.GetField("kills").GetValue(snakes[1]) == 0,
         "an eliminated captor incorrectly received growth");
 }
@@ -603,6 +639,7 @@ static void LocalCaptureResolution()
     typeof(Arena).GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic)
         .Invoke(arena, new object[] { new Dictionary<string, Point> { ["you"] = new Point(3, -1) } });
     Check(!first.alive && !second.alive && protectedTarget.alive, "local captures did not respect all victims and shields");
+    Check(first.eliminationReason == "capture" && first.eliminatedBy == "you", "local capture cause not recorded");
     Check(owner.kills == 2 && owner.segments.Count == 10, "local captures did not immediately credit and grow the owner");
     Check(arena.State.captureOwner == "you" && arena.State.captureCount == 2, "local capture feedback differs from the resolved state");
     var highlights = new MatchHighlights(); highlights.Observe(arena.State, "you");
