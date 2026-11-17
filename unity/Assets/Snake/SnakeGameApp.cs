@@ -56,6 +56,7 @@ namespace SnakeClub
         private string opponentEdgeId = "";
         private struct NameplateEntry { public Rect box; public Vector2 anchor; public Color color; public string label; }
         private readonly List<NameplateEntry> nameplateEntries = new List<NameplateEntry>(8);
+        private readonly List<EdgeObstacle> edgeObstacles = new List<EdgeObstacle>(9);
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
         private readonly KillFeedback killFeedback = new KillFeedback();
@@ -698,8 +699,12 @@ namespace SnakeClub
             if (state != null && state.phase == "running")
             {
                 DrawNames(state);
+                edgeObstacles.Clear();
+                foreach (var entry in nameplateEntries)
+                    edgeObstacles.Add(new EdgeObstacle(entry.box.x, entry.box.y, entry.box.width, entry.box.height));
                 bool hasObjectiveEdge = DrawEventTargetEdge(state, out Rect objectiveEdge);
-                DrawOpponentEdge(state, hasObjectiveEdge, objectiveEdge);
+                if (hasObjectiveEdge) edgeObstacles.Add(new EdgeObstacle(objectiveEdge.x, objectiveEdge.y, objectiveEdge.width, objectiveEdge.height));
+                DrawOpponentEdge(state);
             }
             if (firstRun && tutorialHints && !online && !paused && state != null && state.phase == "running")
             {
@@ -808,16 +813,15 @@ namespace SnakeClub
             if (!EventTargetIndicator.TryEdge(new Point(projected.x, projected.y), 110, 410, 970, 1450, out var edge)) return false;
             Vector2 direction = projected - ToVirtual(playerScreen);
             if (direction.sqrMagnitude < .01f) return false;
-            Point origin = OpponentEdgeIndicator.BoxOrigin(edge);
+            if (!EdgeIndicatorLayout.TryPlace(edge, edgeObstacles, out Point origin)) return false;
             box = new Rect(origin.x, origin.y, 140, 54);
-            foreach (var entry in nameplateEntries) if (box.Overlaps(entry.box)) { box = default; return false; }
             Panel(box, new Color(.15f, .11f, .06f, .88f));
             DrawEdgeArrow(box, direction, new Color(1f, .88f, .55f));
             Label(new Rect(box.x + 48, box.y, box.width - 48, box.height), name, 22, new Color(1f, .88f, .55f), TextAnchor.MiddleCenter, true);
             return true;
         }
 
-        private void DrawOpponentEdge(ArenaState world, bool hasObjective, Rect objectiveBox)
+        private void DrawOpponentEdge(ArenaState world)
         {
             var player = world.snakes.Find(s => s.id == playerId);
             if (player == null || !player.alive || player.segments.Count == 0) { opponentEdgeId = ""; return; }
@@ -835,12 +839,8 @@ namespace SnakeClub
                 if (screen.z <= 0) continue;
                 Vector2 target = ToVirtual(screen);
                 if (!OpponentEdgeIndicator.TryCandidate(world, playerId, other, new Point(target.x, target.y), out float distance, out Point edge)) continue;
-                Point origin = OpponentEdgeIndicator.BoxOrigin(edge);
+                if (!EdgeIndicatorLayout.TryPlace(edge, edgeObstacles, out Point origin)) continue;
                 Rect box = new Rect(origin.x, origin.y, 140, 54);
-                if (hasObjective && box.Overlaps(objectiveBox)) continue;
-                bool blocked = false;
-                foreach (var entry in nameplateEntries) if (box.Overlaps(entry.box)) { blocked = true; break; }
-                if (blocked) continue;
                 if (other.id == opponentEdgeId) { previous = other; previousBox = box; previousDirection = target - playerPosition; previousDistance = distance; }
                 if (distance < best) { selected = other; selectedBox = box; selectedDirection = target - playerPosition; best = distance; }
             }
