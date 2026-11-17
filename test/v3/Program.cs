@@ -26,6 +26,7 @@ var cases = new (string name, Action run)[]
 {
     ("incoming friend challenges deduplicate, retry and reject stale replies", IncomingFriendCases),
     ("platform login handles timeout, late and duplicate callbacks", PlatformLoginCases),
+    ("session generations reject old login responses", SessionGenerationCases),
     ("Douyin login handles valid, malformed and unavailable upstream responses", DouyinExchangeCases),
     ("first seven active days grow linearly and later growth slows", GrowthCurve),
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
@@ -81,6 +82,19 @@ static void Check(bool value, string message)
 {
     if (!value) throw new Exception(message);
 }
+static void SessionGenerationCases()
+{
+    var session = new SessionGeneration();
+    long first = session.Capture();
+    Check(session.IsCurrent(first), "initial request was rejected");
+    session.Advance(); // Login or a 401 invalidates every earlier request.
+    long second = session.Capture();
+    Check(!session.IsCurrent(first) && session.IsCurrent(second), "login did not invalidate old requests");
+    session.Advance();
+    Check(!session.IsCurrent(first) && !session.IsCurrent(second), "reconnect accepted stale responses");
+    Check(session.IsCurrent(session.Capture()), "new session request was rejected");
+}
+
 static void DouyinExchangeCases()
 {
     string seenUrl = "";
