@@ -55,6 +55,7 @@ var cases = new (string name, Action run)[]
     ("result celebration only follows a real win and respects reduced effects", ResultMotionCases),
     ("character motion follows real turns, boost and reduced effects", CharacterMotionCases),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
+    ("elimination feedback follows observed credited outcomes", EliminationFeedbackCases),
     ("match outcomes explain actual collision and capture results", MatchOutcomeCases),
     ("capture sweep follows even-odd geometry for concave and crossing loops", CaptureSweepCases),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
@@ -295,6 +296,26 @@ static void ArenaVisualClockCases()
     Check(Math.Abs(clock.Time - .5f) < .001f, "invalid delta changed visual time");
     clock.Advance(.25f, false);
     Check(Math.Abs(clock.Time - .75f) < .001f, "visual clock did not resume");
+}
+
+static void EliminationFeedbackCases()
+{
+    var feed = new EliminationFeedback();
+    var you = new SnakeState { id = "you", name = "玩家" };
+    var other = new SnakeState { id = "bot", name = "AI 1", bot = true };
+    var state = new ArenaState { phase = "running", tick = 1, snakes = new List<SnakeState> { you, other } };
+    feed.Observe(state, "you");
+    Check(feed.Current(state) == "", "invented an elimination");
+    other.alive = false; other.eliminatedBy = "you"; other.eliminationReason = "capture"; state.tick = 2;
+    feed.Observe(state, "you");
+    Check(feed.Current(state) == "收圈捕获 · AI 1", "actual capture was not attributed");
+    state.tick = 43; feed.Observe(state, "you");
+    Check(feed.Current(state) == "", "old notification did not expire");
+    feed.Reset(); feed.Observe(state, "you");
+    Check(feed.Current(state) == "", "previously dead opponent generated a new event");
+    other.alive = true; state.tick++; feed.Observe(state, "you");
+    other.alive = false; you.alive = false; state.tick++; feed.Observe(state, "you");
+    Check(feed.Current(state) == "", "dead player was credited with a simultaneous elimination");
 }
 
 static void RoundTimerCases()
