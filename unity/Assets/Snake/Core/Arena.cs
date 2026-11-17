@@ -434,16 +434,24 @@ namespace SnakeClub.Core
         public const float WarningClearance = 2.5f;
 
         public static bool Find(ArenaState state, string playerId, out Point position)
+            => FindInternal(state, playerId, false, out position);
+
+        // The warning reflects only current geometry; it does not predict movement.
+        public static bool FindBeforeProtectionEnds(ArenaState state, string playerId, out Point position)
+            => FindInternal(state, playerId, true, out position);
+
+        private static bool FindInternal(ArenaState state, string playerId, bool endingProtection, out Point position)
         {
             position = default;
             if (state == null || state.phase != "running" || string.IsNullOrEmpty(playerId)) return false;
             var player = state.snakes.Find(s => s.id == playerId);
-            if (player == null || !player.alive || player.shield > 0 || player.segments.Count == 0) return false;
+            if (player == null || !player.alive || player.segments.Count == 0) return false;
+            if (endingProtection ? player.shield <= 0 || player.shield > 1f : player.shield > 0) return false;
             float closest = WarningClearance;
             bool found = false;
             foreach (var opponent in state.snakes)
             {
-                if (opponent == player || !opponent.alive || opponent.shield > 0 || opponent.segments.Count == 0) continue;
+                if (opponent == player || !opponent.alive || opponent.shield > (endingProtection ? 1f : 0f) || opponent.segments.Count == 0) continue;
                 for (int i = 0; i < opponent.segments.Count; i++)
                 {
                     if (i == 1 || (i == 0 && player.segments.Count > opponent.segments.Count)) continue;

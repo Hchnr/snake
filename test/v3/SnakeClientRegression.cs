@@ -35,6 +35,7 @@ namespace SnakeClub.Tests.Editor
                 TestPracticeTutorialAccess();
                 TestDepthPracticeIsolation();
                 TestBackgroundSimulation();
+                TestProtectionWarningVisual();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");
@@ -290,6 +291,34 @@ namespace SnakeClub.Tests.Editor
                 apiType.GetField("reachable", flags).SetValue(api, true);
                 Require(!Ready(), "offline practice or another account unlocked a fresh account");
                 Debug.Log("PASS Unity practice completion unlocks only its account challenge entry");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestProtectionWarningVisual()
+        {
+            var root = new GameObject("Protection warning regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                var state = new ArenaState { phase = "running" };
+                var me = new SnakeState { id = "you", shield = 2, segments = new System.Collections.Generic.List<Point> { new Point(0, 0), new Point(-1, 0), new Point(-2, 0) } };
+                var other = new SnakeState { id = "other", bot = true, shield = 2, segments = new System.Collections.Generic.List<Point> { new Point(3, 0), new Point(4, 0), new Point(5, 0) } };
+                state.snakes.Add(me); state.snakes.Add(other);
+                var type = typeof(ArenaRenderer);
+                var rings = (System.Collections.Generic.Dictionary<string, LineRenderer>)type.GetField("protectionMarkers", flags).GetValue(renderer);
+                var arrow = (LineRenderer)type.GetField("dangerArrow", flags).GetValue(renderer);
+                renderer.Draw(state, "you");
+                Require(rings["you"].enabled && rings["you"].startColor.b > rings["you"].startColor.r && !arrow.enabled, "normal protection presentation was incorrect");
+                me.shield = other.shield = .5f; renderer.ReducedEffects = true; renderer.Draw(state, "you");
+                Require(rings["you"].enabled && rings["you"].startColor.r > rings["you"].startColor.b && arrow.enabled,
+                    "expiring protection or nearby threat was not visible with reduced effects");
+                me.shield = other.shield = 0; renderer.Draw(state, "you");
+                Require(!rings["you"].enabled && arrow.enabled, "protection did not transition to current danger");
+                state.phase = "ended"; renderer.Draw(state, "you"); Require(!arrow.enabled, "finished match kept the danger arrow");
+                Debug.Log("PASS Unity protection expiry stays legible with reduced effects");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

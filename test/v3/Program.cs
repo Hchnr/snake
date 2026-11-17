@@ -310,6 +310,17 @@ static void NearbyDanger()
     Check(!DangerProbe.Find(state, "you", out _), "protected opponent incorrectly indicated danger");
     other.shield = 0; player.shield = 1;
     Check(!DangerProbe.Find(state, "you", out _), "protected player incorrectly received warning");
+    Check(DangerProbe.FindBeforeProtectionEnds(state, "you", out cue) && cue.x == 3, "near threat was not signalled before protection expiry");
+    player.shield = 1.01f;
+    Check(!DangerProbe.FindBeforeProtectionEnds(state, "you", out _), "warning appeared before the final second");
+    player.shield = .5f; other.shield = 1.01f;
+    Check(!DangerProbe.FindBeforeProtectionEnds(state, "you", out _), "long-protected opponent was treated as an imminent hazard");
+    other.shield = .5f;
+    Check(DangerProbe.FindBeforeProtectionEnds(state, "you", out cue) && cue.x == 3, "both expiring protections hid a nearby threat");
+    other.alive = false;
+    Check(!DangerProbe.FindBeforeProtectionEnds(state, "you", out _), "dead opponent triggered expiry warning");
+    other.alive = true; other.shield = 0; player.shield = 0;
+    Check(!DangerProbe.FindBeforeProtectionEnds(state, "you", out _) && DangerProbe.Find(state, "you", out _), "expiry warning did not transition to real danger");
     player.shield = 0; other.alive = false;
     Check(!DangerProbe.Find(state, "you", out _), "dead opponent incorrectly indicated danger");
     other.alive = true; other.segments[2] = new Point(30, 0); other.segments[0] = new Point(3, 0);
@@ -317,6 +328,9 @@ static void NearbyDanger()
     other.segments.RemoveAt(3);
     other.segments.RemoveAt(2);
     Check(!DangerProbe.Find(state, "you", out _), "shorter opposing head incorrectly indicated danger");
+    player.shield = .5f;
+    Check(!DangerProbe.FindBeforeProtectionEnds(state, "you", out _), "shorter opposing head produced a false expiry warning");
+    player.shield = 0;
     other.segments[0] = new Point(30, 0); other.segments[1] = new Point(1, 0);
     Check(!DangerProbe.Find(state, "you", out _), "non-colliding neck incorrectly indicated danger");
     state.phase = "ended"; other.segments.Add(new Point(1, 0));

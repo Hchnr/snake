@@ -673,6 +673,8 @@ namespace SnakeClub
             }
             if (!paused && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
+            else if (!paused && DangerProbe.FindBeforeProtectionEnds(state, playerId, out _))
+                Label(new Rect(230, 1640, 620, 64), "附近有对手 · 保护即将结束", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
             string boostHint = depthMode && !paused ? DepthChallenge.ReboundBoostHint(me) : "";
             if (!string.IsNullOrEmpty(boostHint))
             {
