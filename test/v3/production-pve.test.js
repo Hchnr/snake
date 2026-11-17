@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { spawn } = require('node:child_process');
+const { spawn, execFileSync } = require('node:child_process');
 const { createHash, createHmac } = require('node:crypto');
 const fs = require('node:fs');
 const net = require('node:net');
@@ -9,6 +9,7 @@ const path = require('node:path');
 
 const root = path.join(__dirname, '../..');
 const serverDll = path.join(root, 'server/bin/Debug/net10.0/Snake.Server.dll');
+const coreDll = path.join(root, 'test/v3/bin/Debug/net10.0/Snake.V3.Core.Tests.dll');
 const key = 'production-test-only-stable-key-at-least-32-characters';
 const signingKey = createHash('sha256').update(key).digest();
 const sign = value => {
@@ -26,8 +27,9 @@ test('production blocks unverified PvE while preserving completed receipts and d
     const base = { playerId, mode: 'pve', date, rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
     const pending = { ...base, id: 'pending', completed: false };
     const completed = { ...base, id: 'completed', completed: true, expiresAt: Date.now() - 60000, coins: 35, experience: 20 };
+    const daily = { ...base, id: 'daily', mode: 'daily', rules: 'daily-4', completed: false };
     const fixture = path.join(temp, 'legacy.json');
-    fs.writeFileSync(fixture, JSON.stringify({ players: { [playerId]: { playerId, dailyKey: date, coins: 73, experience: 29 } }, runs: { pending, completed } }));
+    fs.writeFileSync(fixture, JSON.stringify({ players: { [playerId]: { playerId, dailyKey: date, coins: 73, experience: 29 } }, runs: { pending, completed, daily } }));
     const port = await new Promise((resolve, reject) => {
       const socket = net.createServer(); socket.once('error', reject);
       socket.listen(0, '127.0.0.1', () => { const value = socket.address().port; socket.close(() => resolve(value)); });
@@ -62,6 +64,12 @@ test('production blocks unverified PvE while preserving completed receipts and d
     assert.equal(profile.data.profile.coins, 73); assert.equal(profile.data.profile.experience, 29);
     assert.equal((await request('challenge/start?rules=daily-4', {})).status, 200);
     assert.equal((await request('match/start', {}, 'invalid')).status, 401);
+    const replay = JSON.parse(execFileSync('dotnet', [coreDll, 'replay', String(daily.seed), '0', daily.rules], { encoding: 'utf8' }));
+    const settled = await request('challenge/submit', { runId: daily.id, token: tokenFor(daily), score: replay.score, inputs: replay.inputs, actions: 1 });
+    assert.equal(settled.status, 200); assert.equal(settled.data.verified, true);
+    assert.equal(settled.data.profile.tutorialComplete, true);
+    assert.equal(settled.data.profile.completedMatches, 1);
+    assert.ok(settled.data.profile.coins > 73);
   } finally {
     if (child && child.exitCode === null && child.signalCode === null) await new Promise(resolve => { child.once('exit', resolve); child.kill('SIGTERM'); });
     fs.rmSync(temp, { recursive: true, force: true });

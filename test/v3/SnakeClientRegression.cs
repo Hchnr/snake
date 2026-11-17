@@ -24,6 +24,7 @@ namespace SnakeClub.Tests.Editor
                 config.allowDevLogin = false; config.experimentalFixedPve = false; Require(!config.FixedPvePreview, "preview enabled without explicit flag");
                 Debug.Log("PASS Unity fixed PvE preview requires explicit offline configuration");
                 TestFixedPvePreviewFlow();
+                TestPracticeTutorialAccess();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");
@@ -128,6 +129,11 @@ namespace SnakeClub.Tests.Editor
                     foreach (var text in owner.GetComponentsInChildren<Text>(true)) if (text.name == name) return text;
                     throw new Exception("UI text not found: " + name);
                 }
+                var fresh = new PlayerProgress { playerId = "fresh" };
+                screen.SetState(fresh, null, "", false, true, true, 0, 0, false, false, friendChallenge: true, tutorialReady: false);
+                Require(FindText("Primary label").text.Contains("先完成"), "fresh account did not show the practice requirement");
+                screen.SetState(fresh, null, "", false, true, true, 0, 0, false, false, friendChallenge: true, tutorialReady: true);
+                Require(FindText("Primary label").text.Contains("接受好友挑战"), "practice completion did not update the challenge entry");
                 Require(FindText("Result outcome").text == "撞上对手轨迹，被淘汰" && FindText("Result details").text == "成绩已验证 · 金币 +35",
                     "result outcome and reward status were not presented independently");
                 screen.SetResult("围猎结束", "最长 16 · 淘汰 0", "本局已出局", "离线练习 · 不计账号奖励", false, false, 0);
@@ -141,6 +147,50 @@ namespace SnakeClub.Tests.Editor
                 if (!string.IsNullOrEmpty(stamp)) File.WriteAllText(stamp, "passed\n");
             }
             finally { UnityEngine.Object.DestroyImmediate(owner); }
+        }
+
+        private static void TestPracticeTutorialAccess()
+        {
+            var root = new GameObject("Practice account regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>();
+                var api = root.AddComponent<GameApiClient>();
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var connection = root.AddComponent<RoomConnection>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                bool Ready() => (bool)type.GetProperty("TutorialReady", flags).GetValue(app);
+                var apiType = typeof(GameApiClient);
+                var profileProperty = apiType.GetProperty("Profile");
+                var accountA = new PlayerProgress { playerId = "account-a", coins = 123 };
+                var accountB = new PlayerProgress { playerId = "account-b" };
+                profileProperty.SetValue(api, accountA);
+                apiType.GetField("session", flags).SetValue(api, "test-session");
+                apiType.GetField("reachable", flags).SetValue(api, true);
+                Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, renderer); Field("connection").SetValue(app, connection);
+                string pendingBefore = PlayerPrefs.GetString("snake.v3.pending", "");
+                Require(!Ready(), "fresh account skipped practice");
+                Call("BeginPve", new object[] { null }); Call("RecordResult");
+                Require(!Ready(), "practice without input unlocked the challenge");
+                Call("BeginPve", new object[] { null }); Field("controlActions").SetValue(app, 1);
+                profileProperty.SetValue(api, accountB);
+                Call("RecordResult");
+                Require(!Ready(), "practice from a different account unlocked this account");
+                profileProperty.SetValue(api, accountA);
+                Require(Ready(), "completed practice did not unlock the challenge entry for its account");
+                Require(!accountA.tutorialComplete && accountA.completedMatches == 0 && accountA.coins == 123 &&
+                    PlayerPrefs.GetString("snake.v3.pending", "") == pendingBefore, "practice changed account rewards or created a settlement");
+                apiType.GetField("reachable", flags).SetValue(api, false);
+                profileProperty.SetValue(api, accountB);
+                Require(Ready(), "offline practice progression was lost");
+                apiType.GetField("reachable", flags).SetValue(api, true);
+                Require(!Ready(), "offline practice or another account unlocked a fresh account");
+                Debug.Log("PASS Unity practice completion unlocks only its account challenge entry");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
         private static void TestFixedPvePreviewFlow()
