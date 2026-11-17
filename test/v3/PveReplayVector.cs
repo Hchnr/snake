@@ -17,6 +17,43 @@ namespace SnakeClub.Tests
             if (value == null) { Add(-1); return; }
             Add(value.Length); foreach (char c in value) Add((int)c);
         }
+        // Per-case hashes identify the first differing seed, mode and input pattern.
+        // Each case runs normally to completion; none extends protection artificially.
+        public static string ComputeMatrix()
+        {
+            string results = "";
+            foreach (int seed in new[] { 0, 1, 2 })
+            foreach (bool first in new[] { true, false })
+            for (int pattern = 0; pattern < 4; pattern++)
+            {
+                hash = 14695981039346656037UL;
+                var profile = new PlayerProgress { selectedSkin = pattern % 3, talents = new[] { pattern, 2, 1, 0, 1, 0, 0, 0, 0 } };
+                var world = new PveFixedWorld(seed, first, profile);
+                int limit = (first ? 60 : 90) * PveFixedWorld.TickRate;
+                for (int tick = 0; tick < limit && !world.Finished; tick++)
+                {
+                    byte heading = pattern == 0 ? (byte)0 : pattern == 1 ? (byte)(tick / 53 * 37) :
+                        pattern == 2 ? (byte)(tick * 17) : (byte)((tick / 9 * 127 + seed * 31) & 255);
+                    bool boost = pattern == 1 ? tick % 120 >= 95 : pattern == 2 ? tick % 30 < 15 : pattern == 3 && tick % 7 == 0;
+                    world.Step(heading, boost);
+                    Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
+                    Add(world.EventKind); Add(world.EventStatus); Add(world.EventTarget); Add(world.EventTicksRemaining);
+                    Add(world.EventCenter.x); Add(world.EventCenter.y); Add(world.StarPosition.x); Add(world.StarPosition.y); Add(world.StarHolder); Add(world.StarTicks);
+                    foreach (var fighter in world.Fighters)
+                    {
+                        Add(fighter.id); Add(fighter.alive ? 1 : 0); Add(fighter.shieldTicks); Add(fighter.captureCooldown);
+                        Add(fighter.kills); Add(fighter.eventPoints); Add(fighter.eliminatedBy); Add(fighter.eliminationReason);
+                        Add(fighter.motion.Angle); Add(fighter.motion.Length); Add(fighter.motion.ReboundTicks);
+                        foreach (var point in fighter.motion.Segments) { Add(point.x); Add(point.y); }
+                    }
+                    foreach (var item in world.Fruit) { Add(item.position.x); Add(item.position.y); Add(item.color); }
+                }
+                if (!world.Finished) throw new InvalidOperationException("Matrix case did not finish");
+                if (results.Length != 0) results += ",";
+                results += seed + ":" + (first ? "first" : "normal") + ":" + pattern + ":" + world.Tick + ":" + hash.ToString("x16");
+            }
+            return results;
+        }
         public static string Compute()
         {
             hash = 14695981039346656037UL;

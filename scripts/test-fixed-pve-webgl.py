@@ -22,14 +22,16 @@ chrome = Path(os.environ.get('SNAKE_CHROME', '/Applications/Google Chrome.app/Co
 if not editor.is_file() or not chrome.is_file():
     sys.exit('Unity Editor or Chrome not found; set UNITY_EDITOR and SNAKE_CHROME to their executable paths.')
 
-pattern = re.compile(r'fixed=([0-9a-f]{16});combat=([0-9a-f]{16});world=([0-9a-f]{16})')
+pattern = re.compile(r'fixed=([0-9a-f]{16});combat=([0-9a-f]{16});world=([0-9a-f]{16}).*;matrix=([0-9a-z:,]+)')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'pve-vector'],
                            text=True, capture_output=True, check=True, timeout=180).stdout
 match = pattern.search(reference)
 if not match:
     sys.exit('Desktop reference vector missing.')
-expected = match.group(0)
+expected = match.group(1, 2, 3, 4)
+if len(expected[3].split(',')) != 24:
+    sys.exit('Desktop matrix is incomplete.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -61,7 +63,7 @@ with tempfile.TemporaryDirectory(prefix='snake-fixed-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + PveReplayVector.Compute()); }
+    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + PveReplayVector.Compute() + ";matrix=" + PveReplayVector.ComputeMatrix()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -87,10 +89,16 @@ internal static class FixedVectorDiagnostic {
         actual_match = pattern.search(result.stdout)
         if not actual_match:
             sys.exit('WebGL integer vector missing: ' + result.stdout[-1000:])
-        actual = actual_match.group(0)
-        print('.NET:  ' + expected + '\nWebGL: ' + actual)
+        actual = actual_match.group(1, 2, 3, 4)
+        if len(actual[3].split(',')) != 24:
+            sys.exit('WebGL matrix is incomplete.')
+        print('.NET:  ' + ';'.join(expected) + '\nWebGL: ' + ';'.join(actual))
         if actual != expected:
+            for desktop, webgl in zip(expected[3].split(','), actual[3].split(',')):
+                if desktop != webgl:
+                    print('First differing matrix case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
             sys.exit('MISMATCH: integer PvE differs in these environments; do not enable replay-based rewards.')
-        print('MATCH: sampled integer vectors only; Douyin devices and production rewards remain unverified.')
+        print('MATCH: sampled integer vectors and 24 complete matrix cases only; Douyin devices and production rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

@@ -5,7 +5,7 @@ using SnakeClub.Core;
 
 if (args.Length == 1 && args[0] == "pve-vector")
 {
-    Console.WriteLine(SnakeClub.Tests.PveReplayVector.Compute());
+    Console.WriteLine(SnakeClub.Tests.PveReplayVector.Compute() + ";matrix=" + SnakeClub.Tests.PveReplayVector.ComputeMatrix());
     return;
 }
 
