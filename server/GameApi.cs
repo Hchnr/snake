@@ -224,8 +224,9 @@ sealed class GameApi
             bool reserved = !string.IsNullOrEmpty(p.trialRunId) && data.runs.TryGetValue(p.trialRunId, out var trialRun) && !trialRun.completed && now.ToUnixTimeMilliseconds() - trialRun.startedAt < 190000;
             if (!reserved) { run.trialSkin = p.trialSkin; p.trialRunId = run.id; }
         }
+        if (mode == "pve") run.startConfig = PveStartConfig.Capture(p, run.trialSkin);
         data.runs[run.id] = run;
-        return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules, trialSkin = run.trialSkin, serverTime = run.startedAt, expiresAt = run.expiresAt });
+        return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules, trialSkin = run.trialSkin, startConfig = run.startConfig, serverTime = run.startedAt, expiresAt = run.expiresAt });
     }
 
     private IResult FinishPve(PlayerProgress p, MatchRequest request, DateTimeOffset now)
@@ -429,6 +430,7 @@ sealed class RunRecord
     public int seed, score, coins, experience, questCoins, questExperience, trialSkin = -1, unlockedSkin = -1;
     public long startedAt, finishedAt, expiresAt;
     public bool completed;
+    public PveStartConfig? startConfig;
 }
 sealed class RewardSource { public string playerId = "", kind = ""; public int baseCoins; public bool adClaimed; }
 sealed class AdRecord { public string id = "", playerId = "", sourceId = "", kind = "", day = ""; public int skin = -1; public long createdAt, completedAt; public bool completed; }

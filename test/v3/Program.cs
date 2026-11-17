@@ -64,6 +64,7 @@ var cases = new (string name, Action run)[]
     ("local arena reuses collision buffers without stale outcomes", ArenaBufferReuse),
     ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
+    ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
@@ -982,6 +983,18 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveConfigCases()
+{
+    var profile = new PlayerProgress { tutorialComplete = false, selectedSkin = 2, talents = new[] { 1, 0, 0, 0, 0, 0, 0, 0, 0 } };
+    var saved = PveStartConfig.Capture(profile, 3);
+    profile.tutorialComplete = true; profile.selectedSkin = 1; profile.talents[0] = 3;
+    Check(saved.Supported && saved.firstRun && saved.skin == 3 && saved.talents[0] == 1, "start config followed later account changes");
+    var match = saved.MatchProfile(); match.talents[0] = 2;
+    Check(saved.talents[0] == 1, "match changed stored snapshot");
+    Check(PveStartConfig.Capture(profile, -1).skin == 1, "equipped skin not preserved");
+    Check(!new PveStartConfig().Supported, "unknown snapshot version accepted");
 }
 
 static void PveRecordingCases()
