@@ -43,6 +43,7 @@ var cases = new (string name, Action run)[]
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
     ("first-run hints respond to player actions and stop on time", FirstRunHintsCases),
+    ("late-round timer follows live match state", RoundTimerCases),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("drag steering recovers missing touch ends and transfers control", TouchRecovery),
     ("audio feedback rebases after interruption without replaying old events", AudioFeedbackCursorCases),
@@ -280,6 +281,23 @@ static void NearbyDanger()
     Check(!DangerProbe.Find(state, "you", out _), "non-colliding neck incorrectly indicated danger");
     state.phase = "ended"; other.segments.Add(new Point(1, 0));
     Check(!DangerProbe.Find(state, "you", out _), "ended match retained danger warning");
+}
+
+static void RoundTimerCases()
+{
+    Check(!RoundTimerPresentation.IsUrgent(null), "missing match appeared urgent");
+    var state = new ArenaState { phase = "waiting", remaining = 9 };
+    Check(!RoundTimerPresentation.IsUrgent(state), "waiting match appeared urgent");
+    state.phase = "running"; state.remaining = 10.1f;
+    Check(!RoundTimerPresentation.IsUrgent(state), "urgency started too early");
+    state.remaining = 10;
+    Check(RoundTimerPresentation.IsUrgent(state), "final ten seconds not highlighted");
+    state.remaining = .1f;
+    Check(RoundTimerPresentation.IsUrgent(state), "last fraction was not highlighted");
+    state.remaining = 0;
+    Check(!RoundTimerPresentation.IsUrgent(state), "zero time remained urgent");
+    state.phase = "ended"; state.remaining = 5;
+    Check(!RoundTimerPresentation.IsUrgent(state), "ended match appeared urgent");
 }
 
 static void FirstRunHintsCases()

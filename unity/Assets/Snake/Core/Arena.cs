@@ -109,6 +109,12 @@ namespace SnakeClub.Core
         }
     }
 
+    public static class RoundTimerPresentation
+    {
+        public static bool IsUrgent(ArenaState state) => state != null && state.phase == "running" &&
+            state.remaining > 0 && state.remaining <= 10;
+    }
+
     // Short first-run prompts follow observed actions rather than completing
     // automatically as the timer advances. They do not affect input or rules.
     public static class FirstRunHints
