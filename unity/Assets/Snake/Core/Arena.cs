@@ -148,6 +148,41 @@ namespace SnakeClub.Core
             => world != null && world.phase == "running" && world.tick < untilTick ? notice : "";
     }
 
+    // Visual state only: the simulation remains the source of angle and boost.
+    // Uniform scaling preserves the source character's proportions.
+    public sealed class CharacterMotion
+    {
+        private bool initialized;
+        private int lastTick;
+        private float lastAngle, targetLean, lean, boost;
+        public float LeanDegrees => lean;
+        public float Scale => 1f + .08f * boost;
+
+        public void Update(int tick, float angle, bool boosting, float deltaTime, bool reduced, bool active)
+        {
+            if (float.IsNaN(angle) || float.IsInfinity(angle)) return;
+            if (!initialized || tick < lastTick)
+            {
+                initialized = true; lastTick = tick; lastAngle = angle;
+                targetLean = lean = boost = 0;
+            }
+            else if (tick > lastTick)
+            {
+                float turn = (float)Math.Atan2(Math.Sin(angle - lastAngle), Math.Cos(angle - lastAngle));
+                float elapsed = Math.Max(.05f, (tick - lastTick) * .05f);
+                targetLean = Math.Max(-8f, Math.Min(8f, -turn / elapsed * 2f));
+                lastTick = tick; lastAngle = angle;
+            }
+            if (reduced) { targetLean = lean = boost = 0; return; }
+            if (!active) targetLean = 0;
+            if (float.IsNaN(deltaTime) || float.IsInfinity(deltaTime)) deltaTime = 0;
+            float dt = Math.Max(0, Math.Min(.1f, deltaTime));
+            float blend = (float)(1 - Math.Exp(-10 * dt));
+            lean += ((active ? targetLean : 0) - lean) * blend;
+            boost += ((active && boosting ? 1 : 0) - boost) * blend;
+        }
+    }
+
     // Presentation-only transition: only a previously displayed living
     // character can produce an exit; resets prevent events leaking between matches.
     public sealed class EliminationTransition

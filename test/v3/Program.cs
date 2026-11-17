@@ -46,6 +46,7 @@ var cases = new (string name, Action run)[]
     ("settlement retry delays do not block other runs or accounts", IndependentSettlementRetries),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
+    ("character motion follows real turns, boost and reduced effects", CharacterMotionCases),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("match outcomes explain actual collision and capture results", MatchOutcomeCases),
     ("capture sweep follows even-odd geometry for concave and crossing loops", CaptureSweepCases),
@@ -461,6 +462,32 @@ static void PreviousDailyReplay()
     Check(match.State.tick == 1200 && match.Score == 90, "daily-2 replay changed from its recorded result");
     Check(match.State.captureTick == -1, "daily-2 unexpectedly enabled capture");
     Check(DailyMatch.MaxScoreFor(DailyMatch.PreviousRulesVersion) == 1540 && DailyMatch.MaxScoreFor(DailyMatch.RulesVersion) == 1460, "score bounds not versioned");
+}
+
+static void CharacterMotionCases()
+{
+    var motion = new CharacterMotion();
+    motion.Update(0, 0, false, .05f, false, true);
+    Check(motion.LeanDegrees == 0 && motion.Scale == 1, "initial motion is not neutral");
+    motion.Update(1, .1f, true, .05f, false, true);
+    Check(motion.LeanDegrees < 0 && motion.LeanDegrees > -8 && motion.Scale > 1 && motion.Scale < 1.08f, "turn or gradual boost did not respond");
+    for (int i = 2; i < 30; i++) motion.Update(i, .1f, true, .05f, false, true);
+    Check(Math.Abs(motion.LeanDegrees) < .01f && motion.Scale > 1.079f && motion.Scale <= 1.08f, "straight travel did not settle or boost exceeded limit");
+    motion.Update(30, -.5f, true, .05f, false, true);
+    Check(motion.LeanDegrees > 0 && motion.LeanDegrees <= 8, "opposite turn did not lean in the other direction");
+    motion.Update(31, -.5f, true, .05f, true, true);
+    Check(motion.LeanDegrees == 0 && motion.Scale == 1, "reduced effects did not restore a neutral pose");
+    var wrapped = new CharacterMotion();
+    wrapped.Update(0, 3.13f, false, .05f, false, true);
+    wrapped.Update(1, -3.13f, false, .05f, false, true);
+    Check(wrapped.LeanDegrees < 0 && wrapped.LeanDegrees > -2, "angle wrapping generated a false large turn");
+    wrapped.Update(2, 0, true, .05f, false, false);
+    for (int i = 0; i < 30; i++) wrapped.Update(2, 0, true, .05f, false, false);
+    Check(Math.Abs(wrapped.LeanDegrees) < .01f && Math.Abs(wrapped.Scale - 1) < .001f, "paused motion did not settle");
+    wrapped.Update(0, 1, false, .05f, false, true);
+    Check(wrapped.LeanDegrees == 0 && wrapped.Scale == 1, "previous match motion leaked after tick reset");
+    wrapped.Update(1, float.NaN, true, .05f, false, true);
+    Check(wrapped.LeanDegrees == 0 && wrapped.Scale == 1, "invalid angle changed the pose");
 }
 
 static void EliminationTransitionCases()

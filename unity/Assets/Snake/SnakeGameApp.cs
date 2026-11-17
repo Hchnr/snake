@@ -369,6 +369,7 @@ namespace SnakeClub
             }
             arenaRenderer.Visible = !homeVisible;
             arenaRenderer.ReducedEffects = reducedEffects;
+            arenaRenderer.MotionPaused = paused || appPaused || !appFocused;
             if (arenaRenderer.Visible) arenaRenderer.Draw(state, playerId);
         }
 
