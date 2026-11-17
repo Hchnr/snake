@@ -43,6 +43,7 @@ var cases = new (string name, Action run)[]
     ("first-run hints respond to player actions and stop on time", FirstRunHintsCases),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("drag steering recovers missing touch ends and transfers control", TouchRecovery),
+    ("audio feedback rebases after interruption without replaying old events", AudioFeedbackCursorCases),
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
     ("settlement retry delays do not block other runs or accounts", IndependentSettlementRetries),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
@@ -197,6 +198,17 @@ static void PendingRetries()
     retry.Reset(); Check(retry.Failures == 0 && retry.Due(0), "successful settlement did not reset backoff");
     Check(PendingRetrySchedule.OwnedBy("player-a", "player-a"), "owner was not recognized");
     Check(!PendingRetrySchedule.OwnedBy("player-a", "player-b") && !PendingRetrySchedule.OwnedBy("", "") && !PendingRetrySchedule.OwnedBy(null, "player-a"), "another or missing account could submit the result");
+}
+
+static void AudioFeedbackCursorCases()
+{
+    var cursor = new FeedbackCursor();
+    Check(cursor.PendingBaseline && cursor.Observe(0), "first observed state was not baselined");
+    Check(!cursor.PendingBaseline && !cursor.Observe(1), "new event after the baseline was suppressed");
+    cursor.Suspend(); cursor.Suspend();
+    Check(cursor.PendingBaseline && cursor.Observe(200), "resume did not discard background events");
+    Check(!cursor.Observe(201), "first new simulation step after resume was suppressed");
+    Check(cursor.Observe(0) && !cursor.Observe(1), "new match did not reset event counters");
 }
 
 static void MusicBehavior()

@@ -269,6 +269,8 @@ namespace SnakeClub
             bool interaction = Input.anyKeyDown || Input.GetMouseButtonDown(0);
             for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
             feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused, paused, adShowing, interaction);
+            if (inGame && !paused && appFocused && !appPaused && !adShowing)
+                feedback.RebaselineAfterSuspend(state, playerId);
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
             bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
             bool resultVisible = inGame && !online && !depthMode && state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
@@ -357,7 +359,7 @@ namespace SnakeClub
                 }
             }
             if (inGame && !online && state != null && state.phase == "ended" && !resultRecorded) RecordResult();
-            if (inGame && !paused) feedback.Observe(state, playerId);
+            if (inGame && !paused && appFocused && !appPaused && !adShowing) feedback.Observe(state, playerId);
             if (inGame && state != null)
             {
                 var own = state.snakes.Find(s => s.id == playerId);
@@ -454,13 +456,13 @@ namespace SnakeClub
         private void OnApplicationPause(bool isPaused)
         {
             appPaused = isPaused;
-            if (isPaused) { caveSync.Invalidate(); feedback?.SuspendMusic(); SuspendInput(); }
+            if (isPaused) { caveSync.Invalidate(); feedback?.SuspendAudio(); SuspendInput(); }
         }
 
         private void OnApplicationFocus(bool hasFocus)
         {
             appFocused = hasFocus;
-            if (!hasFocus) { caveSync.Invalidate(); feedback?.SuspendMusic(); SuspendInput(); }
+            if (!hasFocus) { caveSync.Invalidate(); feedback?.SuspendAudio(); SuspendInput(); }
         }
 
         private void SuspendInput()
@@ -582,7 +584,8 @@ namespace SnakeClub
             }
             if (Button(new Rect(55, 285, 215, 76), online ? "退出" : (paused ? "继续" : "暂停"), new Color(.10f, .17f, .25f, .92f)))
             {
-                if (online) BackToMenu(); else paused = !paused;
+                if (online) BackToMenu();
+                else { paused = !paused; if (paused) feedback.SuspendAudio(); }
             }
             if (!string.IsNullOrEmpty(status))
             {
