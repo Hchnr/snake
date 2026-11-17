@@ -403,6 +403,49 @@ namespace SnakeClub.Core
         }
     }
 
+    // A single nearby off-screen opponent marker, based only on real head positions.
+    public static class OpponentEdgeIndicator
+    {
+        public const float MaxDistance = 30f;
+        // Avoid rapid switching between similarly distant off-screen actors.
+        public static bool KeepPrevious(float previousDistanceSquared, float closestDistanceSquared)
+        {
+            if (float.IsNaN(previousDistanceSquared) || float.IsNaN(closestDistanceSquared) ||
+                float.IsInfinity(previousDistanceSquared) || float.IsInfinity(closestDistanceSquared) ||
+                previousDistanceSquared < 0 || closestDistanceSquared < 0) return false;
+            double limit = Math.Sqrt(closestDistanceSquared) + 3;
+            return previousDistanceSquared <= limit * limit;
+        }
+        public static bool TryCandidate(ArenaState world, string playerId, SnakeState other, Point screen,
+            out float distanceSquared, out Point edge)
+        {
+            distanceSquared = 0; edge = default;
+            if (world == null || world.phase != "running" || string.IsNullOrEmpty(playerId) || other == null ||
+                !other.alive || string.IsNullOrEmpty(other.id) || other.id == playerId || other.segments == null || other.segments.Count == 0) return false;
+            var player = world.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive || player.segments == null || player.segments.Count == 0) return false;
+            if (world.eventStatus == "active" && world.eventKind == "bounty" && world.eventTarget == other.id) return false;
+            if (world.starVisible && !string.IsNullOrEmpty(world.starHolder) && world.starHolder == other.id) return false;
+            float dx = other.segments[0].x - player.segments[0].x, dy = other.segments[0].y - player.segments[0].y;
+            distanceSquared = dx * dx + dy * dy;
+            if (float.IsNaN(distanceSquared) || float.IsInfinity(distanceSquared) || distanceSquared > MaxDistance * MaxDistance) return false;
+            if (float.IsNaN(screen.x) || float.IsNaN(screen.y) || float.IsInfinity(screen.x) || float.IsInfinity(screen.y)) return false;
+            // Do not call a visible character off-screen merely because it is near the HUD.
+            if (screen.x >= 0 && screen.x <= 1080 && screen.y >= 0 && screen.y <= 1920) return false;
+            return EventTargetIndicator.TryEdge(screen, 110, 410, 970, 1450, out edge);
+        }
+
+        public static Point BoxOrigin(Point edge)
+        {
+            float x = Math.Max(30, Math.Min(910, edge.x - 70));
+            float y = Math.Max(250, Math.Min(1450, edge.y - 27));
+            // Avoid both the minimap and the first-run tutorial panel.
+            if (x + 140 > 760 && y < 545) y = 660;
+            if (y < 656 && y + 54 > 544 && x + 140 > 94 && x < 986) y = 660;
+            return new Point(x, y);
+        }
+    }
+
     // Places short nameplates without overlapping one another or the minimap.
     // It is presentation only; anchors are projected above actual heads.
     public sealed class NameplateLayout

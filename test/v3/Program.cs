@@ -103,6 +103,7 @@ var cases = new (string name, Action run)[]
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
+    ("nearby off-screen opponent indicators use real actors and safe placement", OpponentEdgeCases),
     ("nameplates avoid overlap, anchors and the minimap", NameplateCases),
     ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
     ("star carriers attract nearby AI without changing daily-3 replay", StarPursuitCases),
@@ -1014,6 +1015,38 @@ static void CaptureResolution()
         "an eliminated captor incorrectly received growth");
     Check(match.State.captureOwner == "you" && match.State.captureCount == 0 && match.State.capturePolygon.Count > 2,
         "mutual daily capture displayed an uncredited elimination");
+}
+
+static void OpponentEdgeCases()
+{
+    Check(OpponentEdgeIndicator.KeepPrevious(22 * 22, 20 * 20), "near-equal opponents caused rapid switching");
+    Check(!OpponentEdgeIndicator.KeepPrevious(24 * 24, 20 * 20) && !OpponentEdgeIndicator.KeepPrevious(float.NaN, 1), "clearly nearer or invalid opponent did not replace old marker");
+    var world = new ArenaState { phase = "running" };
+    var player = new SnakeState { id = "you", segments = new List<Point> { new(0, 0) } };
+    var bot = new SnakeState { id = "bot", bot = true, segments = new List<Point> { new(20, 0) } };
+    world.snakes.Add(player); world.snakes.Add(bot);
+    Check(OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1200, 960), out float distance, out var edge) &&
+        distance == 400 && edge.x == 970, "near off-screen actor was not mapped to the right edge");
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1000, 960), out _, out _), "visible actor was labelled off-screen");
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", player, new Point(1200, 960), out _, out _), "player was labelled as opponent");
+    bot.segments[0] = new Point(31, 0);
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1200, 960), out _, out _), "distant actor was shown as nearby");
+    bot.segments[0] = new Point(20, 0); bot.alive = false;
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1200, 960), out _, out _), "dead actor was shown");
+    bot.alive = true; world.eventStatus = "active"; world.eventKind = "bounty"; world.eventTarget = "bot";
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1200, 960), out _, out _), "bounty target received a duplicate indicator");
+    world.eventStatus = ""; world.starVisible = true; world.starHolder = "bot";
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1200, 960), out _, out _), "star carrier received a duplicate indicator");
+    world.starVisible = false;
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(float.NaN, 0), out _, out _), "invalid projection was accepted");
+    player.alive = false;
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1200, 960), out _, out _), "dead player retained opponent indicator");
+    player.alive = true; world.phase = "ended";
+    Check(!OpponentEdgeIndicator.TryCandidate(world, "you", bot, new Point(1200, 960), out _, out _), "ended match retained opponent indicator");
+    var safe = OpponentEdgeIndicator.BoxOrigin(new Point(970, 410));
+    Check(safe.x + 140 <= 1050 && safe.y >= 656 && safe.y + 54 <= 1504, "upper-right indicator obscured HUD or tutorial");
+    safe = OpponentEdgeIndicator.BoxOrigin(new Point(110, 580));
+    Check(safe.y >= 656, "side indicator covered tutorial panel");
 }
 
 static void EventTargetIndicatorCases()

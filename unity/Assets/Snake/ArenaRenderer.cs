@@ -799,6 +799,7 @@ namespace SnakeClub
         }
 
         public Vector3 WorldToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y) + view.transform.up * 5.7f);
+        public Vector3 HeadToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y));
 
         private void DrawBatch(List<Matrix4x4> matrices, Material material, Mesh mesh = null)
         {
