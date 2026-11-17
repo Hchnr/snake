@@ -370,7 +370,7 @@ namespace SnakeClub
                 if (homeAvatar.Visible) homeAvatar.Skin = homeVisible && frontPage == "skins" ? previewSkin :
                     resultVisible && activeRun != null && activeRun.trialSkin > 0 && EffectiveSkin < SkinCatalog.OwnedSkinCount ? activeRun.trialSkin : EffectiveSkin;
             }
-            if (inGame && !SimulationSuspended && state != null && state.phase == "running") ReadControls();
+            if (inGame && !SimulationSuspended && CanControlPlayer()) ReadControls();
             else { dragSteering.Reset(); pointerBoost = false; }
             if (daily != null && inGame && !SimulationSuspended)
             {
@@ -389,8 +389,9 @@ namespace SnakeClub
             if (arena != null && !SimulationSuspended && (!homeVisible || renderWardrobePreview))
             {
                 stepTimer += Mathf.Min(Time.deltaTime, .2f);
-                while (stepTimer >= .05f)
+                while (stepTimer >= .05f && arena.State.phase == "running")
                 {
+                    if (inGame && !online && FinishEliminatedLocalPlayer()) break;
                     if (inGame)
                     {
                         if (!depthMode && arena.State.phase == "running")
@@ -405,16 +406,12 @@ namespace SnakeClub
                     if (inGame) { matchHighlights.Observe(arena.State, playerId); ObserveTutorial(arena.State); eventOutcome.Observe(arena.State, playerId); eliminationFeedback.Observe(arena.State, playerId); killFeedback.Observe(arena.State, playerId); }
                     if (inGame && depthMode && arena.State.phase == "running" &&
                         DepthChallenge.Evaluate(depthRoom, arena.State, playerId) != DepthChallenge.RoomStatus.InProgress) arena.EndRound();
+                    if (inGame && !online) FinishEliminatedLocalPlayer();
                     stepTimer -= .05f;
                 }
                 if (!inGame && (arena.State.phase == "ended" || (wardrobePreview && (arena.Find("demo-0") == null || !arena.Find("demo-0").alive)))) Demo();
                 state = arena.State;
                 if (inGame && depthMode && state.phase == "ended") depthWon = DepthGoalReached(state);
-                if (inGame && !online && state.phase == "running")
-                {
-                    SnakeState ownSnake = state.snakes.Find(s => s.id == playerId);
-                    if (ownSnake != null && !ownSnake.alive) arena.EndRound();
-                }
             }
             if (inGame && !SimulationSuspended && state != null && state.phase == "running")
             {
@@ -453,6 +450,21 @@ namespace SnakeClub
                 matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId); killFeedback.Observe(state, playerId);
                 stepTimer -= .05f;
             }
+        }
+
+        private bool CanControlPlayer()
+        {
+            if (state == null || state.phase != "running" || string.IsNullOrEmpty(playerId)) return false;
+            var player = state.snakes.Find(s => s.id == playerId);
+            return player != null && player.alive;
+        }
+
+        private bool FinishEliminatedLocalPlayer()
+        {
+            var player = arena.State.snakes.Find(s => s.id == playerId);
+            if (player == null || player.alive) return false;
+            arena.EndRound();
+            return true;
         }
 
         private void ReadControls()
@@ -706,7 +718,7 @@ namespace SnakeClub
                 if (hasObjectiveEdge) edgeObstacles.Add(new EdgeObstacle(objectiveEdge.x, objectiveEdge.y, objectiveEdge.width, objectiveEdge.height));
                 DrawOpponentEdge(state);
             }
-            if (firstRun && tutorialHints && !online && !paused && state != null && state.phase == "running")
+            if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
             {
                 string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills, FirstRunHints.ApproachingOwnTrail(me), tutorialBoosted);
                 if (!string.IsNullOrEmpty(hint))
@@ -880,7 +892,7 @@ namespace SnakeClub
         private void DrawNames(ArenaState world)
         {
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
-            if (firstRun && tutorialHints && !online && !paused)
+            if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
             {
                 var own = world.snakes.Find(s => s.id == playerId);
                 string hint = FirstRunHints.Select(world.tick, hasSteered, tutorialClosedLoop, tutorialRebounded,

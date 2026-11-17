@@ -175,7 +175,9 @@ namespace SnakeClub.Tests.Editor
                 Field("api").SetValue(app, root.AddComponent<GameApiClient>());
                 Field("arenaRenderer").SetValue(app, root.AddComponent<ArenaRenderer>());
                 Field("connection").SetValue(app, root.AddComponent<RoomConnection>());
-                Field("feedback").SetValue(app, root.AddComponent<ArenaFeedback>());
+                var feedback = root.AddComponent<ArenaFeedback>();
+                typeof(ArenaFeedback).GetMethod("Initialize", flags).Invoke(feedback, null);
+                Field("feedback").SetValue(app, feedback);
                 Call("BeginPve", new object[] { null });
                 var arena = (Arena)Field("arena").GetValue(app);
                 Field("platformVisible").SetValue(app, false); Field("paused").SetValue(app, false); Field("stepTimer").SetValue(app, .19f);
@@ -189,6 +191,23 @@ namespace SnakeClub.Tests.Editor
                 Require(daily.State.tick == 0 && ((System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app)).Count == 0,
                     "daily challenge advanced while ad was displayed");
                 Debug.Log("PASS Unity ordinary and daily simulations stop when suspended");
+
+                Field("adShowing").SetValue(app, false); Call("BeginPve", new object[] { null });
+                arena = (Arena)Field("arena").GetValue(app);
+                var own = arena.Find("you"); var opponent = arena.Find("bot-0");
+                own.shield = opponent.shield = 0; own.angle = opponent.angle = 0;
+                own.segments[0] = opponent.segments[0] = new Point(0, 0);
+                Field("stepTimer").SetValue(app, .19f); Call("Update");
+                Require(!own.alive && arena.State.phase == "ended" && arena.State.tick == 1 &&
+                    ((System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app)).Count == 2,
+                    "local round advanced or recorded inputs after elimination during catch-up");
+                Require(!(bool)type.GetMethod("CanControlPlayer", flags).Invoke(app, null), "eliminated player remained controllable");
+                Call("BeginPve", new object[] { null }); arena = (Arena)Field("arena").GetValue(app);
+                arena.Find("you").alive = false; Field("stepTimer").SetValue(app, .19f); Call("Update");
+                Require(arena.State.phase == "ended" && arena.State.tick == 0 &&
+                    ((System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app)).Count == 0,
+                    "an already eliminated local player advanced or recorded an input");
+                Debug.Log("PASS Unity local matches stop on the elimination step");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
