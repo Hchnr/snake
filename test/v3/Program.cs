@@ -44,6 +44,7 @@ var cases = new (string name, Action run)[]
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
     ("first-run hints respond to player actions and stop on time", FirstRunHintsCases),
     ("late-round timer follows live match state", RoundTimerCases),
+    ("arena visual clock freezes across suspension", ArenaVisualClockCases),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("drag steering recovers missing touch ends and transfers control", TouchRecovery),
     ("audio feedback rebases after interruption without replaying old events", AudioFeedbackCursorCases),
@@ -281,6 +282,19 @@ static void NearbyDanger()
     Check(!DangerProbe.Find(state, "you", out _), "non-colliding neck incorrectly indicated danger");
     state.phase = "ended"; other.segments.Add(new Point(1, 0));
     Check(!DangerProbe.Find(state, "you", out _), "ended match retained danger warning");
+}
+
+static void ArenaVisualClockCases()
+{
+    var clock = new ArenaVisualClock();
+    clock.Advance(.5f, false);
+    Check(Math.Abs(clock.Time - .5f) < .001f, "visual clock did not advance");
+    clock.Advance(10, true);
+    Check(Math.Abs(clock.Time - .5f) < .001f, "visual clock advanced while suspended");
+    clock.Advance(float.NaN, false); clock.Advance(float.PositiveInfinity, false); clock.Advance(-1, false);
+    Check(Math.Abs(clock.Time - .5f) < .001f, "invalid delta changed visual time");
+    clock.Advance(.25f, false);
+    Check(Math.Abs(clock.Time - .75f) < .001f, "visual clock did not resume");
 }
 
 static void RoundTimerCases()

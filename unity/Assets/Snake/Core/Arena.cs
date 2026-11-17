@@ -109,6 +109,17 @@ namespace SnakeClub.Core
         }
     }
 
+    // Presentation time freezes independently of simulation and Unity's
+    // global clock, including when a platform suspends the game.
+    public sealed class ArenaVisualClock
+    {
+        public float Time { get; private set; }
+        public void Advance(float delta, bool paused)
+        {
+            if (!paused && delta > 0 && !float.IsNaN(delta) && !float.IsInfinity(delta)) Time += delta;
+        }
+    }
+
     public static class RoundTimerPresentation
     {
         public static bool IsUrgent(ArenaState state) => state != null && state.phase == "running" &&
