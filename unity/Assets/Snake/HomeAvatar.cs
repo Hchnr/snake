@@ -38,6 +38,14 @@ namespace SnakeClub
         public bool Visible { get => portrait != null && portrait.enabled; set { if (portrait != null) portrait.enabled = value; } }
         public int Skin { get => skin; set { if (skin != value) ApplySkin(value); } }
         public bool ReducedEffects { get; set; }
+        private bool resultVisible, resultWon;
+        private float resultStartedAt;
+
+        public void SetResult(bool visible, bool won)
+        {
+            if (visible && (!resultVisible || won != resultWon)) resultStartedAt = Time.unscaledTime;
+            resultVisible = visible; resultWon = visible && won;
+        }
 
         private void Awake() => Initialize();
         private void OnEnable() { if (Application.isPlaying && (portrait == null || texture == null)) Initialize(); }
@@ -275,17 +283,19 @@ namespace SnakeClub
         {
             if (!Visible || model == null || bodyMesh == null) return;
             float time = Time.unscaledTime;
+            ResultPose resultPose = ResultMotion.Sample(resultVisible && resultWon, ReducedEffects, time - resultStartedAt);
             if (referenceCharacter != null && referenceCharacter.enabled)
             {
                 float motion = ReducedEffects ? 0f : Mathf.Sin(time * 2f);
-                referenceCharacter.transform.position = portrait.transform.position + portrait.transform.forward * 8f + portrait.transform.up * (motion * .055f);
-                referenceCharacter.transform.rotation = portrait.transform.rotation * Quaternion.Euler(0, 0, motion * 1.4f);
+                referenceCharacter.transform.position = portrait.transform.position + portrait.transform.forward * 8f + portrait.transform.up * (motion * .055f + resultPose.Lift);
+                referenceCharacter.transform.rotation = portrait.transform.rotation * Quaternion.Euler(0, 0, motion * 1.4f + resultPose.Tilt);
                 return;
             }
-            AnimateBody(time);
-            head.localPosition = new Vector3(0, .94f + Mathf.Sin(time * 2.1f) * .045f, -.92f);
-            head.localRotation = Quaternion.Euler(Mathf.Sin(time * 1.6f) * 3f, Mathf.Sin(time * .9f) * 9f, Mathf.Sin(time * 1.2f) * 3f);
-            float blinkTime = Mathf.Repeat(time + 1.3f, 4.7f);
+            float motionTime = ReducedEffects ? 0f : time;
+            AnimateBody(motionTime);
+            head.localPosition = new Vector3(0, .94f + Mathf.Sin(motionTime * 2.1f) * .045f + resultPose.Lift, -.92f);
+            head.localRotation = Quaternion.Euler(Mathf.Sin(motionTime * 1.6f) * 3f, Mathf.Sin(motionTime * .9f) * 9f, Mathf.Sin(motionTime * 1.2f) * 3f + resultPose.Tilt);
+            float blinkTime = Mathf.Repeat(motionTime + 1.3f, 4.7f);
             float blink = blinkTime < .16f ? Mathf.Max(.08f, Mathf.Abs(blinkTime - .08f) / .08f) : 1f;
             foreach (var eye in eyes) if (eye != null) eye.localScale = new Vector3(1, blink, 1);
             for (int i = 0; i < motes.Length; i++)
@@ -298,7 +308,7 @@ namespace SnakeClub
                 float size = .055f + .035f * (1f + Mathf.Sin(time * 3f + i)) * .5f;
                 motes[i].localScale = Vector3.one * size;
             }
-            model.transform.localRotation = Quaternion.Euler(0, Mathf.Sin(time * .55f) * 6f, 0);
+            model.transform.localRotation = Quaternion.Euler(0, Mathf.Sin(motionTime * .55f) * 6f, 0);
         }
 
         private void OnDestroy()

@@ -81,6 +81,13 @@ namespace SnakeClub.Core
     // older states deliberately receive a generic message.
     public static class MatchOutcome
     {
+        public static bool IsVictory(ArenaState state, string playerId)
+        {
+            if (state == null || state.phase != "ended" || string.IsNullOrEmpty(playerId) || state.winner != playerId) return false;
+            var player = state.snakes.Find(s => s.id == playerId);
+            return player != null && player.alive;
+        }
+
         public static string Explain(ArenaState state, string playerId)
         {
             if (state == null || state.phase != "ended" || string.IsNullOrEmpty(playerId)) return "";
@@ -146,6 +153,24 @@ namespace SnakeClub.Core
         }
         public string Current(ArenaState world)
             => world != null && world.phase == "running" && world.tick < untilTick ? notice : "";
+    }
+
+    public readonly struct ResultPose
+    {
+        public readonly float Lift, Tilt;
+        public ResultPose(float lift, float tilt) { Lift = lift; Tilt = tilt; }
+    }
+
+    public static class ResultMotion
+    {
+        // A brief, bounded celebration applies only to an actual winner.
+        public static ResultPose Sample(bool won, bool reduced, float elapsed)
+        {
+            if (!won || reduced || float.IsNaN(elapsed) || float.IsInfinity(elapsed) || elapsed < 0 || elapsed >= 1f)
+                return new ResultPose(0, 0);
+            double envelope = Math.Sin(Math.PI * elapsed);
+            return new ResultPose((float)(.16 * envelope), (float)(4 * Math.Sin(2 * Math.PI * elapsed) * envelope));
+        }
     }
 
     // Visual state only: the simulation remains the source of angle and boost.
