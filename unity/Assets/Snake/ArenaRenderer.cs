@@ -51,6 +51,7 @@ namespace SnakeClub
         private Material scaleMaterial;
         private Material trailLineMaterial;
         private Material trailPulseMaterial;
+        private Material outerBackdropMaterial;
         private Mesh sphere;
         private Mesh cylinder;
         private Mesh cone;
@@ -230,6 +231,19 @@ namespace SnakeClub
                 grid.Apply(); floorMat.mainTexture = grid; floorMat.mainTextureScale = Vector2.one * 44;
             }
             floor.GetComponent<Renderer>().sharedMaterial = floorMat;
+
+            // The playable plane ends at the reflecting rails. Continue the
+            // scenery below it so an edge-following camera never reveals a
+            // hard black void; this backdrop has no collider or gameplay role.
+            var outerFloor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            outerFloor.transform.SetParent(runtimeRoot, false);
+            outerFloor.name = "Arena edge backdrop";
+            Destroy(outerFloor.GetComponent<Collider>());
+            outerFloor.transform.position = new Vector3(0, -.12f, 0);
+            outerFloor.transform.localScale = Vector3.one * (Arena.WorldHalfSize * 4 / 10f);
+            outerBackdropMaterial = new Material(floorMat) { color = new Color(.30f, .48f, .52f) };
+            outerBackdropMaterial.mainTextureScale = floorMat.mainTextureScale * 2;
+            outerFloor.GetComponent<Renderer>().sharedMaterial = outerBackdropMaterial;
 
             var railMat = MakeMaterial(new Color(.20f, .89f, .86f), .1f);
             railMat.EnableKeyword("_EMISSION");
@@ -661,6 +675,7 @@ namespace SnakeClub
             if (previewTexture != null) { previewTexture.Release(); Destroy(previewTexture); }
             if (captureSweepMesh != null) Destroy(captureSweepMesh);
             if (trailPulseMaterial != null) Destroy(trailPulseMaterial);
+            if (outerBackdropMaterial != null) Destroy(outerBackdropMaterial);
         }
 
         private int ResolveVisualSkin(SnakeState snake, string playerId, int playerVisual)
