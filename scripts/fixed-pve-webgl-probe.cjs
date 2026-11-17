@@ -16,7 +16,11 @@ function done(code, message) {
   finished = true;
   if (message) (code ? console.error : console.log)(message);
   if (ws) ws.close();
-  const cleanup = () => { fs.rmSync(profile, { recursive: true, force: true }); process.exit(code); };
+  const cleanup = () => {
+    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); }
+    catch (error) { console.error('Browser profile cleanup failed: ' + error.message); process.exit(1); }
+    process.exit(code);
+  };
   if (chrome.exitCode !== null || chrome.signalCode !== null) { cleanup(); return; }
   // Browser profile is disposable; allow Chrome to close before removing it.
   chrome.once('exit', cleanup);
