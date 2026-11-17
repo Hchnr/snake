@@ -83,6 +83,32 @@ namespace SnakeClub.Core
             !string.IsNullOrEmpty(owner) && !string.IsNullOrEmpty(player) && string.Equals(owner, player, StringComparison.Ordinal);
     }
 
+    // Foreground transitions invalidate an in-flight cave refresh. The old
+    // response must never certify a newer view of server time as current.
+    public sealed class CaveSyncState
+    {
+        private readonly PendingRetrySchedule retry = new PendingRetrySchedule();
+        private int version, inFlightVersion;
+        public bool Ready { get; private set; }
+        public bool InFlight { get; private set; }
+        public void Invalidate() { version++; Ready = false; retry.Reset(); }
+        public bool TryBegin(double now, out int requestVersion)
+        {
+            requestVersion = version;
+            if (Ready || InFlight || !retry.Due(now)) return false;
+            InFlight = true; inFlightVersion = version; return true;
+        }
+        public bool Complete(int requestVersion, bool success, double now)
+        {
+            if (!InFlight || requestVersion != inFlightVersion) return false;
+            InFlight = false;
+            if (requestVersion != version) return false;
+            Ready = success;
+            if (success) retry.Reset(); else retry.Fail(now);
+            return true;
+        }
+    }
+
     // A transient error for one saved run must not block other runs. Retry
     // state is per account and run; the durable queue remains the authority.
     public sealed class PendingSettlementSchedule
@@ -220,5 +246,11 @@ namespace SnakeClub.Core
 
         public static int ExpeditionExperience(int minutes)
             => Math.Max(0, Math.Min(480, minutes)) * 5 / 120;
+
+        public static int ExpeditionRemainingExperience(int earned)
+            => 20 - Math.Max(0, Math.Min(20, earned));
+
+        public static int ExpeditionAvailableExperience(int minutes, int earned)
+            => Math.Min(ExpeditionRemainingExperience(earned), ExpeditionExperience(minutes));
     }
 }

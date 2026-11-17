@@ -34,6 +34,7 @@ namespace SnakeClub
         private ApiReply board;
         private const string PendingKey = "snake.v3.pending";
         private readonly PendingRetrySchedule pendingRetry = new PendingRetrySchedule();
+        private readonly CaveSyncState caveSync = new CaveSyncState();
         private readonly PendingSettlementSchedule settlementRetry = new PendingSettlementSchedule();
         private readonly IncomingFriendChallenge incomingFriend = new IncomingFriendChallenge();
         private int observedChallengeRevision;
@@ -48,7 +49,7 @@ namespace SnakeClub
             homeScreen = GetComponent<HomeScreen>();
             if (homeScreen == null) homeScreen = gameObject.AddComponent<HomeScreen>();
             homeScreen.Setup(uiFont, StartMain, () => { frontPage = "skins"; previewSkin = EffectiveSkin; },
-                () => frontPage = "caves", () => frontPage = "more", () => feedback.Enabled = !feedback.Enabled,
+                OpenCaves, () => frontPage = "more", () => feedback.Enabled = !feedback.Enabled,
                 () => { frontPage = "home"; arenaRenderer.SelectedSkin = EffectiveSkin; },
                 index => previewSkin = index, EquipPreviewSkin, TrialPreviewSkin);
             homeScreen.SetupReconnect(ConnectProfile);
@@ -438,7 +439,7 @@ namespace SnakeClub
             if (Button(new Rect(120, 1205, 840, 130), friendDate == api.Date && !string.IsNullOrEmpty(friendDate) ? "应战好友  ·  60 秒" : "每日挑战  ·  60 秒", new Color(.20f, .38f, .69f))) RequestDaily();
             if (SmallButton(new Rect(90, 1390, 205, 108), "皮肤", new Color(.26f, .36f, .54f), 30)) { frontPage = "skins"; previewSkin = p.selectedSkin; }
             if (SmallButton(new Rect(320, 1390, 205, 108), "天赋", new Color(.30f, .30f, .56f), 30)) frontPage = "talents";
-            if (SmallButton(new Rect(550, 1390, 205, 108), "探洞", new Color(.19f, .42f, .47f), 30)) frontPage = "caves";
+            if (SmallButton(new Rect(550, 1390, 205, 108), "探洞", new Color(.19f, .42f, .47f), 30)) OpenCaves();
             if (SmallButton(new Rect(780, 1390, 205, 108), "排行", new Color(.40f, .32f, .47f), 30)) OpenBoard();
             Panel(new Rect(120, 1560, 840, 156), new Color(.025f, .07f, .12f, .82f));
             string progress = p.expedition != null && !p.expedition.claimed ? "梦游探洞进行中，回来可领取奖励" : "派遣灵蛇梦游探洞，离线也有收获";
@@ -555,16 +556,45 @@ namespace SnakeClub
             Label(new Rect(80, 1560, 920, 80), string.IsNullOrEmpty(frontNotice) ? (api.Connected ? "推荐加点会分配全部可用点数，可随时免费重置" : "离线天赋仅供练习，不会写入账号") : frontNotice, 23, new Color(.75f, .88f, .88f), TextAnchor.MiddleCenter);
         }
 
+        private void OpenCaves()
+        {
+            caveSync.Invalidate();
+            frontPage = "caves";
+        }
+
+        private void PumpCaveSync()
+        {
+            if (inGame || frontPage != "caves" || !appFocused || appPaused || !api.Connected ||
+                busy || connecting || flushing || adShowing || !caveSync.TryBegin(Time.unscaledTime, out int version)) return;
+            busy = true;
+            api.Get("bootstrap", reply =>
+            {
+                busy = false;
+                bool success = reply.ok && reply.serverTime > 0;
+                if (!caveSync.Complete(version, success, Time.unscaledTime)) return;
+                frontNotice = success ? "探洞进度已同步" : "暂时无法同步探洞进度，将自动重试";
+            });
+        }
+
         private void DrawCaves()
         {
-            PlayerProgress p = CurrentProfile;
+            PlayerProgress p = api.Profile ?? practiceProfile;
             FrontHeader("梦游探洞", "派遣梦境分身，离开游戏后也会继续探索");
             ExpeditionState expedition = p.expedition;
             if (!api.Connected)
             {
                 Panel(new Rect(100, 570, 880, 390), new Color(.025f, .08f, .14f, .94f));
-                Label(new Rect(150, 650, 780, 170), "连接账号后可派遣探洞\n对战仍可离线练习", 35, Color.white, TextAnchor.MiddleCenter, true);
+                string offline = expedition != null && !expedition.claimed
+                    ? "已有探洞进行中\n联网后同步进度并领取" : "连接账号后可派遣探洞\n对战仍可离线练习";
+                Label(new Rect(150, 650, 780, 170), offline, 35, Color.white, TextAnchor.MiddleCenter, true);
                 if (SmallButton(new Rect(250, 845, 580, 90), "重新连接", new Color(.12f, .51f, .44f), 28)) ConnectProfile();
+                return;
+            }
+            if (!caveSync.Ready)
+            {
+                Panel(new Rect(100, 570, 880, 390), new Color(.025f, .08f, .14f, .94f));
+                Label(new Rect(150, 650, 780, 140), caveSync.InFlight ? "正在同步探洞进度…" : "探洞进度待同步\n联网后可领取", 32, Color.white, TextAnchor.MiddleCenter, true);
+                if (!caveSync.InFlight && SmallButton(new Rect(250, 845, 580, 90), "重试同步", new Color(.12f, .51f, .44f), 28)) caveSync.Invalidate();
                 return;
             }
             if (expedition != null && !expedition.claimed)
@@ -579,7 +609,7 @@ namespace SnakeClub
                     GUI.DrawTexture(new Rect(135 + drift, 550, 250, 230), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
                 }
                 Label(new Rect(380, 560, 535, 80), remaining == 0 ? "探索完成" : "剩余 " + FormatCountdown(remaining), 34, new Color(.60f, .95f, .83f), TextAnchor.MiddleCenter);
-                Label(new Rect(365, 665, 550, 100), "完整收益 " + Progression.ExpeditionCoins(expedition.durationMinutes, expedition.bonusPercent) + " 金币 + " + Progression.ExpeditionExperience(expedition.durationMinutes) + " 经验\n每日探洞经验剩余 " + (20 - p.dailyExpeditionXp), 23, new Color(.72f, .85f, .88f), TextAnchor.MiddleCenter);
+                Label(new Rect(365, 665, 550, 100), "预计完整收益 " + Progression.ExpeditionCoins(expedition.durationMinutes, expedition.bonusPercent) + " 金币 + " + Progression.ExpeditionAvailableExperience(expedition.durationMinutes, p.dailyExpeditionXp) + " 经验\n每日探洞经验剩余 " + Progression.ExpeditionRemainingExperience(p.dailyExpeditionXp), 23, new Color(.72f, .85f, .88f), TextAnchor.MiddleCenter);
                 if (SmallButton(new Rect(240, 805, 600, 105), remaining == 0 ? "领取收获" : "提前带回（按时间结算）", new Color(.10f, .55f, .46f), 27))
                 {
                     string id = expedition.id;
@@ -603,7 +633,7 @@ namespace SnakeClub
                     Panel(card, new Color(.025f, .08f, .14f, .93f));
                     Label(new Rect(card.x + 35, card.y + 24, 430, 60), Progression.CaveNames[i] + "  ·  " + (Progression.CaveMinutes[i] / 60) + " 小时", 32, Color.white, TextAnchor.MiddleLeft, true);
                     int fragments = p.caveFragments != null && p.caveFragments.Length == 3 ? p.caveFragments[i] : 0;
-                    Label(new Rect(card.x + 35, card.y + 95, 545, 100), "约 " + Progression.ExpeditionCoins(Progression.CaveMinutes[i], Progression.CaveBonusPercent(p)) + " 金币 + " + Progression.ExpeditionExperience(Progression.CaveMinutes[i]) + " 经验\n碎片 " + fragments + " · " + Progression.CaveMilestone(fragments), 23, new Color(.68f, .86f, .87f), TextAnchor.MiddleLeft);
+                    Label(new Rect(card.x + 35, card.y + 95, 545, 100), "约 " + Progression.ExpeditionCoins(Progression.CaveMinutes[i], Progression.CaveBonusPercent(p)) + " 金币 + " + Progression.ExpeditionAvailableExperience(Progression.CaveMinutes[i], p.dailyExpeditionXp) + " 经验\n碎片 " + fragments + " · " + Progression.CaveMilestone(fragments), 23, new Color(.68f, .86f, .87f), TextAnchor.MiddleLeft);
                     if (SmallButton(new Rect(card.x + 610, card.y + 75, 230, 95), "派遣", new Color(.10f, .55f, .46f), 30))
                         Mutate("expedition/start", new ApiRequest { index = index }, reply =>
                         {
@@ -611,7 +641,7 @@ namespace SnakeClub
                         });
                 }
                 if (SmallButton(new Rect(260, 1140, 560, 90), "查看碎片图鉴", new Color(.24f, .36f, .48f), 26)) frontPage = "cave-album";
-                Label(new Rect(100, 1240, 880, 90), "同时仅可探索一个洞穴，最多累计 8 小时。\n每日探洞经验剩余 " + (20 - p.dailyExpeditionXp), 24, new Color(.77f, .88f, .88f), TextAnchor.MiddleCenter);
+                Label(new Rect(100, 1240, 880, 90), "同时仅可探索一个洞穴，最多累计 8 小时。\n每日探洞经验剩余 " + Progression.ExpeditionRemainingExperience(p.dailyExpeditionXp), 24, new Color(.77f, .88f, .88f), TextAnchor.MiddleCenter);
                 DrawRewardOffer(new Rect(200, 1340, 680, 95));
             }
             if (Time.unscaledTime < caveStoryUntil && homeAvatar != null && homeAvatar.Texture != null)

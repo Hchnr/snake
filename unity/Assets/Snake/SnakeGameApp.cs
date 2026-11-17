@@ -265,6 +265,7 @@ namespace SnakeClub
         {
             PumpIncomingFriend();
             PumpPending();
+            PumpCaveSync();
             bool interaction = Input.anyKeyDown || Input.GetMouseButtonDown(0);
             for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
             feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused, paused, adShowing, interaction);
@@ -453,13 +454,13 @@ namespace SnakeClub
         private void OnApplicationPause(bool isPaused)
         {
             appPaused = isPaused;
-            if (isPaused) { feedback?.SuspendMusic(); SuspendInput(); }
+            if (isPaused) { caveSync.Invalidate(); feedback?.SuspendMusic(); SuspendInput(); }
         }
 
         private void OnApplicationFocus(bool hasFocus)
         {
             appFocused = hasFocus;
-            if (!hasFocus) { feedback?.SuspendMusic(); SuspendInput(); }
+            if (!hasFocus) { caveSync.Invalidate(); feedback?.SuspendMusic(); SuspendInput(); }
         }
 
         private void SuspendInput()
