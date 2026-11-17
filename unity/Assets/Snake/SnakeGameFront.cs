@@ -46,7 +46,8 @@ namespace SnakeClub
             homeScreen.SetupReconnect(ConnectProfile);
             homeScreen.SetupPreferences(
                 () => { reducedEffects = !reducedEffects; PlayerPrefs.SetInt("snake.v031.reducedEffects", reducedEffects ? 1 : 0); PlayerPrefs.Save(); },
-                () => feedback.HapticsEnabled = !feedback.HapticsEnabled);
+                () => feedback.HapticsEnabled = !feedback.HapticsEnabled,
+                () => feedback.MusicEnabled = !feedback.MusicEnabled);
             homeScreen.SetupResults(
                 () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
                 () => GamePlatform.ShareChallenge(api.Date, message => { if (!string.IsNullOrEmpty(message)) resultNote = message; }),
@@ -352,7 +353,7 @@ namespace SnakeClub
             Label(new Rect(145, 1580, 790, 65), progress, 28, new Color(.85f, .96f, .94f), TextAnchor.MiddleCenter);
             Label(new Rect(145, 1650, 790, 40), frontNotice, 22, new Color(.67f, .84f, .86f), TextAnchor.MiddleCenter);
             if (!api.Connected && SmallButton(new Rect(90, 1760, 240, 70), "重新连接", new Color(.12f, .35f, .34f), 22)) ConnectProfile();
-            if (SmallButton(new Rect(790, 1760, 200, 70), feedback.Enabled ? "声音：开" : "声音：关", new Color(.12f, .24f, .31f), 22)) feedback.Enabled = !feedback.Enabled;
+            if (SmallButton(new Rect(790, 1760, 200, 70), feedback.Enabled ? "音效：开" : "音效：关", new Color(.12f, .24f, .31f), 22)) feedback.Enabled = !feedback.Enabled;
         }
 
         private void FrontHeader(string title, string subtitle, string back = "home")
@@ -602,6 +603,7 @@ namespace SnakeClub
             {
                 if (!prepared.ok) { after?.Invoke(prepared); return; }
                 adShowing = true;
+                feedback.SuspendMusic();
                 GamePlatform.ShowRewarded(api, (completed, error) =>
                 {
                     adShowing = false;

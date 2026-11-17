@@ -107,6 +107,47 @@ namespace SnakeClub.Core
         }
     }
 
+    // A compact original placeholder loop. It has no external audio asset and
+    // can be replaced by properly licensed tracks without changing gameplay.
+    public static class MusicComposer
+    {
+        public const int SampleRate = 22050;
+        public const int Seconds = 8;
+        private static readonly int[] HomeNotes = { 0, 4, 7, 4, 9, 7, 4, 2, 5, 9, 12, 9, 7, 5, 4, 2,
+            0, 4, 7, 12, 11, 7, 4, 2, 5, 7, 9, 7, 4, 2, 0, 0 };
+        private static readonly int[] BattleNotes = { 0, 7, 4, 7, 9, 7, 4, 7, 5, 9, 5, 9, 7, 4, 2, 4,
+            0, 7, 12, 7, 11, 7, 4, 7, 5, 9, 12, 9, 7, 4, 2, 0 };
+        private static readonly int[] Bass = { -12, -7, -10, -7 };
+
+        public static float[] Create(bool battle)
+        {
+            var notes = battle ? BattleNotes : HomeNotes;
+            var samples = new float[SampleRate * Seconds];
+            for (int i = 0; i < samples.Length; i++)
+            {
+                double t = i / (double)SampleRate;
+                int eighth = Math.Min(31, (int)(t * 4));
+                double noteTime = t - eighth * .25;
+                double noteEnvelope = Math.Min(1, noteTime * 60) * Math.Exp(-noteTime * (battle ? 9 : 11));
+                double frequency = 261.625565 * Math.Pow(2, notes[eighth] / 12.0);
+                double lead = Math.Sin(2 * Math.PI * frequency * noteTime) + .24 * Math.Sin(4 * Math.PI * frequency * noteTime);
+                int beat = Math.Min(15, (int)(t * 2));
+                double bassTime = t - beat * .5;
+                double bassFrequency = 261.625565 * Math.Pow(2, Bass[beat / 4] / 12.0);
+                double bass = Math.Sin(2 * Math.PI * bassFrequency * bassTime) * Math.Exp(-bassTime * 5);
+                double boundary = Math.Min(1, Math.Min(t * 40, (Seconds - t) * 40));
+                samples[i] = (float)((lead * noteEnvelope * .15 + bass * .12) * Math.Max(0, boundary));
+            }
+            return samples;
+        }
+    }
+
+    public static class MusicPolicy
+    {
+        public static bool ShouldPlay(bool enabled, bool interacted, bool focused, bool paused, bool adShowing) =>
+            enabled && interacted && focused && !paused && !adShowing;
+    }
+
     [Serializable]
     public sealed class CombatBonuses
     {
