@@ -200,23 +200,27 @@ namespace SnakeClub
             arenaRenderer.SelectedSkin = EffectiveSkin >= SkinCatalog.OwnedSkinCount ? EffectiveSkin : skin;
         }
 
-        private void BeginFixedPve()
+        private void BeginFixedPve() => BeginFixedPveWithRun(null);
+
+        private void BeginFixedPveWithRun(ApiReply run)
         {
             dragSteering.Reset(); connection.Close();
             online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = null; depthMode = false;
-            firstRun = !practiceProfile.tutorialComplete;
-            fixedPve = new PveFixedWorld(unchecked((int)DateTime.UtcNow.Ticks), firstRun, practiceProfile);
+            firstRun = run != null ? run.startConfig.firstRun : !practiceProfile.tutorialComplete;
+            var profile = run != null ? run.startConfig.MatchProfile() : practiceProfile;
+            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile);
             state = fixedPve.RenderState();
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             killFeedback.Reset(); killFeedback.Observe(state, playerId);
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false; tutorialBoosted = false;
-            activeRun = null; activePlayerId = ""; activePracticeAccount = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
+            activeRun = run; activePlayerId = run != null && api.Profile != null ? api.Profile.playerId : "";
+            activePracticeAccount = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
             verifiedDaily = false; verifiedShareToken = "";
             resultNote = "整数规则试玩 · 不计账号奖励或排行";
-            arenaRenderer.SelectedSkin = EffectiveSkin;
+            arenaRenderer.SelectedSkin = run != null ? run.startConfig.skin : EffectiveSkin;
         }
 
         private void StartOnline(string action)
@@ -326,7 +330,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview, TutorialReady);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);

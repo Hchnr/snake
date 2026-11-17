@@ -44,7 +44,10 @@ python3 scripts/check-unity-compile.py --douyin
 npm run test:unity
 
 # 本地整数 PvE 服务端实验验证（仅本机、无奖励）
-# 启动开发服务器时设置 SNAKE_FIXED_PVE_EVAL=1；生产环境不会注册实验接口。
+# 启动开发服务器时设置 SNAKE_FIXED_PVE_EVAL=1 和 SNAKE_DEV_AUTH=1；生产环境不会注册实验接口。
+# 服务监听 127.0.0.1:2568，预览地址使用现有 CORS 白名单的 127.0.0.1:8082。
+python3 scripts/build-unity-isolated.py webgl --offline-practice --no-graphics --fixed-pve-local-api http://127.0.0.1:2568 --output /tmp/snake-fixed-local-preview
+# 使用 SNAKE_PREVIEW_ROOT=/tmp/snake-fixed-local-preview npm run preview:unity 启动浏览器预览。
 # 实验接口为 POST /api/v3/internal/fixed-pve/start 和 /verify，需登录及完整回放。
 
 # 对比整数 PvE 在桌面 .NET 和无头 Unity WebGL 的样本指纹
