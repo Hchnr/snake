@@ -79,31 +79,11 @@ sealed class GameApi
     {
         string? appId = Environment.GetEnvironmentVariable("SNAKE_DOUYIN_APPID");
         string? appSecret = Environment.GetEnvironmentVariable("SNAKE_DOUYIN_SECRET");
-        if (string.IsNullOrWhiteSpace(appId) || string.IsNullOrWhiteSpace(appSecret)) return Fail("抖音登录尚未配置", 503);
-        if (string.IsNullOrWhiteSpace(request.code) && string.IsNullOrWhiteSpace(request.anonymousCode)) return Fail("登录凭证无效");
-        var url = "https://minigame.zijieapi.com/mgplatform/api/apps/jscode2session?appid=" + Uri.EscapeDataString(appId) + "&secret=" + Uri.EscapeDataString(appSecret);
-        if (!string.IsNullOrEmpty(request.code)) url += "&code=" + Uri.EscapeDataString(request.code);
-        if (!string.IsNullOrEmpty(request.anonymousCode)) url += "&anonymous_code=" + Uri.EscapeDataString(request.anonymousCode);
-        try
-        {
-            using var message = new HttpRequestMessage(HttpMethod.Get, url);
-            message.Content = new ByteArrayContent(Array.Empty<byte>());
-            message.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
-            using var response = await Http.SendAsync(message);
-            if (!response.IsSuccessStatusCode) return Fail("抖音登录服务暂不可用", 503);
-            using var json = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-            var root = json.RootElement;
-            if (!root.TryGetProperty("error", out var error) || error.GetInt32() != 0) return Fail("抖音登录未成功", 401);
-            string? openId = root.TryGetProperty("openid", out var full) ? full.GetString() : null;
-            string? anonymousId = root.TryGetProperty("anonymous_openid", out var anon) ? anon.GetString() : null;
-            if (string.IsNullOrEmpty(openId)) openId = anonymousId;
-            if (string.IsNullOrEmpty(openId)) return Fail("抖音登录没有返回账号标识", 401);
-            string identity = "douyin:" + appId + ":" + openId;
-            string? anonymousIdentity = string.IsNullOrEmpty(anonymousId) ? null : "douyin:" + appId + ":" + anonymousId;
-            return Login(identity, anonymousIdentity);
-        }
-        catch (HttpRequestException) { return Fail("抖音登录服务暂不可用", 503); }
-        catch (JsonException) { return Fail("抖音登录结果无法读取", 503); }
+        var result = await new DouyinSessionExchange(Http).Exchange(appId ?? "", appSecret ?? "", request.code, request.anonymousCode);
+        if (result.Status != 200) return Fail(result.Error, result.Status);
+        string identity = "douyin:" + appId + ":" + result.OpenId;
+        string? anonymousIdentity = string.IsNullOrEmpty(result.AnonymousId) ? null : "douyin:" + appId + ":" + result.AnonymousId;
+        return Login(identity, anonymousIdentity);
     }
 
     private IResult Login(string identity, string? fallbackIdentity = null)
