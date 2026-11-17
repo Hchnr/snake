@@ -668,11 +668,17 @@ namespace SnakeClub
                 float flash = reducedEffects ? 1f : 1f + .10f * Mathf.Sin(state.tick * .7f);
                 Label(new Rect(250, 430, 580, 110), killMessage, Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
             }
-            if (state != null && state.phase == "running" && state.captureOwner == playerId && state.captureTick >= 0 && state.tick - state.captureTick < 12)
+            bool captureVisible = false;
+            if (state != null && state.captureTick >= 0 && state.tick >= state.captureTick && state.tick - state.captureTick < 12 &&
+                state.capturePolygon != null && state.capturePolygon.Count > 0)
             {
-                string captureText = state.captureCount > 0 ? "收圈捕获 " + state.captureCount + " 个对手！" : "轨迹闭合！";
-                Label(new Rect(240, 520, 600, 90), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
+                Vector3 point = arenaRenderer.HeadToScreen(state.capturePolygon[0]);
+                Vector2 projected = ToVirtual(point);
+                captureVisible = point.z > 0 && projected.x >= 0 && projected.x <= 1080 && projected.y >= 0 && projected.y <= 1920;
             }
+            string captureText = CaptureNotice.Text(state, playerId, captureVisible);
+            if (!string.IsNullOrEmpty(captureText))
+                Label(new Rect(240, 520, 600, 90), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
             string elimination = eliminationFeedback.Current(state);
             if (!string.IsNullOrEmpty(elimination))
             {
