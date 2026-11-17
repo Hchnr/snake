@@ -230,6 +230,16 @@ test('old account inventory, talent and active expedition survive progress migra
   assert.equal(first.expedition.id, 'old-cave'); assert.equal(first.expedition.bonusPercent, 2);
 });
 
+test('PvE start snapshot stays bound to the run after account changes', async () => {
+  const user = await login('v3-old-profile');
+  const run = (await request('match/start', { token: user.session, body: {} })).data;
+  assert.equal(run.startConfig.version, 'pve-setup-1');
+  assert.equal(run.startConfig.firstRun, false); assert.equal(run.startConfig.skin, 2); assert.equal(run.startConfig.talents[0], 1);
+  assert.equal((await request('talent/reset', { token: user.session, body: {} })).status, 200);
+  const snapshot = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs[run.runId].startConfig;
+  assert.equal(snapshot.talents[0], 1); assert.equal(snapshot.skin, 2);
+});
+
 test('PvE settlement is bound to the player and pays once, including daily objective', async () => {
   const runA = (await request('match/start', { token: alice.session, body: {} })).data;
   const runB = (await request('match/start', { token: alice.session, body: {} })).data;

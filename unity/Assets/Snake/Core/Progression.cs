@@ -23,6 +23,28 @@ namespace SnakeClub.Core
         }
     }
 
+    // Frozen at match creation; this version identifies the snapshot format,
+    // not a deterministic or production-ready replay ruleset.
+    [Serializable]
+    public sealed class PveStartConfig
+    {
+        public const string CurrentVersion = "pve-setup-1";
+        public string version = "";
+        public bool firstRun;
+        public int skin;
+        public int[] talents;
+
+        public static PveStartConfig Capture(PlayerProgress profile, int trialSkin)
+        {
+            return new PveStartConfig { version = CurrentVersion, firstRun = !profile.tutorialComplete,
+                skin = trialSkin > 0 ? trialSkin : profile.selectedSkin,
+                talents = profile.talents == null ? null : (int[])profile.talents.Clone() };
+        }
+        public PlayerProgress MatchProfile() => new PlayerProgress { selectedSkin = skin,
+            talents = talents == null ? null : (int[])talents.Clone() };
+        public bool Supported => version == CurrentVersion;
+    }
+
     [Serializable]
     public sealed class ExpeditionState
     {

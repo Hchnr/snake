@@ -149,7 +149,8 @@ namespace SnakeClub
             status = "";
             room = "";
             playerId = "you";
-            firstRun = !CurrentProfile.tutorialComplete;
+            var startConfig = run != null && run.startConfig != null && run.startConfig.Supported ? run.startConfig : null;
+            firstRun = startConfig != null ? startConfig.firstRun : !CurrentProfile.tutorialComplete;
             int arenaSeed = run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks);
             string playerName = string.IsNullOrWhiteSpace(nameInput) ? "玩家" : nameInput.Trim();
             if (!depthMode) arena = Arena.CreateStandardPve(arenaSeed, firstRun, playerName);
@@ -179,8 +180,8 @@ namespace SnakeClub
             activePlayerId = api.Profile != null ? api.Profile.playerId : "";
             lastRewardId = "";
             resultRecorded = false;
-            int skin = run != null && run.trialSkin > 0 ? run.trialSkin : CurrentProfile.selectedSkin;
-            var matchProfile = new PlayerProgress { selectedSkin = skin, talents = CurrentProfile.talents };
+            int skin = startConfig != null ? startConfig.skin : run != null && run.trialSkin > 0 ? run.trialSkin : CurrentProfile.selectedSkin;
+            var matchProfile = startConfig != null ? startConfig.MatchProfile() : new PlayerProgress { selectedSkin = skin, talents = CurrentProfile.talents };
             var bonuses = Progression.Bonuses(matchProfile);
             if (depthMode)
             {

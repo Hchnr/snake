@@ -107,6 +107,18 @@ test('legacy JSON imports once and a versioned leaderboard reads the shared data
   assert.equal(oldBoard.data.total, 1); assert.equal(oldBoard.data.rows[0].score, 900);
 });
 
+test('PvE start config survives SQLite writes from another instance', async () => {
+  const start = await request(endpoints[0], 'match/start', user.session, {});
+  assert.equal(start.status, 200); assert.equal(start.data.startConfig.skin, 2);
+  assert.equal((await request(endpoints[1], 'skin/equip', user.session, { index: 0 })).status, 200);
+  const script = 'import sqlite3,sys; c=sqlite3.connect(sys.argv[1]); print(c.execute("select payload from runs where id=?",(sys.argv[2],)).fetchone()[0])';
+  const read = spawnSync('python3', ['-c', script, database, start.data.runId], { encoding: 'utf8' });
+  assert.equal(read.status, 0, read.stderr);
+  const stored = JSON.parse(read.stdout);
+  assert.equal(stored.startConfig.version, 'pve-setup-1'); assert.equal(stored.startConfig.skin, 2);
+  assert.equal((await request(endpoints[0], 'skin/equip', user.session, { index: 2 })).status, 200);
+});
+
 test('expired receipts recover across SQLite instances without duplicate rewards', async () => {
   const owner = (await request(endpoints[0], 'auth/dev', null, { deviceId: 'sqlite-receipt' })).data;
   const payload = run => {

@@ -36,6 +36,7 @@ namespace SnakeClub
         public int trialSkin = -1, unlockedSkin = -1;
         public long serverTime, expiresAt;
         public PlayerProgress profile;
+        public PveStartConfig startConfig;
         public List<LeaderboardRow> rows;
     }
 
