@@ -38,6 +38,7 @@ var cases = new (string name, Action run)[]
     ("friend comparison reports the verified score gap", FriendComparisonCases),
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
+    ("first-run hints respond to player actions and stop on time", FirstRunHintsCases),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("drag steering recovers missing touch ends and transfers control", TouchRecovery),
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
@@ -183,6 +184,21 @@ static void NearbyDanger()
     Check(!DangerProbe.Find(state, "you", out _), "non-colliding neck incorrectly indicated danger");
     state.phase = "ended"; other.segments.Add(new Point(1, 0));
     Check(!DangerProbe.Find(state, "you", out _), "ended match retained danger warning");
+}
+
+static void FirstRunHintsCases()
+{
+    Check(FirstRunHints.Select(39, false, false, false, 0) == "", "hint appeared before two seconds");
+    Check(FirstRunHints.Select(40, false, false, false, 0).Contains("拖动"), "movement hint was missing");
+    Check(FirstRunHints.Select(400, false, false, false, 0).Contains("拖动"), "timer advanced the tutorial without steering");
+    Check(FirstRunHints.Select(100, true, false, false, 0) == "", "movement hint did not disappear after steering");
+    Check(FirstRunHints.Select(180, true, false, false, 0).Contains("轨迹"), "loop hint missing");
+    Check(FirstRunHints.Select(180, true, true, false, 0) == "", "loop hint ignored an actual loop");
+    Check(FirstRunHints.Select(340, true, false, false, 0).Contains("撞墙"), "rebound hint missing");
+    Check(FirstRunHints.Select(340, true, false, true, 0) == "", "rebound hint ignored an actual rebound");
+    Check(FirstRunHints.Select(500, true, false, false, 0).Contains("淘汰"), "elimination hint missing");
+    Check(FirstRunHints.Select(500, true, false, false, 1) == "", "elimination hint ignored an actual elimination");
+    Check(FirstRunHints.Select(600, false, false, false, 0) == "", "hint continued after the tutorial window");
 }
 
 static void FullScreenDrag()

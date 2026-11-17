@@ -19,7 +19,7 @@ namespace SnakeClub
         private RawImage background, portrait, skinPortrait, resultPortrait;
         private Text level, coins, notice, primaryText, primaryHint, caveText, soundText;
         private Text skinName, skinDescription, skinActionText, skinNotice, skinTrialText;
-        private Text resultTitle, resultStats, resultHighlight, resultDetails, resultAdText, settingsSound, settingsEffects, settingsHaptics, settingsMusic, settingsMusicVolume, settingsEffectsVolume;
+        private Text resultTitle, resultStats, resultHighlight, resultDetails, resultAdText, settingsSound, settingsEffects, settingsHaptics, settingsMusic, settingsMusicVolume, settingsEffectsVolume, settingsTutorial;
         private readonly Image[] skinCards = new Image[SkinCatalog.All.Length];
         private readonly RawImage[] skinThumbnails = new RawImage[SkinCatalog.All.Length];
         private readonly Text[] skinStates = new Text[SkinCatalog.All.Length];
@@ -32,7 +32,7 @@ namespace SnakeClub
         private Font font;
         private Action onStart, onSkins, onCaves, onMore, onSound;
         private Action onSkinBack, onSkinTrial;
-        private Action onResultRetry, onResultMenu, onResultShare, onResultAd, onReconnect, onEffects, onHaptics, onMusic, onMusicVolume, onEffectsVolume;
+        private Action onResultRetry, onResultMenu, onResultShare, onResultAd, onReconnect, onEffects, onHaptics, onMusic, onMusicVolume, onEffectsVolume, onTutorial;
         private Action<int> onSkinSelect, onSkinEquip;
         private int selectedPreview, skinPageIndex;
         private Rect lastSafe;
@@ -132,8 +132,8 @@ namespace SnakeClub
         }
 
         public void SetupReconnect(Action reconnectAction) => onReconnect = reconnectAction;
-        public void SetupPreferences(Action effects, Action haptics, Action music, Action musicVolume, Action effectsVolume)
-        { onEffects = effects; onHaptics = haptics; onMusic = music; onMusicVolume = musicVolume; onEffectsVolume = effectsVolume; }
+        public void SetupPreferences(Action effects, Action haptics, Action music, Action musicVolume, Action effectsVolume, Action tutorial = null)
+        { onEffects = effects; onHaptics = haptics; onMusic = music; onMusicVolume = musicVolume; onEffectsVolume = effectsVolume; onTutorial = tutorial; }
 
         public void SetPage(bool skins, bool results = false)
         {
@@ -151,7 +151,7 @@ namespace SnakeClub
 
         public void SetState(PlayerProgress profile, Texture character, string message, bool busy, bool connected, bool sound,
             int equipped, int preview, bool referencesEnabled, bool trialAvailable, bool friendChallenge = false,
-            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100, int friendScore = 0, string friendRules = "", string friendDate = "")
+            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100, int friendScore = 0, string friendRules = "", string friendDate = "", bool tutorialHints = true)
         {
             if (canvas == null || profile == null) return;
             reducedEffects = reduce;
@@ -171,6 +171,7 @@ namespace SnakeClub
             hapticsButton.interactable = hapticsSupported;
             Set(settingsHaptics, !hapticsSupported ? "震动：当前平台不可用" : haptics ? "震动：开" : "震动：关");
             Set(settingsEffects, reducedEffects ? "画面特效：简洁" : "画面特效：丰富");
+            Set(settingsTutorial, tutorialHints ? "新手提示：开" : "新手提示：关");
             primary.interactable = !busy;
             if (reconnect.gameObject.activeSelf == connected) reconnect.gameObject.SetActive(!connected);
             if (portrait.texture != character) portrait.texture = character;
@@ -235,7 +236,9 @@ namespace SnakeClub
             settingsMusicVolume = MakeText("Settings music volume label", musicVolumeButton.transform, new Rect(0, 0, 320, 105), "音量 100%", 25, Color.white, TextAnchor.MiddleCenter, true);
             hapticsButton = MakeButton("Settings haptics", settingsModal, new Rect(220, 790, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onHaptics?.Invoke());
             settingsHaptics = MakeText("Settings haptics label", hapticsButton.transform, new Rect(0, 0, 640, 105), "震动：关", 28, Color.white, TextAnchor.MiddleCenter, true);
-            MakeText("Settings controls label", settingsModal, new Rect(220, 1070, 640, 105), "控制：全屏拖动 · 双指加速", 28, Color.white, TextAnchor.MiddleCenter, true);
+            MakeText("Settings controls label", settingsModal, new Rect(220, 1140, 640, 85), "控制：全屏拖动 · 双指加速", 28, Color.white, TextAnchor.MiddleCenter, true);
+            var tutorial = MakeButton("Settings tutorial", settingsModal, new Rect(220, 1030, 640, 100), new Color(.12f, .35f, .40f, .98f), () => onTutorial?.Invoke());
+            settingsTutorial = MakeText("Settings tutorial label", tutorial.transform, new Rect(0, 0, 640, 100), "新手提示：开", 28, Color.white, TextAnchor.MiddleCenter, true);
             var effects = MakeButton("Settings effects", settingsModal, new Rect(220, 910, 640, 105), new Color(.12f, .35f, .40f, .98f), () => onEffects?.Invoke());
             settingsEffects = MakeText("Settings effects label", effects.transform, new Rect(0, 0, 640, 105), "画面特效：丰富", 28, Color.white, TextAnchor.MiddleCenter, true);
             var close = MakeButton("Settings close", settingsModal, new Rect(300, 1250, 480, 100), new Color(.08f, .68f, .54f, 1f), () => settingsModal.gameObject.SetActive(false));
