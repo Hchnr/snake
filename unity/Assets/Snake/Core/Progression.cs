@@ -14,6 +14,15 @@ namespace SnakeClub.Core
         public void Advance() { current++; }
     }
 
+    public static class ProfileSnapshot
+    {
+        public static bool ShouldAccept(PlayerProgress current, PlayerProgress incoming)
+        {
+            if (incoming == null || string.IsNullOrEmpty(incoming.playerId)) return false;
+            return current == null || (current.playerId == incoming.playerId && incoming.revision >= current.revision);
+        }
+    }
+
     [Serializable]
     public sealed class ExpeditionState
     {
@@ -31,6 +40,7 @@ namespace SnakeClub.Core
     public sealed class PlayerProgress
     {
         public string playerId = "";
+        public long revision;
         public string displayName = "玩家";
         public int experience;
         public int coins;

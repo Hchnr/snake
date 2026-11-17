@@ -32,6 +32,9 @@ namespace SnakeClub.Tests.Editor
                 Apply("{\"ok\":true,\"date\":\"2026-11-16\",\"seed\":99,\"serverTime\":1000,\"runId\":\"late\"}");
                 Apply("{\"ok\":true,\"date\":\"2026-11-16\",\"rank\":1}");
                 Require(client.Date == "2026-11-17" && client.Seed == 42 && client.ServerTime == 2000, "stale replies rolled back the server day or seed");
+                Apply("{\"ok\":true,\"profile\":{\"playerId\":\"test-player\",\"revision\":2,\"coins\":100}}");
+                Apply("{\"ok\":true,\"profile\":{\"playerId\":\"test-player\",\"revision\":1,\"coins\":35}}");
+                Require(client.Profile.coins == 100 && client.Profile.revision == 2, "stale profile response rolled back rewards");
                 Debug.Log("PASS Unity JSON replies preserve account, daily seed and ad availability");
 
                 const string path = "Assets/Resources/MysticCave.png";

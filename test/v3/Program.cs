@@ -27,6 +27,7 @@ var cases = new (string name, Action run)[]
     ("incoming friend challenges deduplicate, retry and reject stale replies", IncomingFriendCases),
     ("platform login handles timeout, late and duplicate callbacks", PlatformLoginCases),
     ("session generations reject old login responses", SessionGenerationCases),
+    ("profile snapshots reject outdated or foreign accounts", ProfileSnapshotCases),
     ("Douyin login handles valid, malformed and unavailable upstream responses", DouyinExchangeCases),
     ("first seven active days grow linearly and later growth slows", GrowthCurve),
     ("talent points, rank limits and PvE/PvP caps are enforced", TalentBudget),
@@ -82,6 +83,19 @@ static void Check(bool value, string message)
 {
     if (!value) throw new Exception(message);
 }
+static void ProfileSnapshotCases()
+{
+    var previous = new PlayerProgress { playerId = "a", revision = 3, coins = 100 };
+    var late = new PlayerProgress { playerId = "a", revision = 2, coins = 35 };
+    var newer = new PlayerProgress { playerId = "a", revision = 4, coins = 120 };
+    Check(ProfileSnapshot.ShouldAccept(null, previous), "initial account rejected");
+    Check(!ProfileSnapshot.ShouldAccept(previous, late), "older rewards snapshot accepted");
+    Check(ProfileSnapshot.ShouldAccept(previous, newer), "newer account snapshot rejected");
+    Check(ProfileSnapshot.ShouldAccept(previous, previous), "idempotent response rejected");
+    Check(!ProfileSnapshot.ShouldAccept(previous, new PlayerProgress { playerId = "b", revision = 99 }), "foreign account accepted");
+    Check(ProfileSnapshot.ShouldAccept(null, new PlayerProgress { playerId = "legacy" }), "legacy account rejected");
+}
+
 static void SessionGenerationCases()
 {
     var session = new SessionGeneration();

@@ -224,6 +224,7 @@ test('old account inventory, talent and active expedition survive progress migra
   const first = (await request('bootstrap', { token: user.session })).data.profile;
   const second = (await request('bootstrap', { token: user.session })).data.profile;
   assert.equal(first.completedMatches, 1); assert.equal(second.completedMatches, 1);
+  assert.ok(first.revision > 0); assert.ok(second.revision > first.revision);
   assert.equal(first.coins, 777); assert.equal(first.experience, 345);
   assert.deepEqual(first.ownedSkins, [0, 2]); assert.equal(first.selectedSkin, 2); assert.equal(first.talents[0], 1);
   assert.equal(first.expedition.id, 'old-cave'); assert.equal(first.expedition.bonusPercent, 2);
