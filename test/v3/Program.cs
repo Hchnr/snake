@@ -43,6 +43,7 @@ var cases = new (string name, Action run)[]
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
+    ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("match outcomes explain actual collision and capture results", MatchOutcomeCases),
     ("capture sweep follows even-odd geometry for concave and crossing loops", CaptureSweepCases),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
@@ -391,6 +392,22 @@ static void PreviousDailyReplay()
     Check(match.State.tick == 1200 && match.Score == 90, "daily-2 replay changed from its recorded result");
     Check(match.State.captureTick == -1, "daily-2 unexpectedly enabled capture");
     Check(DailyMatch.MaxScoreFor(DailyMatch.PreviousRulesVersion) == 1540 && DailyMatch.MaxScoreFor(DailyMatch.RulesVersion) == 1460, "score bounds not versioned");
+}
+
+static void EliminationTransitionCases()
+{
+    var exit = new EliminationTransition();
+    Check(!exit.ObserveDead("unseen", 1, out _, out _), "unseen or already dead character produced an exit");
+    exit.ObserveAlive("bot");
+    Check(exit.ObserveDead("bot", 2, out var start, out var started) && started && start == 0, "real elimination did not start");
+    Check(exit.ObserveDead("bot", 2.175f, out var middle, out started) && !started && Math.Abs(middle - .5f) < .001f, "exit did not progress once");
+    Check(!exit.ObserveDead("bot", 2.4f, out _, out _) && !exit.ObserveDead("bot", 3, out _, out _), "exit repeated after completion");
+    exit.ObserveAlive("bot");
+    Check(exit.ObserveDead("bot", 4, out _, out started) && started, "new life did not reset its exit");
+    exit.Reset();
+    Check(!exit.ObserveDead("bot", 4, out _, out _), "exit leaked between matches");
+    exit.ObserveAlive("bot"); exit.ObserveDead("bot", 5, out _, out _); exit.ObserveAlive("bot");
+    Check(exit.ObserveDead("bot", 5.1f, out var next, out started) && started && next == 0, "revived character retained an old exit");
 }
 
 static void MatchOutcomeCases()

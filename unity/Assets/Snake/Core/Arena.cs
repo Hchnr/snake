@@ -102,6 +102,31 @@ namespace SnakeClub.Core
         }
     }
 
+    // Presentation-only transition: only a previously displayed living
+    // character can produce an exit; resets prevent events leaking between matches.
+    public sealed class EliminationTransition
+    {
+        public const float Duration = .35f;
+        private readonly HashSet<string> living = new HashSet<string>();
+        private readonly Dictionary<string, float> exits = new Dictionary<string, float>();
+        public void Reset() { living.Clear(); exits.Clear(); }
+        public void ObserveAlive(string id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+            living.Add(id); exits.Remove(id);
+        }
+        public bool ObserveDead(string id, float now, out float progress, out bool started)
+        {
+            progress = 0; started = false;
+            if (string.IsNullOrEmpty(id)) return false;
+            if (living.Remove(id)) { exits[id] = now; started = true; }
+            if (!exits.TryGetValue(id, out float start)) return false;
+            progress = Math.Max(0, (now - start) / Duration);
+            if (progress >= 1) { exits.Remove(id); return false; }
+            return true;
+        }
+    }
+
     // Presentation summary sampled from resolved simulation ticks. It never
     // affects scores, rewards, collisions or replay verification.
     public sealed class MatchHighlights
