@@ -97,6 +97,7 @@ test('legacy JSON imports once and a versioned leaderboard reads the shared data
   assert.equal(profile.status, 200); assert.equal(profile.data.profile.coins, 100);
   assert.deepEqual(profile.data.profile.ownedSkins, [0, 2]);
   const board = await request(endpoints[1], 'challenge/leaderboard?rules=daily-2', user.session);
+  assert.equal(board.data.rules, 'daily-2'); assert.ok(board.data.serverTime > 0);
   assert.equal(board.data.total, 2); assert.equal(board.data.rank, 2); assert.equal(board.data.gap, 40);
   assert.deepEqual(board.data.rows.map(row => row.score), [120, 80]);
   const oldBoard = await request(endpoints[1], 'challenge/leaderboard', user.session);

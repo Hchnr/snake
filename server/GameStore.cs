@@ -134,7 +134,7 @@ ON CONFLICT(id) DO UPDATE SET completed=excluded.completed,score=excluded.score,
                 ("$id", row.Key), ("$player", row.Value.playerId), ("$day", row.Value.day), ("$payload", JsonSerializer.Serialize(row.Value, json)));
     }
 
-    public IResult Leaderboard(SqliteConnection db, SqliteTransaction tx, string playerId, string day, string rules)
+    public IResult Leaderboard(SqliteConnection db, SqliteTransaction tx, string playerId, string day, string rules, long serverTime)
     {
         const string sql = @"
 WITH player_runs AS (
@@ -164,7 +164,7 @@ WHERE ranked.rank<=100 OR ranked.player_id=$player ORDER BY ranked.rank";
             if (position <= 100) rows.Add(new { rank = position, playerId = id, name, score });
             if (id == playerId) { rank = position; gap = reader.IsDBNull(4) ? 0 : reader.GetInt32(4) - score; }
         }
-        return Results.Json(new { ok = true, date = day, rules, rows, rank, total, gap });
+        return Results.Json(new { ok = true, date = day, rules, serverTime, rows, rank, total, gap });
     }
 
     private static SqliteCommand Command(SqliteConnection db, SqliteTransaction tx, string sql, params (string, object)[] args)

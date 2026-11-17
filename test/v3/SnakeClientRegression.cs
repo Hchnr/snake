@@ -28,6 +28,10 @@ namespace SnakeClub.Tests.Editor
                 Require(client.Profile.playerId == "test-player" && client.Seed == 123 && client.AdEnabled, "leaderboard response cleared account state or daily seed");
                 Apply("{\"ok\":true,\"runId\":\"run-zero\",\"date\":\"2026-11-16\",\"seed\":0,\"rules\":\"daily-2\"}");
                 Require(client.Seed == 0, "a valid zero seed was not accepted from run start");
+                Apply("{\"ok\":true,\"date\":\"2026-11-17\",\"seed\":42,\"serverTime\":2000,\"profile\":{\"playerId\":\"test-player\"}}");
+                Apply("{\"ok\":true,\"date\":\"2026-11-16\",\"seed\":99,\"serverTime\":1000,\"runId\":\"late\"}");
+                Apply("{\"ok\":true,\"date\":\"2026-11-16\",\"rank\":1}");
+                Require(client.Date == "2026-11-17" && client.Seed == 42 && client.ServerTime == 2000, "stale replies rolled back the server day or seed");
                 Debug.Log("PASS Unity JSON replies preserve account, daily seed and ad availability");
 
                 const string path = "Assets/Resources/MysticCave.png";

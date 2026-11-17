@@ -214,11 +214,13 @@ namespace SnakeClub
             // response does not contain a profile (for example, match/start).
             bool hasProfile = reply.profile != null && !string.IsNullOrEmpty(reply.profile.playerId);
             if (hasProfile) Profile = reply.profile;
-            if (!string.IsNullOrEmpty(reply.date)) Date = reply.date;
-            // A versioned leaderboard also contains date and rules but no seed.
-            // Only bootstrap and run-start replies may replace a seed with zero.
-            if (reply.seed != 0 || (!string.IsNullOrEmpty(reply.date) && (hasProfile || !string.IsNullOrEmpty(reply.runId)))) Seed = reply.seed;
-            if (reply.serverTime > 0) { ServerTime = reply.serverTime; ServerTimeReceivedAt = Time.realtimeSinceStartup; }
+            // Responses can arrive out of order, including across Beijing midnight.
+            bool freshTime = reply.serverTime > 0 && reply.serverTime >= ServerTime;
+            if (!string.IsNullOrEmpty(reply.date) && (freshTime || (reply.serverTime <= 0 && (string.IsNullOrEmpty(Date) || string.CompareOrdinal(reply.date, Date) >= 0)))) Date = reply.date;
+            // Leaderboards have no seed; stale responses must not restore yesterday's seed.
+            if (!string.IsNullOrEmpty(reply.date) && reply.date == Date && (reply.serverTime <= 0 || freshTime) &&
+                (reply.seed != 0 || hasProfile || !string.IsNullOrEmpty(reply.runId))) Seed = reply.seed;
+            if (freshTime) { ServerTime = reply.serverTime; ServerTimeReceivedAt = Time.realtimeSinceStartup; }
             if (!string.IsNullOrEmpty(reply.date) && hasProfile) AdEnabled = reply.adEnabled;
         }
 

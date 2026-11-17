@@ -211,6 +211,7 @@ test('daily-4 verifies, shares and keeps its leaderboard separate from daily-3',
   assert.equal(shared.status, 200); assert.equal(shared.data.rules, 'daily-4'); assert.equal(shared.data.score, recording.score);
   const current = await request('challenge/leaderboard?rules=daily-4', { token: player.session });
   const previous = await request('challenge/leaderboard?rules=daily-3', { token: player.session });
+  assert.equal(current.data.rules, 'daily-4'); assert.ok(current.data.serverTime > 0);
   assert.equal(current.data.total, 1); assert.equal(current.data.rows[0].score, recording.score);
   assert.equal(previous.data.rank, 0); assert.equal(previous.data.total, 1);
   const oldRun = JSON.parse(fs.readFileSync(dataFile, 'utf8')).runs['capture-run'];
