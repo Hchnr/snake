@@ -21,6 +21,9 @@ namespace SnakeClub
         public bool allowReferenceSkinPreview;
         public bool experimentalFixedPve;
         public bool experimentalFixedPveServer;
+        public bool experimentalComparison;
+        public bool ComparisonPreview => experimentalComparison && !allowDevLogin && !experimentalFixedPve && !experimentalFixedPveServer &&
+            string.IsNullOrWhiteSpace(apiUrl) && string.IsNullOrWhiteSpace(serverUrl);
         // Explicit development-only loopback preview; no platform identity or remote host.
         public bool FixedPveServerPreview
         {

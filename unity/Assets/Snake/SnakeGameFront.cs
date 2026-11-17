@@ -25,6 +25,7 @@ namespace SnakeClub
         private string frontPage = "home", frontNotice = "", resultNote = "", lastRewardId = "", lastRewardKind = "", activePlayerId = "", friendDate = "";
         private string activePracticeAccount = "", practicedAccount = "";
         private bool busy, resultRecorded, flushing, adShowing, connecting, verifiedDaily;
+        private int comparisonVariant = -1;
         private int friendScore, activeFriendScore = -1;
         private string friendRules = "", activeFriendDate = "", activeFriendRules = "", verifiedShareToken = "";
         private int verifiedShareScore;
@@ -65,7 +66,7 @@ namespace SnakeClub
                 () => feedback.EffectsVolume = AudioLevels.Next(feedback.EffectsVolume),
                 () => SetTutorialHints(!tutorialHints));
             homeScreen.SetupResults(
-                () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
+                () => { if (comparisonVariant >= 0 && api.Config.ComparisonPreview) BeginComparison(comparisonVariant); else if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
                 ShareCurrentChallenge,
                 () =>
                 {
@@ -108,6 +109,7 @@ namespace SnakeClub
 
         private void StartMain()
         {
+            if (api.Config.ComparisonPreview) { frontPage = "comparison"; return; }
             if (api.Config.FixedPvePreview || api.Config.FixedPveServerPreview) { RequestPve(); return; }
             if (!TutorialReady) RequestPve();
             else RequestDaily();
@@ -264,11 +266,25 @@ namespace SnakeClub
             }
         }
 
-        private void BeginDaily(ApiReply run)
+        private void BeginDaily(ApiReply run) => BeginDailyWithMatch(run, null);
+
+        private void BeginComparison(int variant)
+        {
+            if (!api.Config.ComparisonPreview || variant < 0 || variant > 2) return;
+            comparisonVariant = variant;
+            int seed = PracticeSeed();
+            var match = variant == 0 ? new DailyMatch(seed, DailyMatch.PreviousRulesVersion) :
+                variant == 1 ? new DailyMatch(seed, DailyMatch.RulesVersion) : DailyMatch.CreateNoCaptureComparison(seed);
+            BeginDailyWithMatch(null, match);
+            firstRun = false;
+            resultNote = "对照试玩 · 不计账号奖励或排行";
+        }
+
+        private void BeginDailyWithMatch(ApiReply run, DailyMatch comparison)
         {
             dragSteering.Reset();
             connection.Close(); online = false; inGame = true; paused = false; status = ""; room = "";
-            playerId = "you"; arena = null; fixedPve = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
+            playerId = "you"; arena = null; fixedPve = null; daily = comparison ?? new DailyMatch(run != null ? run.seed : PracticeSeed(),
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
             state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId); eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             killFeedback.Reset(); killFeedback.Observe(state, playerId);
@@ -285,6 +301,7 @@ namespace SnakeClub
         private void RecordResult()
         {
             resultRecorded = true;
+            if (comparisonVariant >= 0 && api.Config.ComparisonPreview) { resultNote = "对照试玩 · 不计账号奖励或排行"; return; }
             if (fixedPve != null) { VerifyFixedPreview(); return; }
             if (depthMode) { resultNote = "深潜练习 · 不计账号奖励或排行"; return; }
             if (activeRun == null || string.IsNullOrEmpty(activePlayerId))
@@ -475,6 +492,18 @@ namespace SnakeClub
             else if (frontPage == "cave-album") DrawCaveAlbum();
             else if (frontPage == "leaderboard") DrawLeaderboard();
             else if (frontPage == "more") DrawMore();
+            else if (frontPage == "comparison" && api.Config.ComparisonPreview) DrawComparison();
+        }
+
+        private void DrawComparison()
+        {
+            Panel(new Rect(75, 320, 930, 1160), new Color(.035f, .065f, .12f, .96f));
+            Label(new Rect(120, 370, 840, 80), "玩法对照试玩", 45, Color.white, TextAnchor.MiddleCenter, true);
+            Label(new Rect(140, 465, 800, 95), "请选择一个方案 · 不计奖励或排行\n三种方案使用同一角色和当日种子", 25, new Color(.75f, .88f, .91f), TextAnchor.MiddleCenter);
+            if (Button(new Rect(180, 610, 720, 135), "试玩方案 A", new Color(.13f, .48f, .45f))) BeginComparison(0);
+            if (Button(new Rect(180, 790, 720, 135), "试玩方案 B", new Color(.21f, .36f, .58f))) BeginComparison(1);
+            if (Button(new Rect(180, 970, 720, 135), "试玩方案 C", new Color(.40f, .31f, .57f))) BeginComparison(2);
+            if (Button(new Rect(250, 1210, 580, 90), "返回大厅", new Color(.15f, .22f, .31f))) frontPage = "home";
         }
 
         private void DrawHome()

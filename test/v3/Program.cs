@@ -85,6 +85,7 @@ var cases = new (string name, Action run)[]
     ("capture sweep follows even-odd geometry for concave and crossing loops", CaptureSweepCases),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
+    ("offline comparison holds the initial world constant and disables only capture", GameplayComparison),
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("local arena reuses collision buffers without stale outcomes", ArenaBufferReuse),
     ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
@@ -823,6 +824,47 @@ static void CapturePlayable()
         if (match.State.captureOwner == "you") return;
     }
     throw new Exception("no starting-length loop could be closed with a continuous turn");
+}
+
+static void GameplayComparison()
+{
+    Check(!DailyMatch.SupportsRules("comparison-c"), "offline comparison became a server rules version");
+    bool sawLoop = false;
+    for (int turn = 1; turn <= 8 && !sawLoop; turn++) for (int seed = 1; seed <= 12 && !sawLoop; seed++)
+    {
+        var b = new DailyMatch(seed, DailyMatch.RulesVersion);
+        var c = DailyMatch.CreateNoCaptureComparison(seed);
+        Check(b.State.snakes.Count == c.State.snakes.Count && b.State.fruits.Count == c.State.fruits.Count, "comparison setup differs");
+        for (int i = 0; i < b.State.snakes.Count; i++)
+        {
+            var left = b.State.snakes[i]; var right = c.State.snakes[i];
+            Check(left.segments.Count == right.segments.Count && left.angle == right.angle, "comparison starting length or angle differs");
+            for (int j = 0; j < left.segments.Count; j++)
+                Check(left.segments[j].x == right.segments[j].x && left.segments[j].y == right.segments[j].y, "comparison spawn differs");
+        }
+        for (int i = 0; i < b.State.fruits.Count; i++)
+            Check(b.State.fruits[i].position.x == c.State.fruits[i].position.x && b.State.fruits[i].position.y == c.State.fruits[i].position.y, "comparison fruit layout differs");
+        int initial = ((int)Math.Round(b.State.snakes[0].angle * 256 / (Math.PI * 2)) + 256) & 255;
+        while (!b.Finished && !c.Finished && b.State.tick < 200 && b.State.captureTick < 0)
+        {
+            byte direction = (byte)((initial + (b.State.tick + 1) * turn) & 255);
+            b.Step(direction, false); c.Step(direction, false);
+            if (b.State.captureTick >= 0)
+            {
+                Check(c.State.captureTick < 0, "no-capture comparison reported a loop");
+                sawLoop = true;
+                break;
+            }
+            for (int i = 0; i < b.State.snakes.Count; i++)
+            {
+                var left = b.State.snakes[i]; var right = c.State.snakes[i];
+                Check(left.alive == right.alive && left.segments.Count == right.segments.Count &&
+                    left.segments[0].x == right.segments[0].x && left.segments[0].y == right.segments[0].y,
+                    "comparison diverged before the first capture");
+            }
+        }
+    }
+    Check(sawLoop, "no scripted comparison produced a loop");
 }
 
 static void CaptureResolution()
