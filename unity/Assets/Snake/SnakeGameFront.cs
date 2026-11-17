@@ -56,7 +56,8 @@ namespace SnakeClub
                 () => feedback.HapticsEnabled = !feedback.HapticsEnabled,
                 () => feedback.MusicEnabled = !feedback.MusicEnabled,
                 () => feedback.MusicVolume = AudioLevels.Next(feedback.MusicVolume),
-                () => feedback.EffectsVolume = AudioLevels.Next(feedback.EffectsVolume));
+                () => feedback.EffectsVolume = AudioLevels.Next(feedback.EffectsVolume),
+                () => SetTutorialHints(!tutorialHints));
             homeScreen.SetupResults(
                 () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
                 ShareCurrentChallenge,
@@ -108,6 +109,14 @@ namespace SnakeClub
         private void LoadPreferences()
         {
             reducedEffects = PlayerPrefs.GetInt("snake.v031.reducedEffects", 0) != 0;
+            tutorialHints = PlayerPrefs.GetInt("snake.v031.tutorialHints", 1) != 0;
+        }
+
+        private void SetTutorialHints(bool enabled)
+        {
+            tutorialHints = enabled;
+            PlayerPrefs.SetInt("snake.v031.tutorialHints", enabled ? 1 : 0);
+            PlayerPrefs.Save();
         }
 
         private void ConnectProfile()
@@ -248,6 +257,7 @@ namespace SnakeClub
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
             controlActions = 0; firstRun = !CurrentProfile.tutorialComplete;
+            hasSteered = false; tutorialClosedLoop = false; tutorialRebounded = false;
             resultNote = run == null ? "离线练习不计入排行榜" : "挑战完成后验证成绩";
             arenaRenderer.SelectedSkin = EffectiveSkin;
         }

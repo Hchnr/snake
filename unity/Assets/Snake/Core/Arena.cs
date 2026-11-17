@@ -102,6 +102,22 @@ namespace SnakeClub.Core
         }
     }
 
+    // Short first-run prompts follow observed actions rather than completing
+    // automatically as the timer advances. They do not affect input or rules.
+    public static class FirstRunHints
+    {
+        public static string Select(int tick, bool steered, bool closedLoop, bool rebounded, int kills)
+        {
+            int seconds = Math.Max(0, tick) / 20;
+            if (seconds < 2 || seconds >= 30) return "";
+            if (!steered) return "在屏幕任意位置拖动，控制方向";
+            if (seconds >= 8 && seconds < 16 && !closedLoop) return "绕住对手，再回到自己的轨迹";
+            if (seconds >= 16 && seconds < 24 && !rebounded) return "撞墙不会失败，还会短暂加速";
+            if (seconds >= 24 && kills <= 0) return "让对手撞上你的轨迹，淘汰后立即成长";
+            return "";
+        }
+    }
+
     // Presentation-only transition: only a previously displayed living
     // character can produce an exit; resets prevent events leaking between matches.
     public sealed class EliminationTransition
