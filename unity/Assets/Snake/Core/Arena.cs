@@ -343,6 +343,21 @@ namespace SnakeClub.Core
         }
     }
 
+    // Rebase event counters after suspension so stale events are not replayed.
+    public sealed class FeedbackCursor
+    {
+        private bool baseline = true;
+        private int tick = -1;
+        public bool PendingBaseline => baseline;
+        public void Suspend() => baseline = true;
+        public bool Observe(int currentTick)
+        {
+            bool reset = baseline || currentTick < tick;
+            baseline = false; tick = currentTick;
+            return reset;
+        }
+    }
+
     public static class MusicPolicy
     {
         public static bool ShouldPlay(bool enabled, bool interacted, bool focused, bool paused, bool adShowing) =>

@@ -12,7 +12,8 @@ namespace SnakeClub
         private AudioClip homeMusic, battleMusic;
         private bool interacted, musicPaused, homeAttempted, battleAttempted, homeGenerated, battleGenerated;
         private AudioClip growth, rebound, elimination, capture, star, finish;
-        private int tick = -1, length, kills, stars;
+        private int length, kills, stars;
+        private readonly FeedbackCursor cursor = new FeedbackCursor();
         private int captureTick = -1;
         private int bossShield = -1;
         private float pulse;
@@ -41,7 +42,7 @@ namespace SnakeClub
         public bool Enabled
         {
             get => PlayerPrefs.GetInt("snake.v3.sound", 1) != 0;
-            set { PlayerPrefs.SetInt("snake.v3.sound", value ? 1 : 0); PlayerPrefs.Save(); if (output != null) output.mute = !value; }
+            set { PlayerPrefs.SetInt("snake.v3.sound", value ? 1 : 0); PlayerPrefs.Save(); if (output != null) { output.mute = !value; if (!value) output.Stop(); } }
         }
 
         private void Awake() => Initialize();
@@ -72,11 +73,11 @@ namespace SnakeClub
             var snake = state.snakes.Find(item => item.id == playerId);
             if (snake == null) return;
             var boss = state.snakes.Find(item => item.boss);
-            if (tick < 0 || state.tick < tick)
+            if (cursor.Observe(state.tick))
             {
                 length = snake.segments.Count; kills = snake.kills; stars = snake.starPoints;
                 bossShield = boss != null ? boss.bossShield : -1;
-                pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick; tick = state.tick; return;
+                pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick; return;
             }
             bool eliminationOccurred = snake.kills > kills;
             bool captureOccurred = state.captureOwner == playerId && state.captureCount > 0 && state.captureTick >= 0 && state.captureTick != captureTick;
@@ -102,7 +103,7 @@ namespace SnakeClub
                     output.PlayOneShot(growth); nextGrowth = Time.unscaledTime + .18f;
                 }
             }
-            tick = state.tick; length = snake.segments.Count; kills = snake.kills;
+            length = snake.segments.Count; kills = snake.kills;
             bossShield = boss != null ? boss.bossShield : -1;
             stars = snake.starPoints; pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick;
         }
@@ -148,6 +149,20 @@ namespace SnakeClub
             }
             else if (musicPaused) { musicOutput.UnPause(); musicPaused = false; }
             else if (!musicOutput.isPlaying) musicOutput.Play();
+        }
+
+        public void SuspendAudio()
+        {
+            SuspendMusic();
+            if (output != null) output.Stop();
+            cursor.Suspend();
+        }
+
+        // Called before the next simulation step so new events on that step
+        // remain audible while old background events are not replayed.
+        public void RebaselineAfterSuspend(ArenaState state, string playerId)
+        {
+            if (cursor.PendingBaseline) Observe(state, playerId);
         }
 
         public void SuspendMusic()

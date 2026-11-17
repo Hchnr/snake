@@ -725,7 +725,7 @@ namespace SnakeClub
             {
                 if (!prepared.ok) { after?.Invoke(prepared); return; }
                 adShowing = true;
-                feedback.SuspendMusic();
+                feedback.SuspendAudio();
                 GamePlatform.ShowRewarded(api, (completed, error) =>
                 {
                     adShowing = false;
