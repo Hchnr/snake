@@ -35,6 +35,7 @@ var cases = new (string name, Action run)[]
     ("legacy daily replays preserve their original result", LegacyDailyReplay),
     ("daily-2 recordings remain compatible with daily-3", PreviousDailyReplay),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
+    ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
@@ -57,6 +58,22 @@ static void Check(bool value, string message)
 {
     if (!value) throw new Exception(message);
 }
+static void MusicBehavior()
+{
+    Check(!MusicPolicy.ShouldPlay(true, false, true, false, false), "music started before user interaction");
+    Check(MusicPolicy.ShouldPlay(true, true, true, false, false), "music did not start after interaction");
+    Check(!MusicPolicy.ShouldPlay(false, true, true, false, false), "music ignored its independent setting");
+    Check(!MusicPolicy.ShouldPlay(true, true, false, false, false), "music continued in background");
+    Check(!MusicPolicy.ShouldPlay(true, true, true, true, false), "music continued while paused");
+    Check(!MusicPolicy.ShouldPlay(true, true, true, false, true), "music continued during an ad");
+    var home = MusicComposer.Create(false); var battle = MusicComposer.Create(true);
+    Check(home.Length == MusicComposer.SampleRate * MusicComposer.Seconds && battle.Length == home.Length, "incorrect loop duration");
+    Check(home[0] == 0 && Math.Abs(home[^1]) < .01 && battle[0] == 0 && Math.Abs(battle[^1]) < .01, "loop boundary is not faded");
+    Check(home.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && home.Any(x => Math.Abs(x) > .05f), "home loop is clipped or silent");
+    Check(battle.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && battle.Any(x => Math.Abs(x) > .05f), "battle loop is clipped or silent");
+    Check(!home.SequenceEqual(battle), "home and battle loops are identical");
+}
+
 static void NearbyDanger()
 {
     var state = new ArenaState { phase = "running" };

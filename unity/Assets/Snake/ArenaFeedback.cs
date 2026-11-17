@@ -1,3 +1,4 @@
+using System;
 using SnakeClub.Core;
 using UnityEngine;
 
@@ -7,7 +8,9 @@ namespace SnakeClub
     // describe game events, never collision or scoring inputs.
     public sealed class ArenaFeedback : MonoBehaviour
     {
-        private AudioSource output;
+        private AudioSource output, musicOutput;
+        private AudioClip homeMusic, battleMusic;
+        private bool interacted, musicPaused, homeAttempted, battleAttempted;
         private AudioClip growth, rebound, elimination, capture, star, finish;
         private int tick = -1, length, kills, stars;
         private int captureTick = -1;
@@ -15,6 +18,11 @@ namespace SnakeClub
         private float pulse;
         private bool ended;
         private float nextGrowth, nextHaptic;
+        public bool MusicEnabled
+        {
+            get => PlayerPrefs.GetInt("snake.v3.music", 1) != 0;
+            set { PlayerPrefs.SetInt("snake.v3.music", value ? 1 : 0); PlayerPrefs.Save(); }
+        }
         public bool HapticsEnabled
         {
             get => PlayerPrefs.GetInt("snake.v3.haptics", 0) != 0;
@@ -38,6 +46,8 @@ namespace SnakeClub
             output = GetComponent<AudioSource>();
             if (output == null) output = gameObject.AddComponent<AudioSource>();
             output.playOnAwake = false; output.spatialBlend = 0; output.volume = .38f;
+            if (musicOutput == null) musicOutput = gameObject.AddComponent<AudioSource>();
+            musicOutput.playOnAwake = false; musicOutput.spatialBlend = 0; musicOutput.loop = true; musicOutput.volume = .25f;
             growth = MakeClip("Growth", 700, 960, .07f);
             rebound = MakeClip("Rebound", 300, 580, .16f);
             elimination = MakeClip("Elimination", 440, 880, .20f);
@@ -87,6 +97,43 @@ namespace SnakeClub
             stars = snake.starPoints; pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick;
         }
 
+        public void UpdateMusic(bool battle, bool focused, bool paused, bool adShowing, bool userInteraction)
+        {
+            if (userInteraction) interacted = true;
+            if (!MusicPolicy.ShouldPlay(MusicEnabled, interacted, focused, paused, adShowing))
+            {
+                SuspendMusic();
+                return;
+            }
+            AudioClip desired = battle ? battleMusic : homeMusic;
+            if (desired == null)
+            {
+                if (battle ? battleAttempted : homeAttempted) return;
+                if (battle) battleAttempted = true; else homeAttempted = true;
+                try
+                {
+                    float[] samples = MusicComposer.Create(battle);
+                    desired = AudioClip.Create(battle ? "Original battle loop" : "Original home loop", samples.Length, 1, MusicComposer.SampleRate, false);
+                    if (desired != null && !desired.SetData(samples, 0)) { Destroy(desired); desired = null; }
+                    if (battle) battleMusic = desired; else homeMusic = desired;
+                }
+                catch (Exception) { if (desired != null) Destroy(desired); desired = null; }
+                if (desired == null) { musicOutput.Stop(); musicOutput.clip = null; musicPaused = false; return; }
+            }
+            if (musicOutput.clip != desired)
+            {
+                musicOutput.Stop(); musicOutput.clip = desired; musicPaused = false;
+                musicOutput.Play();
+            }
+            else if (musicPaused) { musicOutput.UnPause(); musicPaused = false; }
+            else if (!musicOutput.isPlaying) musicOutput.Play();
+        }
+
+        public void SuspendMusic()
+        {
+            if (musicOutput != null && musicOutput.isPlaying) { musicOutput.Pause(); musicPaused = true; }
+        }
+
         private static AudioClip MakeClip(string name, float from, float to, float seconds)
         {
             const int rate = 22050;
@@ -107,6 +154,7 @@ namespace SnakeClub
 
         private void OnDestroy()
         {
+            if (homeMusic != null) Destroy(homeMusic); if (battleMusic != null) Destroy(battleMusic);
             if (growth != null) Destroy(growth); if (rebound != null) Destroy(rebound);
             if (elimination != null) Destroy(elimination); if (capture != null) Destroy(capture); if (star != null) Destroy(star); if (finish != null) Destroy(finish);
         }

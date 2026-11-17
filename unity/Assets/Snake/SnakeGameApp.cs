@@ -45,6 +45,7 @@ namespace SnakeClub
         private bool online;
         private bool onlineMenu;
         private bool paused;
+        private bool appFocused = true, appPaused;
         private bool pointerBoost;
         private bool reducedEffects;
         private readonly DragSteering dragSteering = new DragSteering();
@@ -257,6 +258,9 @@ namespace SnakeClub
 
         private void Update()
         {
+            bool interaction = Input.anyKeyDown || Input.GetMouseButtonDown(0);
+            for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
+            feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused, paused, adShowing, interaction);
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
             bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
             bool resultVisible = inGame && !online && !depthMode && state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
@@ -269,7 +273,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
@@ -420,12 +424,14 @@ namespace SnakeClub
 
         private void OnApplicationPause(bool isPaused)
         {
-            if (isPaused) SuspendInput();
+            appPaused = isPaused;
+            if (isPaused) { feedback?.SuspendMusic(); SuspendInput(); }
         }
 
         private void OnApplicationFocus(bool hasFocus)
         {
-            if (!hasFocus) SuspendInput();
+            appFocused = hasFocus;
+            if (!hasFocus) { feedback?.SuspendMusic(); SuspendInput(); }
         }
 
         private void SuspendInput()
