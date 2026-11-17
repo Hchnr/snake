@@ -282,6 +282,7 @@ namespace SnakeClub
 
         private void BeginDailyWithMatch(ApiReply run, DailyMatch comparison)
         {
+            nameplates.ClearHistory();
             dragSteering.Reset();
             connection.Close(); online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; fixedPve = null; daily = comparison ?? new DailyMatch(run != null ? run.seed : PracticeSeed(),
