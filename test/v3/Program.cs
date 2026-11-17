@@ -40,6 +40,7 @@ var cases = new (string name, Action run)[]
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
+    ("single-player events rotate, award real captures and end cleanly", LocalRotatingEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
     ("depth rooms require the correct living player and objective", DepthGoals),
     ("depth bonuses change growth and make rebound boosts free", DepthBonuses),
@@ -322,6 +323,63 @@ static void DailyEvents()
     }
     Check(observed.SetEquals(new[] { "bounty", "star", "fruit" }), "not all three daily events were observed");
     Check(sawGiant, "no active giant bounty was observed");
+}
+
+static void LocalRotatingEvents()
+{
+    var observed = new HashSet<string>();
+    for (int seed = 0; seed < 80 && observed.Count < 3; seed++)
+    {
+        var arena = new Arena(seed, fruitCount: 100, enableCaptures: true, rotatingEvents: true);
+        var player = arena.AddSnake("you", "you", false);
+        var target = arena.AddSnake("bot", "bot", true);
+        player.shield = target.shield = 1000;
+        arena.Start();
+        for (int i = 0; i < 149; i++) arena.Tick(.1f);
+        Check(arena.State.eventStatus == "", "event began before 15 seconds");
+        for (int i = 0; i < 3 && arena.State.eventStatus != "active"; i++) arena.Tick(.1f);
+        Check(arena.State.eventStatus == "active", "event did not begin after 15 seconds");
+        string kind = arena.State.eventKind;
+        if (!observed.Add(kind)) continue;
+        Check(arena.State.eventRemaining > 24 && arena.State.eventRemaining <= 25, "incorrect event duration");
+        if (kind == "star")
+        {
+            Check(arena.State.starVisible, "star did not spawn");
+            arena.State.starHolder = player.id;
+            var update = typeof(Arena).GetMethod("UpdateStar", BindingFlags.Instance | BindingFlags.NonPublic);
+            for (int i = 0; i < 81; i++) update.Invoke(arena, new object[] { .1f });
+            Check(player.starPoints == 1 && arena.State.starHolder == player.id, "eight-second carry failed");
+            target.alive = false;
+            update.Invoke(arena, new object[] { .1f });
+            for (int i = 0; i < 81 && arena.State.eventStatus == "active"; i++) update.Invoke(arena, new object[] { .1f });
+            Check(player.starPoints == 2 && arena.State.eventStatus == "ended" && !arena.State.starVisible, "star did not finish at two points");
+        }
+        else
+        {
+            if (kind == "bounty") Check(arena.State.eventTarget == target.id && target.segments.Count >= 20, "bounty target missing or too short");
+            if (kind == "fruit") Check(arena.State.eventRadius == 14 && arena.State.fruits.Count(f => Point.Distance(f.position, arena.State.eventPosition) <= 14.01f) >= 40, "fruit tide did not concentrate fruit");
+            var center = kind == "fruit" ? arena.State.eventPosition : new Point(0, 0);
+            player.shield = target.shield = 0;
+            player.segments = new List<Point> { center + new Point(3, 1), center + new Point(3, 2), center + new Point(3, 3), center + new Point(2, 4), center + new Point(1, 4), center + new Point(0, 4), center, center + new Point(4, 0) };
+            target.segments = new List<Point> { center + new Point(1, 1), center + new Point(1.1f, 1) };
+            typeof(Arena).GetMethod("ResolveCaptures", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(arena,
+                new object[] { new Dictionary<string, Point> { ["you"] = center + new Point(3, -1) } });
+            Check(!target.alive && player.kills == 1 && player.starPoints == (kind == "bounty" ? 2 : 1), "actual capture did not award event points");
+            typeof(Arena).GetMethod("UpdateRotatingEvent", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(arena, new object[] { .1f });
+            if (kind == "bounty") Check(arena.State.eventStatus == "ended" && arena.State.eventTarget == "", "dead bounty target did not end event");
+            else
+            {
+                var updateEvent = typeof(Arena).GetMethod("UpdateRotatingEvent", BindingFlags.Instance | BindingFlags.NonPublic);
+                for (int i = 0; i < 251 && arena.State.eventStatus == "active"; i++) updateEvent.Invoke(arena, new object[] { .1f });
+                Check(arena.State.eventStatus == "ended" && arena.State.eventRadius == 0 && arena.State.eventRemaining == 0, "fruit tide did not expire cleanly");
+            }
+        }
+    }
+    Check(observed.SetEquals(new[] { "bounty", "star", "fruit" }), "rotation did not cover all three events");
+    var early = new Arena(1, fruitCount: 0, rotatingEvents: true);
+    early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
+    for (int i = 0; i < 200; i++) early.Tick(.1f);
+    Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
 }
 
 static void LocalCaptureResolution()

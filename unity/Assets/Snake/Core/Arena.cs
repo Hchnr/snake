@@ -124,18 +124,22 @@ namespace SnakeClub.Core
         public int FruitRevision { get; private set; }
         private readonly Dictionary<string, Control> controls = new Dictionary<string, Control>();
         private readonly Random random;
-        private readonly bool nearbyOpponents, enableCaptures;
+        private readonly bool nearbyOpponents, enableCaptures, rotatingEvents;
+        private readonly int rotatingEventType;
+        private float eventElapsed, eventTimeLeft;
         private int nextColor;
         private int participantsAtStart;
         private float starDelay = 35f;
         private float starHeld;
         private string starSpawnNear = "";
 
-        public Arena(int seed = 1, float halfSize = WorldHalfSize, float roundSeconds = RoundSeconds, int fruitCount = FruitCount, bool nearbyOpponents = false, bool enableCaptures = false)
+        public Arena(int seed = 1, float halfSize = WorldHalfSize, float roundSeconds = RoundSeconds, int fruitCount = FruitCount, bool nearbyOpponents = false, bool enableCaptures = false, bool rotatingEvents = false)
         {
             random = new Random(seed);
             this.nearbyOpponents = nearbyOpponents;
             this.enableCaptures = enableCaptures;
+            this.rotatingEvents = rotatingEvents;
+            rotatingEventType = new Random(seed ^ 0x3f71a2).Next(3);
             State = new ArenaState { halfSize = halfSize, remaining = roundSeconds };
             for (int i = 0; i < fruitCount; i++) State.fruits.Add(NewFruit());
         }
@@ -218,7 +222,7 @@ namespace SnakeClub.Core
             dt = Math.Min(dt, 0.1f);
             State.tick++;
             State.remaining = Math.Max(0, State.remaining - dt);
-            if (State.eventStatus == "active") State.eventRemaining = State.remaining;
+            if (!rotatingEvents && State.eventStatus == "active") State.eventRemaining = State.remaining;
             var previousHeads = enableCaptures ? new Dictionary<string, Point>() : null;
             foreach (var snake in State.snakes)
             {
@@ -287,10 +291,12 @@ namespace SnakeClub.Core
                     }
                 }
             }
+            if (rotatingEvents) BeginRotatingEventIfDue(dt);
             ResolveCollisions();
             if (enableCaptures) ResolveCaptures(previousHeads);
             CollectFruits();
-            UpdateStar(dt);
+            if (!rotatingEvents || (State.eventStatus == "active" && State.eventKind == "star")) UpdateStar(dt);
+            if (rotatingEvents) UpdateRotatingEvent(dt);
             int alive = State.snakes.FindAll(s => s.alive).Count;
             if (State.remaining <= 0 || (participantsAtStart >= 2 && alive <= 1)) Finish();
         }
@@ -330,6 +336,7 @@ namespace SnakeClub.Core
                 if (killer != null && killer.alive)
                 {
                     var bonus = controls[killer.id].bonuses;
+                    AwardEventPoints(killer, victim);
                     killer.kills++; Grow(killer, Math.Max(1, victim.segments.Count / 2) + Math.Max(0, bonus.bonusGrowthPerKill));
                     killer.shield = Math.Max(killer.shield, Math.Max(0, bonus.captureShieldSeconds));
                 }
@@ -384,6 +391,7 @@ namespace SnakeClub.Core
                 var victim = Find(pair.Key);
                 var killer = Find(pair.Value);
                 if (victim == null || killer == null || !killer.alive) continue;
+                AwardEventPoints(killer, victim);
                 killer.kills++;
                 Grow(killer, Math.Max(1, victim.segments.Count / 2) + Math.Max(0, controls[killer.id].bonuses.bonusGrowthPerKill));
             }
@@ -428,6 +436,71 @@ namespace SnakeClub.Core
             }
         }
 
+        private void BeginRotatingEventIfDue(float dt)
+        {
+            if (!string.IsNullOrEmpty(State.eventStatus)) return;
+            eventElapsed += dt;
+            if (eventElapsed < 15f || State.remaining <= 0) return;
+            var player = State.snakes.Find(s => !s.bot && s.alive);
+            var candidates = State.snakes.FindAll(s => s.bot && s.alive);
+            if (player == null || candidates.Count == 0) return;
+            State.eventKind = rotatingEventType == 0 ? "bounty" : rotatingEventType == 1 ? "star" : "fruit";
+            State.eventStatus = "active";
+            eventTimeLeft = 25f;
+            State.eventRemaining = eventTimeLeft;
+            if (rotatingEventType == 0)
+            {
+                var target = candidates[random.Next(candidates.Count)];
+                Grow(target, Math.Max(0, 20 - target.segments.Count));
+                State.eventTarget = target.id;
+            }
+            else if (rotatingEventType == 1)
+            {
+                starDelay = 0; starSpawnNear = player.id;
+            }
+            else
+            {
+                float angle = (float)(random.NextDouble() * Math.PI * 2);
+                float edge = Math.Max(1f, State.halfSize - 2f);
+                Point head = player.segments[0];
+                State.eventPosition = new Point(Clamp(head.x + (float)Math.Cos(angle) * 10f, -edge, edge),
+                    Clamp(head.y + (float)Math.Sin(angle) * 10f, -edge, edge));
+                State.eventRadius = 14f;
+                for (int i = 0; i < Math.Min(40, State.fruits.Count); i++)
+                {
+                    float direction = (float)(random.NextDouble() * Math.PI * 2);
+                    float radius = (float)Math.Sqrt(random.NextDouble()) * State.eventRadius;
+                    State.fruits[i].position = new Point(Clamp(State.eventPosition.x + (float)Math.Cos(direction) * radius, -edge, edge),
+                        Clamp(State.eventPosition.y + (float)Math.Sin(direction) * radius, -edge, edge));
+                }
+                FruitRevision++;
+            }
+        }
+
+        private void AwardEventPoints(SnakeState killer, SnakeState victim)
+        {
+            if (!rotatingEvents || State.eventStatus != "active") return;
+            if (State.eventKind == "bounty" && victim.id == State.eventTarget)
+                killer.starPoints = Math.Min(2, killer.starPoints + 2);
+            else if (State.eventKind == "fruit" && Point.Distance(killer.segments[0], State.eventPosition) <= State.eventRadius)
+                killer.starPoints = Math.Min(2, killer.starPoints + 1);
+        }
+
+        private void UpdateRotatingEvent(float dt)
+        {
+            if (State.eventStatus != "active") return;
+            eventTimeLeft = Math.Max(0, eventTimeLeft - dt);
+            State.eventRemaining = eventTimeLeft;
+            var target = State.eventKind == "bounty" ? Find(State.eventTarget) : null;
+            if (eventTimeLeft <= 0 || (State.eventKind == "bounty" && (target == null || !target.alive))) EndRotatingEvent();
+        }
+
+        private void EndRotatingEvent()
+        {
+            State.eventStatus = "ended"; State.eventRemaining = 0; State.eventTarget = "";
+            State.eventRadius = 0; State.starVisible = false; State.starHolder = ""; State.starProgress = 0;
+        }
+
         private void UpdateStar(float dt)
         {
             if (!State.starVisible)
@@ -456,10 +529,12 @@ namespace SnakeClub.Core
                     else
                     {
                         starHeld += dt;
-                        if (starHeld >= 10f)
+                        if (starHeld >= (rotatingEvents ? 8f : 10f))
                         {
                             holder.starPoints = Math.Min(2, holder.starPoints + 1);
-                            State.starVisible = false; State.starHolder = ""; starHeld = 0; starDelay = 12f;
+                            starHeld = 0;
+                            if (rotatingEvents) { if (holder.starPoints >= 2) EndRotatingEvent(); }
+                            else { State.starVisible = false; State.starHolder = ""; starDelay = 12f; }
                         }
                     }
                 }
@@ -467,7 +542,7 @@ namespace SnakeClub.Core
             if (State.starVisible && string.IsNullOrEmpty(State.starHolder))
                 foreach (var snake in State.snakes)
                     if (snake.alive && Point.Distance(snake.segments[0], State.starPosition) <= 1.5f) { State.starHolder = snake.id; break; }
-            State.starProgress = starHeld / 10f;
+            State.starProgress = starHeld / (rotatingEvents ? 8f : 10f);
         }
 
         private static void Grow(SnakeState snake, int amount)
@@ -484,6 +559,7 @@ namespace SnakeClub.Core
 
         private void Finish()
         {
+            if (rotatingEvents && State.eventStatus == "active") EndRotatingEvent();
             State.phase = "ended";
             SnakeState best = null;
             bool tie = false;
@@ -583,6 +659,8 @@ namespace SnakeClub.Core
             }
             if (State.starVisible && string.IsNullOrEmpty(State.starHolder))
                 desired += (State.starPosition - head).Normalized * 0.8f;
+            if (rotatingEvents && State.eventStatus == "active" && State.eventKind == "fruit" && Point.Distance(head, State.eventPosition) < 60f)
+                desired += (State.eventPosition - head).Normalized * 1.8f;
             // Fruit gives the bots something to seek without replacing opponents
             // as their main objective.
             if (nearestDistance > 10f)

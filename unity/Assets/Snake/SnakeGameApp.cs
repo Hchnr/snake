@@ -145,7 +145,7 @@ namespace SnakeClub
             room = "";
             playerId = "you";
             firstRun = !CurrentProfile.tutorialComplete;
-            arena = new Arena(unchecked((int)DateTime.UtcNow.Ticks), roundSeconds: depthMode ? 55f : firstRun ? 60f : 90f, nearbyOpponents: true, enableCaptures: true);
+            arena = new Arena(unchecked((int)DateTime.UtcNow.Ticks), roundSeconds: depthMode ? 55f : firstRun ? 60f : 90f, nearbyOpponents: true, enableCaptures: true, rotatingEvents: !depthMode);
             arena.AddSnake(playerId, string.IsNullOrWhiteSpace(nameInput) ? "玩家" : nameInput.Trim(), false);
             for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
             if (depthMode && depthRoom == 2) arena.ConfigureStar(5f, playerId);
@@ -488,12 +488,12 @@ namespace SnakeClub
             else Label(new Rect(88, 135, 410, 52), depthMode ? (activeRun == null ? "练习 · " : "") + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), 40, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
-            Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + "  星核 " + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
+            Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + (depthMode ? "  星核 " : "  事件 ") + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
 
             if (state != null) DrawMiniMap(state);
             if (state != null && state.eventStatus == "active")
             {
-                string eventHint = state.eventKind == "bounty" ? "巨蛇悬赏 · 围猎标记对手" : state.eventKind == "star" ? "星核争夺 · 携带得分" : "果潮混战 · 圈内淘汰得分";
+                string eventHint = state.eventKind == "bounty" ? "巨蛇悬赏 · 围猎标记对手" : state.eventKind == "star" ? "星核争夺 · 携带得事件点" : "果潮混战 · 圈内淘汰得事件点";
                 var boss = state.snakes.Find(s => s.boss && s.alive);
                 if (boss != null) eventHint = boss.bossWindup > 0 ? "首领蓄力！躲开橙色方向线 · 护盾 " + boss.bossShield : "首领护盾 " + boss.bossShield + " · 拦截或收圈";
                 if (state.eventKind == "star" && state.starVisible)
