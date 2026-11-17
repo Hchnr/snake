@@ -29,7 +29,7 @@ namespace SnakeClub.Core
         public bool alive = true;
         public int color;
         public int kills;
-        public string eliminatedBy = "";
+        public string eliminatedBy = "", eliminationReason = "";
         public float angle;
         public float shield;
         public bool boosting;
@@ -75,6 +75,31 @@ namespace SnakeClub.Core
         public int captureTick = -1, captureCount;
         public string captureOwner = "";
         public List<Point> capturePolygon = new List<Point>();
+    }
+
+    // Describes only outcomes established by the simulation. Unknown or
+    // older states deliberately receive a generic message.
+    public static class MatchOutcome
+    {
+        public static string Explain(ArenaState state, string playerId)
+        {
+            if (state == null || state.phase != "ended" || string.IsNullOrEmpty(playerId)) return "";
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null) return "";
+            if (player.alive)
+            {
+                if (state.remaining <= 0) return "时间到，你成功存活到最后";
+                return state.winner == playerId ? "你赢得了本局" : "本局已结束";
+            }
+            switch (player.eliminationReason)
+            {
+                case "trail": return "撞上对手轨迹，被淘汰";
+                case "head": return "正面相撞时长度较短，被淘汰";
+                case "head_tie": return "正面相撞且长度相同，双方出局";
+                case "capture": return "被对手收圈捕获";
+                default: return "本局已出局";
+            }
+        }
     }
 
     // Presentation summary sampled from resolved simulation ticks. It never
@@ -439,7 +464,7 @@ namespace SnakeClub.Core
             ApplyBossDefense(deaths);
             foreach (var pair in deaths)
             {
-                var victim = Find(pair.Key); victim.alive = false; victim.boosting = false; victim.eliminatedBy = pair.Value;
+                var victim = Find(pair.Key); victim.alive = false; victim.boosting = false; victim.eliminatedBy = pair.Value; victim.eliminationReason = "capture";
             }
             foreach (var pair in deaths)
             {
@@ -463,6 +488,7 @@ namespace SnakeClub.Core
         private void ResolveCollisions()
         {
             var deaths = new Dictionary<string, string>();
+            var reasons = new Dictionary<string, string>();
             // Compare heads once, before applying any deaths, so equal clashes are fair.
             for (int i = 0; i < State.snakes.Count; i++)
             {
@@ -472,8 +498,10 @@ namespace SnakeClub.Core
                 {
                     var b = State.snakes[j];
                     if (!b.alive || b.shield > 0 || Point.Distance(a.segments[0], b.segments[0]) >= CollisionRadius * 2f) continue;
-                    if (a.segments.Count <= b.segments.Count && !deaths.ContainsKey(a.id)) deaths[a.id] = a.segments.Count == b.segments.Count ? "" : b.id;
-                    if (b.segments.Count <= a.segments.Count && !deaths.ContainsKey(b.id)) deaths[b.id] = a.segments.Count == b.segments.Count ? "" : a.id;
+                    if (a.segments.Count <= b.segments.Count && !deaths.ContainsKey(a.id))
+                    { deaths[a.id] = a.segments.Count == b.segments.Count ? "" : b.id; reasons[a.id] = a.segments.Count == b.segments.Count ? "head_tie" : "head"; }
+                    if (b.segments.Count <= a.segments.Count && !deaths.ContainsKey(b.id))
+                    { deaths[b.id] = a.segments.Count == b.segments.Count ? "" : a.id; reasons[b.id] = a.segments.Count == b.segments.Count ? "head_tie" : "head"; }
                 }
             }
             foreach (var attacker in State.snakes)
@@ -486,6 +514,7 @@ namespace SnakeClub.Core
                     {
                         if (Point.Distance(attacker.segments[0], defender.segments[i]) >= CollisionRadius * 1.55f) continue;
                         deaths[attacker.id] = defender.id;
+                        reasons[attacker.id] = "trail";
                         break;
                     }
                     if (deaths.ContainsKey(attacker.id)) break;
@@ -495,7 +524,7 @@ namespace SnakeClub.Core
             foreach (var pair in deaths)
             {
                 var victim = Find(pair.Key);
-                if (victim != null) { victim.alive = false; victim.boosting = false; victim.eliminatedBy = pair.Value ?? ""; }
+                if (victim != null) { victim.alive = false; victim.boosting = false; victim.eliminatedBy = pair.Value ?? ""; victim.eliminationReason = reasons[pair.Key]; }
             }
             foreach (var pair in deaths)
             {
