@@ -446,6 +446,42 @@ namespace SnakeClub.Core
         }
     }
 
+    public struct EdgeObstacle
+    {
+        public float x, y, width, height;
+        public EdgeObstacle(float x, float y, float width, float height)
+        { this.x = x; this.y = y; this.width = width; this.height = height; }
+    }
+
+    // Keep the directional arrow accurate while trying nearby, non-overlapping slots.
+    public static class EdgeIndicatorLayout
+    {
+        private static readonly Point[] Offsets = {
+            new Point(0, 0), new Point(0, -60), new Point(0, 60), new Point(0, -120), new Point(0, 120),
+            new Point(-150, 0), new Point(150, 0), new Point(-150, -60), new Point(150, -60),
+            new Point(-150, 60), new Point(150, 60), new Point(0, -180), new Point(0, 180)
+        };
+        public static bool TryPlace(Point edge, IReadOnlyList<EdgeObstacle> obstacles, out Point origin)
+        {
+            origin = default;
+            if (float.IsNaN(edge.x) || float.IsNaN(edge.y) || float.IsInfinity(edge.x) || float.IsInfinity(edge.y)) return false;
+            Point initial = OpponentEdgeIndicator.BoxOrigin(edge);
+            foreach (Point offset in Offsets)
+            {
+                float x = initial.x + offset.x, y = initial.y + offset.y;
+                if (x < 30 || x > 910 || y < 383 || y > 1450) continue;
+                if (x + 140 > 760 && y < 545) continue; // minimap
+                if (y < 656 && y + 54 > 544 && x + 140 > 94 && x < 986) continue; // tutorial
+                bool blocked = false;
+                if (obstacles != null) foreach (var rect in obstacles)
+                    if (x < rect.x + rect.width && x + 140 > rect.x && y < rect.y + rect.height && y + 54 > rect.y)
+                    { blocked = true; break; }
+                if (!blocked) { origin = new Point(x, y); return true; }
+            }
+            return false;
+        }
+    }
+
     // Places short nameplates without overlapping one another or the minimap.
     // It is presentation only; anchors are projected above actual heads.
     public sealed class NameplateLayout

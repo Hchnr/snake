@@ -105,6 +105,7 @@ var cases = new (string name, Action run)[]
     ("capture notices identify the actual visible owner and count", CaptureNoticeCases),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
     ("nearby off-screen opponent indicators use real actors and safe placement", OpponentEdgeCases),
+    ("edge markers seek safe nearby slots without covering labels", EdgeMarkerLayoutCases),
     ("nameplates avoid overlap, anchors and the minimap", NameplateCases),
     ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
     ("star carriers attract nearby AI without changing daily-3 replay", StarPursuitCases),
@@ -1056,6 +1057,19 @@ static void OpponentEdgeCases()
     Check(safe.x + 140 <= 1050 && safe.y >= 656 && safe.y + 54 <= 1504, "upper-right indicator obscured HUD or tutorial");
     safe = OpponentEdgeIndicator.BoxOrigin(new Point(110, 580));
     Check(safe.y >= 656, "side indicator covered tutorial panel");
+}
+
+static void EdgeMarkerLayoutCases()
+{
+    var edge = new Point(970, 900);
+    Check(EdgeIndicatorLayout.TryPlace(edge, null, out var first), "open edge did not receive a marker");
+    var blockers = new List<EdgeObstacle> { new(first.x, first.y, 140, 54) };
+    Check(EdgeIndicatorLayout.TryPlace(edge, blockers, out var shifted) && (shifted.x != first.x || shifted.y != first.y), "blocked marker did not move");
+    Check(!(shifted.x < first.x + 140 && shifted.x + 140 > first.x && shifted.y < first.y + 54 && shifted.y + 54 > first.y), "shifted marker overlapped the blocker");
+    blockers.Add(new EdgeObstacle(0, 0, 1080, 1920));
+    Check(!EdgeIndicatorLayout.TryPlace(edge, blockers, out _), "marker obscured a fully occupied screen");
+    Check(!EdgeIndicatorLayout.TryPlace(new Point(float.NaN, 0), null, out _), "invalid edge was accepted");
+    Check(EdgeIndicatorLayout.TryPlace(new Point(970, 410), null, out var corner) && corner.y >= 656, "minimap or tutorial was covered");
 }
 
 static void CaptureNoticeCases()
