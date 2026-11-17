@@ -113,6 +113,18 @@ namespace SnakeClub.Core
         }
     }
 
+    public static class LocalPveRound
+    {
+        public static bool EndIfPlayerEliminated(Arena arena, string playerId)
+        {
+            if (arena == null || arena.State.phase != "running" || string.IsNullOrEmpty(playerId)) return false;
+            var player = arena.Find(playerId);
+            if (player == null || player.alive) return false;
+            arena.EndRound();
+            return true;
+        }
+    }
+
     // Experimental local PvE recording. It is deliberately not a reward
     // verifier until rules and bonus snapshots are versioned and determinism
     // is verified across the actual Unity and server runtimes.
@@ -137,6 +149,27 @@ namespace SnakeClub.Core
                 replay.SetInput("you", Direction(input[i]), input[i + 1] == 1);
                 replay.Tick(.05f);
             }
+            arena = replay;
+            return true;
+        }
+
+        // Current local practice ends immediately on player elimination. Unlike
+        // the legacy partial replay above, this requires exactly one complete run.
+        public static bool TryReplayCompleted(int seed, bool firstRun, CombatBonuses bonuses, byte[] input, out Arena arena)
+        {
+            arena = null;
+            if (input == null || input.Length == 0 || input.Length % 2 != 0 || input.Length > MaxTicks * 2) return false;
+            for (int i = 1; i < input.Length; i += 2) if (input[i] > 1) return false;
+            var replay = Arena.CreateStandardPve(seed, firstRun, "玩家");
+            replay.SetBonuses("you", bonuses);
+            for (int i = 0; i < input.Length; i += 2)
+            {
+                if (replay.State.phase != "running") return false;
+                replay.SetInput("you", Direction(input[i]), input[i + 1] == 1);
+                replay.Tick(.05f);
+                LocalPveRound.EndIfPlayerEliminated(replay, "you");
+            }
+            if (replay.State.phase != "ended") return false;
             arena = replay;
             return true;
         }
