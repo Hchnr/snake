@@ -4,6 +4,15 @@ using System.Collections.Generic;
 
 namespace SnakeClub.Core
 {
+    public static class FriendChallengeComparison
+    {
+        public static string Format(int score, int target)
+        {
+            int gap = score - target;
+            return "\n好友 " + target + " 分 · " + (gap == 0 ? "成绩持平" : gap > 0 ? "领先 " + gap + " 分" : "落后 " + -gap + " 分");
+        }
+    }
+
     // The challenge uses only integer arithmetic and a specified PRNG. The Unity
     // renderer receives a projection of this state; it never drives simulation.
     public sealed class DailyMatch

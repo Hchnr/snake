@@ -278,14 +278,15 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
                         string title = daily != null ? "挑战结束" : state.winner == playerId ? "围猎胜利" : "围猎结束";
                         string stats = daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
                             own == null ? "" : "最长 " + matchHighlights.PeakLength + "   ·   淘汰 " + own.kills;
-                        bool share = daily != null && activeRun != null && api.Connected;
+                        bool share = daily != null && activeRun != null && api.Connected && verifiedDaily &&
+                            activeRun.date == api.Date && activeRun.rules == DailyMatch.RulesVersion && !string.IsNullOrEmpty(verifiedShareToken);
                         int adCoins = !string.IsNullOrEmpty(lastRewardId) && GamePlatform.HasRewardedAds(api) ? lastRewardCoins : 0;
                         string highlight = matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
                         homeScreen.SetResult(title, stats, resultNote, busy, share, adCoins, highlight);

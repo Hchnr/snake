@@ -23,7 +23,10 @@ namespace SnakeClub
         private HomeAvatar homeAvatar;
         private HomeScreen homeScreen;
         private string frontPage = "home", frontNotice = "", resultNote = "", lastRewardId = "", lastRewardKind = "", activePlayerId = "", friendDate = "";
-        private bool busy, resultRecorded, flushing, adShowing, connecting;
+        private bool busy, resultRecorded, flushing, adShowing, connecting, launchChallengeHandled, verifiedDaily;
+        private int friendScore, activeFriendScore = -1;
+        private string friendRules = "", activeFriendDate = "", activeFriendRules = "", verifiedShareToken = "";
+        private int verifiedShareScore;
         private bool developerRooms = false;
         private string caveStory = "";
         private float caveStoryUntil;
@@ -54,7 +57,7 @@ namespace SnakeClub
                 () => feedback.EffectsVolume = AudioLevels.Next(feedback.EffectsVolume));
             homeScreen.SetupResults(
                 () => { if (daily != null) RequestDaily(); else RequestPve(); }, BackToMenu,
-                () => GamePlatform.ShareChallenge(api.Date, message => { if (!string.IsNullOrEmpty(message)) resultNote = message; }),
+                ShareCurrentChallenge,
                 () =>
                 {
                     if (string.IsNullOrEmpty(lastRewardId) || lastRewardCoins <= 0) return;
@@ -97,7 +100,7 @@ namespace SnakeClub
         private void StartMain()
         {
             if (!CurrentProfile.tutorialComplete) RequestPve();
-            else { friendDate = ""; RequestDaily(); }
+            else RequestDaily();
         }
 
         private void LoadPreferences()
@@ -124,12 +127,19 @@ namespace SnakeClub
                 if (reply.ok)
                 {
                     pendingRetry.Reset();
-                    friendDate = api.LaunchChallengeDate;
-                    if (!string.IsNullOrEmpty(friendDate))
+                    if (!launchChallengeHandled && !string.IsNullOrEmpty(api.LaunchChallengeToken))
                     {
-                        bool current = friendDate == api.Date && api.LaunchChallengeRules == DailyMatch.RulesVersion;
-                        frontNotice = current ? "收到好友今日挑战，点击每日挑战开始" : "好友挑战已过期或规则已更新，可参加今天的挑战";
-                        if (!current) friendDate = "";
+                        launchChallengeHandled = true;
+                        string token = api.LaunchChallengeToken;
+                        api.Get("challenge/shared?token=" + Uri.EscapeDataString(token), shared =>
+                        {
+                            if (shared.ok && shared.date == api.Date && shared.rules == DailyMatch.RulesVersion)
+                            {
+                                friendDate = shared.date; friendRules = shared.rules; friendScore = shared.score;
+                                frontNotice = "好友今日挑战 " + friendScore + " 分 · 点击接受挑战";
+                            }
+                            else frontNotice = "好友挑战无效、已过期或暂时无法验证";
+                        });
                     }
                     FlushPending();
                 }
@@ -167,6 +177,9 @@ namespace SnakeClub
         {
             if (busy) return;
             depthMode = false;
+            activeFriendScore = !string.IsNullOrEmpty(friendDate) && friendDate == api.Date && friendRules == DailyMatch.RulesVersion ? friendScore : -1;
+            activeFriendDate = friendDate; activeFriendRules = friendRules;
+            friendDate = ""; friendRules = "";
             if (!api.Connected) { BeginDaily(null); return; }
             busy = true;
             api.Post("challenge/start?rules=" + DailyMatch.RulesVersion, new ApiRequest(), reply => { busy = false; BeginDaily(reply.ok ? reply : null); });
@@ -242,7 +255,7 @@ namespace SnakeClub
             connection.Close(); online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = new DailyMatch(run != null ? run.seed : PracticeSeed(),
                 run != null && !string.IsNullOrEmpty(run.rules) ? run.rules : DailyMatch.RulesVersion);
-            state = daily.State; matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
+            state = daily.State; verifiedDaily = false; verifiedShareToken = ""; matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             activeRun = run; resultRecorded = false; dailyInputs.Clear();
             activePlayerId = api.Profile != null ? api.Profile.playerId : ""; lastRewardId = "";
             stepTimer = 0; direction = new Point(1, 0); pointerBoost = false;
@@ -320,14 +333,19 @@ namespace SnakeClub
                     {
                         string rewards = "金币 +" + (reply.coins + reply.questCoins) + "  经验 +" + (reply.experience + reply.questExperience) + (reply.questExperience > 0 ? "（含日常）" : "");
                         if (reply.unlockedSkin > 0 && reply.unlockedSkin < SkinCatalog.OwnedSkinCount) rewards += "\n解锁皮肤：" + SkinCatalog.Get(reply.unlockedSkin).Name;
-                        resultNote = reply.ok ? (challenge ? "成绩已验证 · " : "") + rewards : reply.error;
+                        verifiedDaily = challenge && reply.ok && reply.verified;
+                        verifiedShareToken = verifiedDaily ? reply.shareToken : "";
+                        verifiedShareScore = reply.score;
+                        string comparison = verifiedDaily && activeFriendScore >= 0 && activeRun.date == activeFriendDate && entry.rules == activeFriendRules
+                            ? FriendChallengeComparison.Format(reply.score, activeFriendScore) : "";
+                        resultNote = reply.ok ? (challenge ? "成绩已验证 · " : "") + rewards + comparison : reply.error;
                         if (reply.ok && reply.coins > 0) { lastRewardId = entry.runId; lastRewardKind = "match"; lastRewardCoins = reply.coins; }
                         if (reply.ok && challenge) api.Get("challenge/leaderboard?rules=" + Uri.EscapeDataString(string.IsNullOrEmpty(entry.rules) ? DailyMatch.LegacyRulesVersion : entry.rules), ranking =>
                         {
                             if (!ranking.ok || activeRun == null || activeRun.runId != entry.runId) return;
                             string position = ranking.rank > 0 ? "今日第 " + ranking.rank + " 名 / " + ranking.total + " 人" : "成绩已记录";
                             if (ranking.rank > 1) position += ranking.gap == 0 ? " · 同分先达者领先" : " · 距上一名 " + ranking.gap + " 分";
-                            resultNote = position + "\n" + rewards;
+                            resultNote = position + "\n" + rewards + comparison;
                         });
                     }
                     FlushPending();
@@ -339,6 +357,14 @@ namespace SnakeClub
                     else frontNotice = "有待结算对局，将自动重试";
                 }
             });
+        }
+
+        private void ShareCurrentChallenge()
+        {
+            if (busy || !verifiedDaily || activeRun == null || !api.Connected || string.IsNullOrEmpty(verifiedShareToken)) return;
+            // The signed token was delivered with the verified result, so the
+            // platform share call remains directly inside the user's tap.
+            GamePlatform.ShareChallenge(verifiedShareToken, verifiedShareScore, message => { if (!string.IsNullOrEmpty(message)) resultNote = message; });
         }
 
         private void DrawFront()
@@ -376,7 +402,7 @@ namespace SnakeClub
             Label(new Rect(100, 382, 880, 55), "围猎对手  ·  梦游探洞  ·  每日争榜", 30, new Color(.76f, .91f, .93f), TextAnchor.MiddleCenter);
             if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(260, 465, 560, 540), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
             if (Button(new Rect(120, 1035, 840, 142), busy ? "正在准备…" : "开始对战", new Color(.08f, .61f, .50f))) RequestPve();
-            if (Button(new Rect(120, 1205, 840, 130), friendDate == api.Date && !string.IsNullOrEmpty(friendDate) ? "应战好友  ·  60 秒" : "每日挑战  ·  60 秒", new Color(.20f, .38f, .69f))) { friendDate = ""; RequestDaily(); }
+            if (Button(new Rect(120, 1205, 840, 130), friendDate == api.Date && !string.IsNullOrEmpty(friendDate) ? "应战好友  ·  60 秒" : "每日挑战  ·  60 秒", new Color(.20f, .38f, .69f))) RequestDaily();
             if (SmallButton(new Rect(90, 1390, 205, 108), "皮肤", new Color(.26f, .36f, .54f), 30)) { frontPage = "skins"; previewSkin = p.selectedSkin; }
             if (SmallButton(new Rect(320, 1390, 205, 108), "天赋", new Color(.30f, .30f, .56f), 30)) frontPage = "talents";
             if (SmallButton(new Rect(550, 1390, 205, 108), "探洞", new Color(.19f, .42f, .47f), 30)) frontPage = "caves";
@@ -610,7 +636,7 @@ namespace SnakeClub
                 }
             }
             if (SmallButton(new Rect(190, 1490, 700, 105), "挑战好友", new Color(.17f, .40f, .65f), 29))
-                GamePlatform.ShareChallenge(api.Date, message => { if (!string.IsNullOrEmpty(message)) frontNotice = message; });
+                frontNotice = "请在已验证的每日挑战结果页分享";
             Label(new Rect(120, 1610, 840, 65), frontNotice, 22, new Color(.75f, .88f, .88f), TextAnchor.MiddleCenter);
         }
 

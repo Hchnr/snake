@@ -140,6 +140,33 @@ test('daily-3 capture replay verifies and is isolated from older leaderboards', 
     runId: stored.id, token: legacyToken(stored), inputs: run.inputs, score: run.score, actions: 10
   }});
   assert.equal(result.status, 200); assert.equal(result.data.verified, true);
+  const share = await request('challenge/share', { token: player.session, body: { id: stored.id } });
+  assert.equal(share.status, 200); assert.equal(share.data.score, run.score);
+  assert.equal(result.data.shareToken, share.data.shareToken, 'verified result did not prefetch the share token');
+  const duplicateResult = await request('challenge/submit', { token: player.session, body: {
+    runId: stored.id, token: legacyToken(stored), inputs: run.inputs, score: run.score, actions: 10
+  }});
+  assert.equal(duplicateResult.status, 200); assert.equal(duplicateResult.data.shareToken, share.data.shareToken);
+  const resolved = await request('challenge/shared?token=' + encodeURIComponent(share.data.shareToken), { token: bob.session });
+  assert.equal(resolved.status, 200); assert.equal(resolved.data.score, run.score);
+  assert.equal(resolved.data.rules, 'daily-3'); assert.equal(resolved.data.date, chinaDay());
+  assert.equal((await request('challenge/share', { token: bob.session, body: { id: stored.id } })).status, 400);
+  const unfinished = (await request('challenge/start?rules=daily-3', { token: player.session, body: {} })).data;
+  assert.equal((await request('challenge/share', { token: player.session, body: { id: unfinished.runId } })).status, 400);
+  const broken = (share.data.shareToken[0] === 'A' ? 'B' : 'A') + share.data.shareToken.slice(1);
+  assert.equal((await request('challenge/shared?token=' + encodeURIComponent(broken), { token: bob.session })).status, 400);
+  assert.equal((await request('challenge/shared?token=' + encodeURIComponent(player.session), { token: bob.session })).status, 400);
+  assert.equal((await request('challenge/shared?token=' + encodeURIComponent(share.data.shareToken))).status, 401);
+  const expiredPayload = Buffer.from('friend-v1:2000-01-01:daily-3:12').toString('base64url');
+  const signingKey = createHash('sha256').update('v3-isolated-test-key').digest();
+  const expiredToken = expiredPayload + '.' + createHmac('sha256', signingKey).update(expiredPayload).digest('base64url');
+  assert.equal((await request('challenge/shared?token=' + expiredToken, { token: bob.session })).status, 400);
+  for (const invalidPayload of [`friend-v1:${chinaDay()}:daily-2:12`, `friend-v1:${chinaDay()}:daily-3:99999`]) {
+    const encoded = Buffer.from(invalidPayload).toString('base64url');
+    const signed = encoded + '.' + createHmac('sha256', signingKey).update(encoded).digest('base64url');
+    assert.equal((await request('challenge/shared?token=' + signed, { token: bob.session })).status, 400);
+  }
+  assert.equal((await request('challenge/shared?token=' + 'x'.repeat(257), { token: bob.session })).status, 400);
   const board = await request('challenge/leaderboard?rules=daily-3', { token: player.session });
   assert.equal(board.data.total, 1); assert.equal(board.data.rows[0].score, run.score);
   const previous = await request('challenge/leaderboard?rules=daily-2', { token: player.session });

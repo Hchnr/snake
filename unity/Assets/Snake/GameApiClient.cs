@@ -30,7 +30,7 @@ namespace SnakeClub
     [Serializable] public sealed class ApiReply
     {
         public bool ok, verified, adEnabled;
-        public string error = "", session = "", runId = "", token = "", date = "", rules = "", id = "";
+        public string error = "", session = "", runId = "", token = "", date = "", rules = "", id = "", shareToken = "";
         public int seed, score, rank, total, gap, coins, baseCoins, experience, fragments, questCoins, questExperience;
         public int trialSkin = -1, unlockedSkin = -1;
         public long serverTime, expiresAt;
@@ -54,8 +54,7 @@ namespace SnakeClub
         public int Seed { get; private set; }
         public long ServerTime { get; private set; }
         public float ServerTimeReceivedAt { get; private set; }
-        public string LaunchChallengeDate { get; private set; } = "";
-        public string LaunchChallengeRules { get; private set; } = "";
+        public string LaunchChallengeToken { get; private set; } = "";
         private string session = "";
         private bool reachable;
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
@@ -80,8 +79,7 @@ namespace SnakeClub
                     try
                     {
                         var launch = TT.GetLaunchOptionsSync();
-                        if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("challenge", out var date)) LaunchChallengeDate = date ?? "";
-                        if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("rules", out var rules)) LaunchChallengeRules = rules ?? "";
+                        if ((object)launch != null && launch.Query != null && launch.Query.TryGetValue("challenge", out var token)) LaunchChallengeToken = token ?? "";
                     }
                     catch (Exception) { /* Login can proceed without a share query. */ }
                     LoginDouyin(done);
@@ -219,11 +217,11 @@ namespace SnakeClub
 #endif
         }
 
-        public static void ShareChallenge(string date, Action<string> done)
+        public static void ShareChallenge(string token, int score, Action<string> done)
         {
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
             var share = new JsonData();
-            share["channel"] = "invite"; share["title"] = "来比一比"; share["query"] = "challenge=" + Uri.EscapeDataString(date) + "&rules=" + Uri.EscapeDataString(DailyMatch.RulesVersion);
+            share["channel"] = "invite"; share["title"] = "今日挑战 " + score + " 分，来比一比"; share["query"] = "challenge=" + Uri.EscapeDataString(token);
             TT.ShareAppMessage(share, result => done(""), error => done("分享暂不可用"), () => done("已取消分享"));
 #else
             done("当前平台暂不支持分享");
