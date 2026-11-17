@@ -109,6 +109,35 @@ namespace SnakeClub.Core
         }
     }
 
+    // Experimental local PvE recording. It is deliberately not a reward
+    // verifier until rules and bonus snapshots are versioned and determinism
+    // is verified across the actual Unity and server runtimes.
+    public static class PveRecording
+    {
+        public const int MaxTicks = 90 * 20;
+        public static Point Direction(byte heading)
+        {
+            double angle = heading * (Math.PI * 2 / 256);
+            return new Point((float)Math.Cos(angle), (float)Math.Sin(angle));
+        }
+        public static bool TryReplay(int seed, bool firstRun, CombatBonuses bonuses, byte[] input, out Arena arena)
+        {
+            arena = null;
+            if (input == null || input.Length == 0 || input.Length % 2 != 0 || input.Length > MaxTicks * 2) return false;
+            for (int i = 1; i < input.Length; i += 2) if (input[i] > 1) return false;
+            var replay = Arena.CreateStandardPve(seed, firstRun, "玩家");
+            replay.SetBonuses("you", bonuses);
+            for (int i = 0; i < input.Length; i += 2)
+            {
+                if (replay.State.phase != "running") return false;
+                replay.SetInput("you", Direction(input[i]), input[i + 1] == 1);
+                replay.Tick(.05f);
+            }
+            arena = replay;
+            return true;
+        }
+    }
+
     // Presentation time freezes independently of simulation and Unity's
     // global clock, including when a platform suspends the game.
     public sealed class ArenaVisualClock
