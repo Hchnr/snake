@@ -64,7 +64,7 @@ sealed class GameApi
         app.MapGet("/api/v3/challenge/leaderboard", (HttpContext context) =>
         {
             string? rules = RequestedDailyRules(context);
-            return rules == null ? Fail("挑战规则不存在") : service.WithPlayer(context, (p, now) => service.Leaderboard(p, Day(now), rules));
+            return rules == null ? Fail("挑战规则不存在") : service.WithPlayer(context, (p, now) => service.Leaderboard(p, Day(now), rules, now.ToUnixTimeMilliseconds()));
         });
         app.MapPost("/api/v3/ad/prepare", (HttpContext context, AdRequest request) => service.WithPlayer(context, (p, now) => service.PrepareAd(p, request, now)));
         app.MapPost("/api/v3/ad/complete", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.CompleteAd(p, request.id, now)));
@@ -314,17 +314,17 @@ sealed class GameApi
         }
     }
 
-    private IResult Leaderboard(PlayerProgress p, string day, string rules)
+    private IResult Leaderboard(PlayerProgress p, string day, string rules, long serverTime)
     {
         if (store != null && activeConnection != null && activeTransaction != null)
-            return store.Leaderboard(activeConnection, activeTransaction, p.playerId, day, rules);
+            return store.Leaderboard(activeConnection, activeTransaction, p.playerId, day, rules, serverTime);
         var best = data.runs.Values.Where(r => r.mode == "daily" && r.completed && r.date == day && r.rules == rules)
             .GroupBy(r => r.playerId).Select(g => g.OrderByDescending(r => r.score).ThenBy(r => r.finishedAt).First())
             .OrderByDescending(r => r.score).ThenBy(r => r.finishedAt).ThenBy(r => r.playerId, StringComparer.Ordinal).ToList();
         var rows = best.Take(100).Select((r, i) => new { rank = i + 1, playerId = r.playerId, name = data.players.TryGetValue(r.playerId, out var player) ? player.displayName : "玩家", score = r.score }).ToList();
         int position = best.FindIndex(r => r.playerId == p.playerId);
         int gap = position > 0 ? best[position - 1].score - best[position].score : 0;
-        return Results.Json(new { ok = true, date = day, rows, rank = position + 1, total = best.Count, gap });
+        return Results.Json(new { ok = true, date = day, rules, serverTime, rows, rank = position + 1, total = best.Count, gap });
     }
 
     private IResult PrepareAd(PlayerProgress p, AdRequest request, DateTimeOffset now)

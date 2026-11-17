@@ -32,6 +32,7 @@ namespace SnakeClub
         private float caveStoryUntil;
         private int previewSkin, lastRewardCoins, localVisualSkin = -1;
         private ApiReply board;
+        private int boardGeneration;
         private const string PendingKey = "snake.v3.pending";
         private readonly PendingRetrySchedule pendingRetry = new PendingRetrySchedule();
         private readonly CaveSyncState caveSync = new CaveSyncState();
@@ -371,13 +372,20 @@ namespace SnakeClub
                             ? FriendChallengeComparison.Format(reply.score, activeFriendScore) : "";
                         resultNote = reply.ok ? (challenge ? "成绩已验证 · " : "") + rewards + comparison : reply.error;
                         if (reply.ok && reply.coins > 0) { lastRewardId = entry.runId; lastRewardKind = "match"; lastRewardCoins = reply.coins; }
-                        if (reply.ok && challenge && activeRun.date == api.Date) api.Get("challenge/leaderboard?rules=" + Uri.EscapeDataString(string.IsNullOrEmpty(entry.rules) ? DailyMatch.LegacyRulesVersion : entry.rules), ranking =>
+                        if (reply.ok && challenge && activeRun.date == api.Date)
                         {
-                            if (!ranking.ok || activeRun == null || activeRun.runId != entry.runId) return;
-                            string position = ranking.rank > 0 ? "今日第 " + ranking.rank + " 名 / " + ranking.total + " 人" : "成绩已记录";
-                            if (ranking.rank > 1) position += ranking.gap == 0 ? " · 同分先达者领先" : " · 距上一名 " + ranking.gap + " 分";
-                            resultNote = position + "\n" + rewards + comparison;
-                        });
+                            string expectedDate = activeRun.date;
+                            string expectedRules = string.IsNullOrEmpty(entry.rules) ? DailyMatch.LegacyRulesVersion : entry.rules;
+                            api.Get("challenge/leaderboard?rules=" + Uri.EscapeDataString(expectedRules), ranking =>
+                            {
+                                if (!ranking.ok || activeRun == null || activeRun.runId != entry.runId || api.Profile == null ||
+                                    api.Profile.playerId != entry.playerId || api.Date != expectedDate || ranking.date != expectedDate ||
+                                    (!string.IsNullOrEmpty(ranking.rules) && ranking.rules != expectedRules)) return;
+                                string position = ranking.rank > 0 ? "今日最佳第 " + ranking.rank + " 名 / " + ranking.total + " 人" : "成绩已记录";
+                                if (ranking.rank > 1) position += ranking.gap == 0 ? " · 同分先达者领先" : " · 距上一名 " + ranking.gap + " 分";
+                                resultNote = position + "\n" + rewards + comparison;
+                            });
+                        }
                     }
                     FlushPending();
                 }
@@ -676,18 +684,25 @@ namespace SnakeClub
         private void OpenBoard()
         {
             frontPage = "leaderboard"; board = null;
+            int generation = ++boardGeneration;
             if (!api.Connected) { frontNotice = "连接后可查看真人排行"; return; }
-            api.Get("challenge/leaderboard?rules=" + DailyMatch.RulesVersion, reply => { board = reply.ok ? reply : null; frontNotice = reply.ok ? "" : reply.error; });
+            api.Get("challenge/leaderboard?rules=" + DailyMatch.RulesVersion, reply =>
+            {
+                if (frontPage != "leaderboard" || generation != boardGeneration) return;
+                bool matches = string.IsNullOrEmpty(reply.rules) || reply.rules == DailyMatch.RulesVersion;
+                board = reply.ok && matches ? reply : null;
+                frontNotice = !reply.ok ? reply.error : matches ? "" : "排行榜规则不一致，请重试";
+            });
         }
 
         private void DrawLeaderboard()
         {
-            FrontHeader("每日挑战榜", "真实玩家 · 统一规则 · 成绩经回放验证");
+            FrontHeader("每日挑战榜", board == null ? "真实玩家 · 统一规则 · 成绩经回放验证" : board.date + " · " + DailyMatch.RulesVersion + " · 真实玩家");
             Panel(new Rect(80, 315, 920, 1110), new Color(.025f, .08f, .14f, .94f));
             if (board == null) Label(new Rect(120, 600, 840, 100), string.IsNullOrEmpty(frontNotice) ? "正在加载…" : frontNotice, 31, Color.white, TextAnchor.MiddleCenter);
             else
             {
-                string position = board.rank > 0 ? "今日第 " + board.rank + " 名 / " + board.total + " 人" : "完成挑战后参与排名";
+                string position = board.rank > 0 ? "今日最佳第 " + board.rank + " 名 / " + board.total + " 人" : "完成挑战后参与排名";
                 if (board.rank > 1) position += board.gap == 0 ? " · 同分先达到者领先" : " · 距上一名 " + board.gap + " 分";
                 Label(new Rect(115, 345, 850, 90), position, 28, new Color(.71f, .96f, .84f), TextAnchor.MiddleCenter, true);
                 if (board.rows != null) for (int i = 0; i < Math.Min(8, board.rows.Count); i++)

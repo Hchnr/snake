@@ -38,7 +38,7 @@ namespace SnakeClub.Core
         public static string Format(int score, int target)
         {
             int gap = score - target;
-            return "\n好友 " + target + " 分 · " + (gap == 0 ? "成绩持平" : gap > 0 ? "领先 " + gap + " 分" : "落后 " + -gap + " 分");
+            return "\n本局对比好友 " + target + " 分 · " + (gap == 0 ? "成绩持平" : gap > 0 ? "领先 " + gap + " 分" : "落后 " + -gap + " 分");
         }
     }
 
