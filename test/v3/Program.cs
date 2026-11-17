@@ -45,6 +45,7 @@ var cases = new (string name, Action run)[]
     ("single-player events rotate, award real captures and end cleanly", LocalRotatingEvents),
     ("skin identities preserve the original inventory and restrict reference previews", SkinIdentities),
     ("depth rooms require the correct living player and objective", DepthGoals),
+    ("depth star and displayed bonus caps match each room", DepthRoomFlow),
     ("depth bonuses change growth and make rebound boosts free", DepthBonuses),
     ("depth boss telegraphs attacks and loses shields before elimination", DepthBoss)
 };
@@ -470,6 +471,27 @@ static void DepthGoals()
     Check(!DepthChallenge.GoalReached(3, world, "you"), "another AI's kill incorrectly completed the boss room");
     boss.eliminatedBy = "you"; Check(DepthChallenge.GoalReached(3, world, "you"), "player's boss kill not recognized");
     player.alive = false; Check(!DepthChallenge.GoalReached(3, world, "you"), "dead player completed the room");
+}
+
+static void DepthRoomFlow()
+{
+    string summary = DepthChallenge.BonusSummary(2, 1, 2);
+    Check(summary.Contains("护盾 4 秒") && summary.Contains("加速 3 秒") && summary.Contains("增长 6 节"), "bonus summary disagrees with active effects");
+    string capped = DepthChallenge.BonusSummary(int.MaxValue, -1, int.MaxValue);
+    Check(capped.Contains("护盾 4 秒") && capped.Contains("加速 0 秒") && capped.Contains("增长 6 节"), "bonus summary did not enforce limits");
+    var noStar = new Arena(3, fruitCount: 0);
+    var player = noStar.AddSnake("you", "you", false); var bot = noStar.AddSnake("bot", "bot", true);
+    player.shield = bot.shield = 100;
+    noStar.DisableStar(); noStar.Start();
+    for (int i = 0; i < 370; i++) noStar.Tick(.1f);
+    Check(noStar.State.phase == "running" && !noStar.State.starVisible, "disabled star appeared in a non-star room");
+    var starRoom = new Arena(4, fruitCount: 0);
+    player = starRoom.AddSnake("you", "you", false); bot = starRoom.AddSnake("bot", "bot", true);
+    player.shield = bot.shield = 100;
+    starRoom.ConfigureStar(5, player.id); starRoom.Start();
+    starRoom.DisableStar(); // Configuration cannot be changed during a match.
+    for (int i = 0; i < 52; i++) starRoom.Tick(.1f);
+    Check(starRoom.State.starVisible, "star room lost its configured objective");
 }
 
 static void DepthBonuses()

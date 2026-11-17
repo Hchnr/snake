@@ -150,6 +150,7 @@ namespace SnakeClub
             arena.AddSnake(playerId, string.IsNullOrWhiteSpace(nameInput) ? "玩家" : nameInput.Trim(), false);
             for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
             if (depthMode && depthRoom == 2) arena.ConfigureStar(5f, playerId);
+            else if (depthMode) arena.DisableStar();
             if (depthMode && depthRoom == 3)
             {
                 arena.SetStartingLength("bot-0", 20);
