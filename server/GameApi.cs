@@ -218,14 +218,14 @@ sealed class GameApi
     {
         string date = Day(now);
         string rules = requestedRules ?? DailyMatch.RulesVersion;
-        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
+        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
         if (mode == "pve" && p.trialSkin > 0)
         {
             bool reserved = !string.IsNullOrEmpty(p.trialRunId) && data.runs.TryGetValue(p.trialRunId, out var trialRun) && !trialRun.completed && now.ToUnixTimeMilliseconds() - trialRun.startedAt < 190000;
             if (!reserved) { run.trialSkin = p.trialSkin; p.trialRunId = run.id; }
         }
         data.runs[run.id] = run;
-        return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, rules = run.rules, trialSkin = run.trialSkin, serverTime = run.startedAt, expiresAt = run.expiresAt });
+        return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules, trialSkin = run.trialSkin, serverTime = run.startedAt, expiresAt = run.expiresAt });
     }
 
     private IResult FinishPve(PlayerProgress p, MatchRequest request, DateTimeOffset now)

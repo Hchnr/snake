@@ -31,7 +31,7 @@ namespace SnakeClub
     {
         public bool ok, verified, adEnabled;
         [NonSerialized] public long httpStatus;
-        public string error = "", session = "", runId = "", token = "", date = "", rules = "", id = "", shareToken = "";
+        public string error = "", session = "", runId = "", token = "", date = "", mode = "", rules = "", id = "", shareToken = "";
         public int seed, score, rank, total, gap, coins, baseCoins, experience, fragments, questCoins, questExperience;
         public int trialSkin = -1, unlockedSkin = -1;
         public long serverTime, expiresAt;
@@ -230,7 +230,7 @@ namespace SnakeClub
             bool freshTime = reply.serverTime > 0 && reply.serverTime >= ServerTime;
             if (!string.IsNullOrEmpty(reply.date) && (freshTime || (reply.serverTime <= 0 && (string.IsNullOrEmpty(Date) || string.CompareOrdinal(reply.date, Date) >= 0)))) Date = reply.date;
             // Leaderboards have no seed; stale responses must not restore yesterday's seed.
-            if (!string.IsNullOrEmpty(reply.date) && reply.date == Date && (reply.serverTime <= 0 || freshTime) &&
+            if (reply.mode != "pve" && !string.IsNullOrEmpty(reply.date) && reply.date == Date && (reply.serverTime <= 0 || freshTime) &&
                 (reply.seed != 0 || hasProfile || !string.IsNullOrEmpty(reply.runId))) Seed = reply.seed;
             if (freshTime) { ServerTime = reply.serverTime; ServerTimeReceivedAt = Time.realtimeSinceStartup; }
             if (!string.IsNullOrEmpty(reply.date) && acceptProfile) AdEnabled = reply.adEnabled;

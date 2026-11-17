@@ -62,6 +62,7 @@ var cases = new (string name, Action run)[]
     ("a starting-length player can actually close a loop", CapturePlayable),
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
     ("local arena reuses collision buffers without stale outcomes", ArenaBufferReuse),
+    ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
@@ -980,6 +981,32 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveReplayFoundation()
+{
+    foreach (int seed in new[] { 0, 1, 12345, int.MaxValue })
+    foreach (bool first in new[] { true, false })
+    {
+        var a = Arena.CreateStandardPve(seed, first, "玩家");
+        var b = Arena.CreateStandardPve(seed, first, "玩家");
+        Check(a.State.snakes.Count == 8 && a.State.remaining == (first ? 60f : 90f), "PvE setup differs from requested mode");
+        for (int tick = 0; tick < 400 && a.State.phase == "running" && b.State.phase == "running"; tick++)
+        {
+            Point input = tick % 160 < 80 ? new Point(1, 0) : new Point(0, 1);
+            bool boost = tick % 100 >= 80;
+            a.SetInput("you", input, boost); b.SetInput("you", input, boost);
+            a.Tick(.05f); b.Tick(.05f);
+            Check(a.State.tick == b.State.tick && a.State.phase == b.State.phase && a.State.snakes.Count == b.State.snakes.Count, "matching input changed simulation structure");
+            for (int i = 0; i < a.State.snakes.Count; i++)
+            {
+                var left = a.State.snakes[i]; var right = b.State.snakes[i];
+                Check(left.alive == right.alive && left.kills == right.kills && left.segments.Count == right.segments.Count, "matching input changed an outcome");
+                for (int j = 0; j < left.segments.Count; j++)
+                    Check(left.segments[j].x == right.segments[j].x && left.segments[j].y == right.segments[j].y, "matching input changed a trajectory");
+            }
+        }
+    }
 }
 
 static void ArenaBufferReuse()
