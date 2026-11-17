@@ -47,6 +47,17 @@ namespace SnakeClub.Tests.Editor
                 Require(client.Profile.coins == 100 && client.Profile.revision == 2, "stale profile response rolled back rewards");
                 Debug.Log("PASS Unity JSON replies preserve account, daily seed and ad availability");
 
+                var homeMusic = Resources.Load<AudioClip>("Music/Home");
+                var battleMusic = Resources.Load<AudioClip>("Music/Battle");
+                Require(homeMusic != null && battleMusic != null && homeMusic != battleMusic, "prebuilt music resources failed to load");
+                Require(homeMusic.channels == 1 && battleMusic.channels == 1 && Mathf.Abs(homeMusic.length - 8f) < .01f && Mathf.Abs(battleMusic.length - 8f) < .01f,
+                    "music import changed channel count or duration");
+                var homeImporter = AssetImporter.GetAtPath("Assets/Resources/Music/Home.wav") as AudioImporter;
+                var battleImporter = AssetImporter.GetAtPath("Assets/Resources/Music/Battle.wav") as AudioImporter;
+                Require(homeImporter != null && battleImporter != null && homeImporter.defaultSampleSettings.loadType == AudioClipLoadType.DecompressOnLoad &&
+                    battleImporter.defaultSampleSettings.loadType == AudioClipLoadType.DecompressOnLoad, "music import is not configured for loop playback");
+                Debug.Log("PASS Unity imports both prebuilt music loops");
+
                 const string path = "Assets/Resources/MysticCave.png";
                 var importer = AssetImporter.GetAtPath(path) as TextureImporter;
                 var background = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
