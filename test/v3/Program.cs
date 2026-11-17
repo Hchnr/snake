@@ -829,6 +829,29 @@ static void CapturePlayable()
 static void GameplayComparison()
 {
     Check(!DailyMatch.SupportsRules("comparison-c"), "offline comparison became a server rules version");
+    Check(!DailyMatch.SupportsRules("opening-experiment"), "opening experiment became a server rules version");
+    foreach (int seed in new[] { 1, 17, 12345 })
+    {
+        var baseline = new DailyMatch(seed, DailyMatch.RulesVersion);
+        var trial = DailyMatch.CreateOpeningExperiment(seed);
+        for (int i = 0; i < baseline.State.snakes.Count; i++)
+        {
+            var a = baseline.State.snakes[i]; var d = trial.State.snakes[i];
+            Check(a.shield == 3f && d.shield == 4f && a.segments.Count == d.segments.Count &&
+                a.segments[0].x == d.segments[0].x && a.segments[0].y == d.segments[0].y,
+                "opening experiment changed spawn layout or protection was not equal");
+        }
+        for (int tick = 0; tick < 60 && !baseline.Finished && !trial.Finished; tick++)
+        {
+            baseline.Step(0, false); trial.Step(0, false);
+            for (int i = 0; i < baseline.State.snakes.Count; i++)
+            {
+                var a = baseline.State.snakes[i]; var d = trial.State.snakes[i];
+                Check(a.segments[0].x == d.segments[0].x && a.segments[0].y == d.segments[0].y,
+                    "opening experiment diverged while both sides were protected");
+            }
+        }
+    }
     bool sawLoop = false;
     for (int turn = 1; turn <= 8 && !sawLoop; turn++) for (int seed = 1; seed <= 12 && !sawLoop; seed++)
     {
