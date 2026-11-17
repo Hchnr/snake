@@ -34,6 +34,7 @@ namespace SnakeClub
         private readonly List<Matrix4x4> trailPulses = new List<Matrix4x4>();
         private readonly Dictionary<string, List<Vector3>> smoothed = new Dictionary<string, List<Vector3>>();
         private readonly Dictionary<string, SpriteRenderer> characters = new Dictionary<string, SpriteRenderer>();
+        private readonly Dictionary<string, CharacterMotion> characterMotions = new Dictionary<string, CharacterMotion>();
         private readonly EliminationTransition eliminations = new EliminationTransition();
         private readonly Dictionary<string, ExitPose> exitPoses = new Dictionary<string, ExitPose>();
         private int presentationTick = -1;
@@ -47,6 +48,7 @@ namespace SnakeClub
         private Material pupilMaterial;
         private Material scaleMaterial;
         private Material trailLineMaterial;
+        private Material trailPulseMaterial;
         private Mesh sphere;
         private Mesh cylinder;
         private Mesh cone;
@@ -71,6 +73,7 @@ namespace SnakeClub
         private Vector3 reboundPosition;
         public int SelectedSkin { get; set; }
         public bool ReducedEffects { get; set; }
+        public bool MotionPaused { get; set; }
         public bool VisualFallback { get; private set; }
         public bool Visible
         {
@@ -79,7 +82,7 @@ namespace SnakeClub
             {
                 if (view == null || view.enabled == value) return;
                 view.enabled = value;
-                if (!value) { cameraReady = false; eliminations.Reset(); exitPoses.Clear(); presentationTick = -1; }
+                if (!value) { cameraReady = false; eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); presentationTick = -1; }
             }
         }
 
@@ -110,6 +113,9 @@ namespace SnakeClub
             pupilMaterial = MakeMaterial(new Color(.025f, .035f, .075f), .1f);
             scaleMaterial = MakeMaterial(new Color(.70f, 1f, .9f), .2f);
             scaleMaterial.EnableKeyword("_EMISSION");
+            trailPulseMaterial = MakeMaterial(new Color(.95f, 1f, .98f), .1f);
+            trailPulseMaterial.EnableKeyword("_EMISSION");
+            trailPulseMaterial.SetColor("_EmissionColor", new Color(.18f, .22f, .20f));
             var lineShader = Shader.Find("Sprites/Default");
             trailLineMaterial = lineShader != null ? new Material(lineShader) : MakeMaterial(Color.white, 0);
             SetupScene();
@@ -304,7 +310,7 @@ namespace SnakeClub
         public void Draw(ArenaState state, string playerId)
         {
             if (state == null) return;
-            if (state.tick < presentationTick) { eliminations.Reset(); exitPoses.Clear(); }
+            if (state.tick < presentationTick) { eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); }
             presentationTick = state.tick;
             foreach (var list in bodies) list.Clear();
             foreach (var list in links) list.Clear();
@@ -442,12 +448,16 @@ namespace SnakeClub
                     }
                     eliminations.ObserveAlive(snake.id); exitPoses.Remove(snake.id);
                     character.sprite = characterSprite; character.color = Color.white; character.enabled = true;
-                    float characterScale = snake.boosting ? 1.46f : 1.35f;
-                    float bob = ReducedEffects ? 0 : .06f * Mathf.Sin(Time.time * 4f + snake.color);
+                    if (!characterMotions.TryGetValue(snake.id, out var motion))
+                        characterMotions[snake.id] = motion = new CharacterMotion();
+                    motion.Update(state.tick, snake.angle, snake.boosting, Time.deltaTime, ReducedEffects,
+                        !MotionPaused && state.phase == "running");
+                    float characterScale = 1.35f * motion.Scale;
+                    float bob = ReducedEffects || MotionPaused ? 0 : .06f * Mathf.Sin(Time.time * 4f + snake.color);
                     // Anchor the bottom of the camera-facing sprite at the real
                     // head position, leaving the collision marker visible.
                     character.transform.position = center + view.transform.up * (2f * characterScale + bob);
-                    character.transform.rotation = view.transform.rotation * Quaternion.Euler(0, 0, -forward.x * 4f);
+                    character.transform.rotation = view.transform.rotation * Quaternion.Euler(0, 0, -forward.x * 4f + motion.LeanDegrees);
                     character.transform.localScale = Vector3.one * characterScale;
                 }
                 if (snake.id == playerId)
@@ -555,7 +565,7 @@ namespace SnakeClub
             for (int i = 0; i < fruits.Length; i++) DrawBatch(fruits[i], fruitMaterials[i]);
             scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)]], Color.white, .65f);
             scaleMaterial.SetColor("_EmissionColor", scaleMaterial.color * .18f);
-            DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, scaleMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+            DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, trailPulseMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
         }
 
         // Thin scanline bands leave the original path and characters readable.
@@ -607,6 +617,7 @@ namespace SnakeClub
         private void OnDestroy()
         {
             if (captureSweepMesh != null) Destroy(captureSweepMesh);
+            if (trailPulseMaterial != null) Destroy(trailPulseMaterial);
         }
 
         private int ResolveVisualSkin(SnakeState snake, string playerId, int playerVisual)
