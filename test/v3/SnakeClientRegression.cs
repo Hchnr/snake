@@ -208,15 +208,22 @@ namespace SnakeClub.Tests.Editor
                 Require((int)Field("depthRoom").GetValue(app) == 2 && Field("activeRun").GetValue(app) == null,
                     "next depth room requested an ordinary PvE run");
                 var depthArena = (Arena)Field("arena").GetValue(app);
-                Require(depthArena.Find("you").shield == 2 && depthArena.Find("bot-0").shield == Arena.SpawnShieldSeconds,
-                    "growth tradeoff was not applied only to the depth player in the next room");
+                CombatBonuses Bonuses(Arena arena, string id)
+                {
+                    var controls = (System.Collections.IDictionary)typeof(Arena).GetField("controls", flags).GetValue(arena);
+                    var control = controls[id];
+                    return (CombatBonuses)control.GetType().GetField("bonuses", flags | BindingFlags.Public).GetValue(control);
+                }
+                Require(depthArena.Find("you").shield == Arena.SpawnShieldSeconds && depthArena.Find("bot-0").shield == Arena.SpawnShieldSeconds &&
+                    Bonuses(depthArena, "you").boostCostPenalty == .25f && Bonuses(depthArena, "bot-0").boostCostPenalty == 0,
+                    "growth choice did not apply the cost only to the player or altered spawn protection");
                 Call("SelectDepthBonus", 2);
                 depthArena = (Arena)Field("arena").GetValue(app);
-                Require((int)Field("depthRoom").GetValue(app) == 3 && depthArena.Find("you").shield == 1,
-                    "stacked growth tradeoff was not applied in the next room");
+                Require((int)Field("depthRoom").GetValue(app) == 3 && depthArena.Find("you").shield == Arena.SpawnShieldSeconds && Bonuses(depthArena, "you").boostCostPenalty == .5f,
+                    "stacked growth choice lost its cost or altered spawn protection");
                 Call("StartDepth");
                 depthArena = (Arena)Field("arena").GetValue(app);
-                Require(depthArena.Find("you").shield == Arena.SpawnShieldSeconds, "growth tradeoff leaked into a new depth run");
+                Require(depthArena.Find("you").shield == Arena.SpawnShieldSeconds && Bonuses(depthArena, "you").boostCostPenalty == 0, "growth tradeoff leaked into a new depth run");
                 // Guard against a stale or accidentally supplied ordinary run as well.
                 Field("activeRun").SetValue(app, new ApiReply { runId = "stale", token = "stale" });
                 Field("activePlayerId").SetValue(app, profile.playerId);

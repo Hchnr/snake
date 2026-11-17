@@ -162,8 +162,7 @@ namespace SnakeClub
             else
             {
                 arena = new Arena(arenaSeed, roundSeconds: 55f, nearbyOpponents: true, enableCaptures: true);
-                var depthPlayer = arena.AddSnake(playerId, playerName, false);
-                depthPlayer.shield = DepthChallenge.SpawnProtection(depthGrowth);
+                arena.AddSnake(playerId, playerName, false);
                 for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
                 if (depthRoom == 2) arena.ConfigureStar(5f, playerId);
                 else arena.DisableStar();
@@ -195,6 +194,7 @@ namespace SnakeClub
                 bonuses.captureShieldSeconds = Mathf.Min(4f, depthShield * 2f);
                 bonuses.reboundFreeSeconds = Mathf.Min(6f, depthRebound * 3f);
                 bonuses.bonusGrowthPerKill = Mathf.Min(6, depthGrowth * 3);
+                bonuses.boostCostPenalty = DepthChallenge.GrowthBoostPenalty(depthGrowth);
             }
             arena.SetBonuses(playerId, bonuses);
             arenaRenderer.SelectedSkin = EffectiveSkin >= SkinCatalog.OwnedSkinCount ? EffectiveSkin : skin;
