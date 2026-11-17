@@ -173,6 +173,42 @@ namespace SnakeClub.Core
         }
     }
 
+    // The UI may indicate an off-screen objective, but never invents one.
+    public static class EventTargetIndicator
+    {
+        public static bool TryTarget(ArenaState world, string playerId, out Point target, out string label)
+        {
+            target = default; label = "";
+            if (world == null || world.phase != "running") return false;
+            if (world.eventStatus == "active" && world.eventKind == "bounty" && !string.IsNullOrEmpty(world.eventTarget))
+            {
+                var snake = world.snakes.Find(s => s.id == world.eventTarget && s.alive && s.segments.Count > 0);
+                if (snake == null) return false;
+                target = snake.segments[0]; label = snake.boss ? "首领" : "悬赏"; return true;
+            }
+            if (world.starVisible && world.starHolder != playerId)
+            { target = world.starPosition; label = "星核"; return true; }
+            if (world.eventStatus == "active" && world.eventKind == "fruit" && world.eventRadius > 0)
+            { target = world.eventPosition; label = "果潮"; return true; }
+            return false;
+        }
+
+        // Intersect the center-to-target ray with the usable screen rectangle.
+        public static bool TryEdge(Point target, float left, float top, float right, float bottom, out Point edge)
+        {
+            edge = default;
+            if (float.IsNaN(target.x) || float.IsNaN(target.y) || float.IsInfinity(target.x) || float.IsInfinity(target.y) || right <= left || bottom <= top) return false;
+            if (target.x >= left && target.x <= right && target.y >= top && target.y <= bottom) return false;
+            float cx = (left + right) * .5f, cy = (top + bottom) * .5f;
+            float dx = target.x - cx, dy = target.y - cy;
+            float tx = dx == 0 ? float.PositiveInfinity : (right - left) * .5f / Math.Abs(dx);
+            float ty = dy == 0 ? float.PositiveInfinity : (bottom - top) * .5f / Math.Abs(dy);
+            float scale = Math.Min(tx, ty);
+            edge = new Point(cx + dx * scale, cy + dy * scale);
+            return true;
+        }
+    }
+
     // Presentation summary sampled from resolved simulation ticks. It never
     // affects scores, rewards, collisions or replay verification.
     public sealed class MatchHighlights
