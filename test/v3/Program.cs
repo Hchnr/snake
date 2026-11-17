@@ -71,6 +71,7 @@ var cases = new (string name, Action run)[]
     ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
+    ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
     ("off-screen objective markers follow real targets and screen direction", EventTargetIndicatorCases),
@@ -989,6 +990,30 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveFixedMotionCases()
+{
+    var noBonus = new PveFixedBonuses();
+    var straight = new PveFixedMotion(0, 0, 0, 16); straight.Step(0, false, noBonus);
+    Check(straight.X == 300 && straight.Y == 0 && straight.Angle == 0, "straight movement differs");
+    var slower = new PveFixedMotion(0, 0, 0, 16); var faster = new PveFixedMotion(0, 0, 0, 16);
+    slower.Step(64, false, noBonus); faster.Step(64, false, new PveFixedBonuses { turn = 100 });
+    Check(faster.Angle > slower.Angle && slower.Angle > 0, "small turn bonus was lost to rounding");
+    var wall = new PveFixedMotion(PveFixedMotion.Edge - 1, 0, 0, 16); wall.Step(0, false, noBonus);
+    Check(wall.X < PveFixedMotion.Edge && wall.Angle == 32768 && wall.ReboundTicks == 16, "wall did not reflect");
+    var boost = new PveFixedMotion(0, 0, 0, 7);
+    for (int i = 0; i < 150; i++) boost.Step(0, true, noBonus);
+    Check(boost.Length == PveFixedMotion.MinimumLength, "boost did not stop consuming at minimum length");
+    var basic = new PveFixedMotion(0, 0, 0, 16); var efficient = new PveFixedMotion(0, 0, 0, 16);
+    for (int i = 0; i < 50; i++) { basic.Step(0, true, noBonus); efficient.Step(0, true, new PveFixedBonuses { boostSaving = 700 }); }
+    Check(basic.Length == 15 && efficient.Length == 16, "boost-saving bonus did not delay length loss");
+    var profile = new PlayerProgress { selectedSkin = 1, talents = new[] { 3, 3, 3, 3, 3, 3, 0, 0, 0 } };
+    var bonuses = PveFixedBonuses.From(profile);
+    Check(bonuses.turn == 100 && bonuses.boostSaving == 200 && bonuses.pickup == 100, "capped talent or skin bonus incorrect");
+    var a = new PveFixedMotion(123, -456, 13, 16); var b = new PveFixedMotion(123, -456, 13, 16);
+    for (int i = 0; i < 1000; i++) { a.Step((byte)(i * 7), i % 3 == 0, bonuses); b.Step((byte)(i * 7), i % 3 == 0, bonuses); }
+    Check(a.X == b.X && a.Y == b.Y && a.Angle == b.Angle && a.Length == b.Length, "integer motion is not repeatable");
 }
 
 static void PveConfigCases()

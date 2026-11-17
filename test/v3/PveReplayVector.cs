@@ -52,6 +52,19 @@ namespace SnakeClub.Tests
             foreach (var fruit in initial.fruits) { Add(fruit.position.x); Add(fruit.position.y); Add(fruit.color); }
             string fruitHash = hash.ToString("x16");
             hash = 14695981039346656037UL;
+            hash = 14695981039346656037UL;
+            foreach (int seed in new[] { 0, 1, 12345, int.MaxValue })
+            {
+                var fixedMotion = new PveFixedMotion(seed % 10000, -1000, seed, 16);
+                var fixedBonuses = PveFixedBonuses.From(new PlayerProgress { selectedSkin = 1, talents = new[] { 3, 2, 1, 3, 1, 2, 0, 0, 0 } });
+                for (int i = 0; i < 1800; i++)
+                {
+                    fixedMotion.Step((byte)(i * 17 + seed), i % 100 >= 35, fixedBonuses);
+                    Add(fixedMotion.X); Add(fixedMotion.Y); Add(fixedMotion.Angle); Add(fixedMotion.Length); Add(fixedMotion.ReboundTicks);
+                }
+            }
+            string fixedHash = hash.ToString("x16");
+            hash = 14695981039346656037UL;
             string outcomes = "";
             foreach (int seed in new[] { 0, 1, 12345, int.MaxValue })
             foreach (bool first in new[] { true, false })
@@ -87,7 +100,7 @@ namespace SnakeClub.Tests
                 if (outcomes.Length != 0) outcomes += ",";
                 outcomes += seed + ":" + (first ? "first" : "normal") + ":" + outcomeHash.ToString("x16");
             }
-            return "random=" + rngHash + ";initial=" + initialHash + ";angles=" + angleHash + ";heads=" + headHash + ";headbits=" + headBits + ";bodies=" + bodyHash + ";fruits=" + fruitHash + ";replay=" + hash.ToString("x16") + ";outcomes=" + outcomes;
+            return "fixed=" + fixedHash + ";random=" + rngHash + ";initial=" + initialHash + ";angles=" + angleHash + ";heads=" + headHash + ";headbits=" + headBits + ";bodies=" + bodyHash + ";fruits=" + fruitHash + ";replay=" + hash.ToString("x16") + ";outcomes=" + outcomes;
         }
     }
 }
