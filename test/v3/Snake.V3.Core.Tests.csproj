@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Remove="SnakeClientRegression.cs" />
     <Compile Remove="SnakePlayModeRegression.cs" />
+    <Compile Remove="PveVectorUnity.cs" />
     <Compile Include="../../server/DouyinSessionExchange.cs" Link="DouyinSessionExchange.cs" />
     <Compile Include="../../unity/Assets/Snake/Core/*.cs" Link="Core/%(Filename)%(Extension)" />
   </ItemGroup>

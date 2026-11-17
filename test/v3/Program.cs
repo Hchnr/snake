@@ -3,6 +3,12 @@ using System.Collections;
 using System.Reflection;
 using SnakeClub.Core;
 
+if (args.Length == 1 && args[0] == "pve-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.PveReplayVector.Compute());
+    return;
+}
+
 if (args.Length >= 2 && args[0] == "replay")
 {
     int seed = int.Parse(args[1]);
