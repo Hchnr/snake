@@ -75,6 +75,7 @@ var cases = new (string name, Action run)[]
     ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
     ("integer combat workspace does not leak prior outcomes", PveFixedCombatWorkspaceCases),
     ("integer PvE world replays AI and fruit deterministically", PveFixedWorldCases),
+    ("integer PvE recording requires a complete and well-formed match", PveFixedRecordingCases),
     ("integer PvE render projection follows real state", PveFixedProjectionCases),
     ("integer PvE bots avoid real dangerous trails", PveBotAvoidanceCases),
     ("integer PvE events respect real outcomes and timing", PveFixedEventsCases),
@@ -1104,6 +1105,38 @@ static void PveFixedEventsCases()
     Check(owner.eventPoints == 1, "fruit-zone boundary kill not awarded");
     PveFixedWorld.AwardEventElimination(owner, target, "fruit", "", new CapturePoint(14001, 0));
     Check(owner.eventPoints == 1, "outside fruit zone awarded points");
+}
+
+static void PveFixedRecordingCases()
+{
+    foreach (bool firstRun in new[] { true, false })
+    foreach (int seed in new[] { 0, 1, 793, int.MaxValue })
+    {
+        var profile = new PlayerProgress { selectedSkin = 2, talents = new[] { 1, 2, 0, 1, 0, 0, 0, 0, 0 } };
+        var live = new PveFixedWorld(seed, firstRun, profile);
+        var tape = new List<byte>();
+        while (!live.Finished)
+        {
+            byte heading = (byte)(live.Tick / 30 * 6); byte boost = (byte)(live.Tick % 100 >= 80 ? 1 : 0);
+            live.Step(heading, boost != 0); tape.Add(heading); tape.Add(boost);
+        }
+        Check(PveFixedRecording.TryReplay(seed, firstRun, profile, tape.ToArray(), out var replay), "completed recording rejected");
+        Check(replay.Tick == live.Tick && replay.Winner == live.Winner && replay.EventKind == live.EventKind && replay.StarTicks == live.StarTicks, "replayed match differs");
+        for (int i = 0; i < live.Fighters.Count; i++)
+        {
+            var a = live.Fighters[i]; var b = replay.Fighters[i];
+            Check(a.alive == b.alive && a.kills == b.kills && a.motion.Length == b.motion.Length && a.motion.X == b.motion.X && a.motion.Y == b.motion.Y, "replayed fighter differs");
+        }
+        var incomplete = tape.Take(tape.Count - 2).ToArray();
+        Check(!PveFixedRecording.TryReplay(seed, firstRun, profile, incomplete, out _), "unfinished recording accepted");
+        tape.Add(0); tape.Add(0);
+        Check(!PveFixedRecording.TryReplay(seed, firstRun, profile, tape.ToArray(), out _), "extra frame after finish accepted");
+    }
+    Check(!PveFixedRecording.TryReplay(1, false, null, null, out _), "null recording accepted");
+    Check(!PveFixedRecording.TryReplay(1, false, null, new byte[] { 1 }, out _), "partial frame accepted");
+    Check(!PveFixedRecording.TryReplay(1, false, null, new byte[] { 1, 2 }, out _), "invalid boost accepted");
+    Check(!PveFixedRecording.TryReplay(1, true, null, new byte[(60 * PveFixedWorld.TickRate + 1) * 2], out _), "first-run recording over limit accepted");
+    Check(!PveFixedRecording.TryReplay(1, false, null, new byte[(PveFixedRecording.MaxTicks + 1) * 2], out _), "oversized recording accepted");
 }
 
 static void PveFixedWorldCases()
