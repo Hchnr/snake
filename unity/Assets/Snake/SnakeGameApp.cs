@@ -259,6 +259,7 @@ namespace SnakeClub
 
         private void Update()
         {
+            PumpPending();
             bool interaction = Input.anyKeyDown || Input.GetMouseButtonDown(0);
             for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
             feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused, paused, adShowing, interaction);

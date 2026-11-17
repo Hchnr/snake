@@ -30,6 +30,8 @@ namespace SnakeClub
         private int previewSkin, lastRewardCoins, localVisualSkin = -1;
         private ApiReply board;
         private const string PendingKey = "snake.v3.pending";
+        private readonly PendingRetrySchedule pendingRetry = new PendingRetrySchedule();
+        private float nextPendingPoll;
         private PlayerProgress CurrentProfile => api != null && api.Connected ? api.Profile : practiceProfile;
         private bool ReferencePreviewEnabled => api != null && api.Config.allowReferenceSkinPreview && SkinVisual.ReferenceAvailable;
         private int EffectiveSkin => ReferencePreviewEnabled && localVisualSkin >= SkinCatalog.OwnedSkinCount
@@ -119,6 +121,7 @@ namespace SnakeClub
                 arenaRenderer.SelectedSkin = previewSkin;
                 if (reply.ok)
                 {
+                    pendingRetry.Reset();
                     friendDate = api.LaunchChallengeDate;
                     if (!string.IsNullOrEmpty(friendDate))
                     {
@@ -128,6 +131,7 @@ namespace SnakeClub
                     }
                     FlushPending();
                 }
+                else pendingRetry.Fail(Time.unscaledTime);
             });
         }
 
@@ -275,11 +279,28 @@ namespace SnakeClub
             PlayerPrefs.Save();
         }
 
+        private void PumpPending()
+        {
+            if (!appFocused || appPaused || adShowing || flushing || connecting || busy ||
+                (inGame && state != null && state.phase == "running") || Time.unscaledTime < nextPendingPoll ||
+                !pendingRetry.Due(Time.unscaledTime)) return;
+            nextPendingPoll = Time.unscaledTime + 2f;
+            var entries = ReadPending().entries;
+            if (api.Profile == null)
+            {
+                if (entries.Exists(item => item != null && !string.IsNullOrEmpty(item.playerId))) ConnectProfile();
+            }
+            else if (entries.Exists(item => item != null && PendingRetrySchedule.OwnedBy(item.playerId, api.Profile.playerId)))
+            {
+                if (api.Connected) FlushPending(); else ConnectProfile();
+            }
+        }
+
         private void FlushPending()
         {
             if (flushing || !api.Connected) return;
             var pending = ReadPending();
-            var entry = pending.entries.Find(item => item.playerId == api.Profile.playerId);
+            var entry = pending.entries.Find(item => item != null && PendingRetrySchedule.OwnedBy(item.playerId, api.Profile.playerId));
             if (entry == null) return;
             flushing = true;
             bool challenge = entry.mode != "pve";
@@ -289,7 +310,9 @@ namespace SnakeClub
                 bool terminal = !string.IsNullOrEmpty(reply.error) && (reply.error.Contains("凭证无效或已过期") || reply.error.Contains("未检测到操作") || reply.error.Contains("回放") || reply.error.Contains("成绩与") || reply.error.Contains("规则已更新") || reply.error.Contains("对局时长无效"));
                 if (reply.ok || terminal)
                 {
-                    var latest = ReadPending(); latest.entries.RemoveAll(item => item.runId == entry.runId); SavePending(latest);
+                    pendingRetry.Reset();
+                    var latest = ReadPending(); latest.entries.RemoveAll(item => item != null && item.runId == entry.runId && PendingRetrySchedule.OwnedBy(item.playerId, entry.playerId)); SavePending(latest);
+                    if (!reply.ok && (activeRun == null || activeRun.runId != entry.runId)) frontNotice = "待结算对局未通过：" + reply.error;
                     if (activeRun != null && activeRun.runId == entry.runId)
                     {
                         string rewards = "金币 +" + (reply.coins + reply.questCoins) + "  经验 +" + (reply.experience + reply.questExperience) + (reply.questExperience > 0 ? "（含日常）" : "");
@@ -306,7 +329,12 @@ namespace SnakeClub
                     }
                     FlushPending();
                 }
-                else if (activeRun != null && activeRun.runId == entry.runId) resultNote = "成绩已保存，联网后重试";
+                else
+                {
+                    pendingRetry.Fail(Time.unscaledTime);
+                    if (activeRun != null && activeRun.runId == entry.runId) resultNote = "成绩已保存，将自动重试";
+                    else frontNotice = "有待结算对局，将自动重试";
+                }
             });
         }
 
