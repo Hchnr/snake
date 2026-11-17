@@ -46,6 +46,13 @@ namespace SnakeClub
         private Mesh sphere;
         private Mesh cylinder;
         private Mesh cone;
+        private Mesh captureSweepMesh;
+        private MeshRenderer captureSweepRenderer;
+        private readonly List<float> sweepIntersections = new List<float>();
+        private readonly List<Vector3> sweepVertices = new List<Vector3>();
+        private readonly List<int> sweepTriangles = new List<int>();
+        private readonly List<Color32> sweepColors = new List<Color32>();
+        private readonly List<float> sweepRows = new List<float>();
         private Camera view;
         private LineRenderer marker, eventRing, captureOutline, captureFlare, reboundRipple, directionArrow, bossWarning, dangerArrow;
         private Transform runtimeRoot;
@@ -259,6 +266,14 @@ namespace SnakeClub
             captureOutline.widthMultiplier = .22f; captureOutline.sharedMaterial = trailLineMaterial;
             captureOutline.startColor = captureOutline.endColor = new Color(1f, .94f, .60f, 1f);
             captureOutline.shadowCastingMode = ShadowCastingMode.Off;
+            var sweepObject = new GameObject("Captured area sweep"); sweepObject.transform.SetParent(runtimeRoot, false);
+            captureSweepMesh = new Mesh { name = "Capture sweep mesh" };
+            captureSweepMesh.MarkDynamic();
+            sweepObject.AddComponent<MeshFilter>().sharedMesh = captureSweepMesh;
+            captureSweepRenderer = sweepObject.AddComponent<MeshRenderer>();
+            captureSweepRenderer.sharedMaterial = trailLineMaterial;
+            captureSweepRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            captureSweepRenderer.receiveShadows = false; captureSweepRenderer.enabled = false;
             captureFlare = MakeEffectRing("Capture closing point", new Color(1f, .94f, .60f, 1f));
             reboundRipple = MakeEffectRing("Rebound ripple", new Color(.55f, 1f, .91f, 1f));
         }
@@ -301,6 +316,7 @@ namespace SnakeClub
             if (state.captureTick >= 0 && state.captureTick != shownCaptureTick && state.capturePolygon != null && state.capturePolygon.Count > 2)
             {
                 shownCaptureTick = state.captureTick; captureStarted = Time.time;
+                BuildCaptureSweep(state.capturePolygon, state.captureCount > 0);
                 captureOutline.positionCount = state.capturePolygon.Count;
                 for (int i = 0; i < state.capturePolygon.Count; i++)
                     captureOutline.SetPosition(i, new Vector3(state.capturePolygon[i].x, .20f, state.capturePolygon[i].y));
@@ -308,6 +324,8 @@ namespace SnakeClub
             captureOutline.enabled = Time.time - captureStarted < .55f;
             if (captureOutline.enabled) captureOutline.widthMultiplier = .24f * (1f - (Time.time - captureStarted) / .55f);
             float captureAge = Time.time - captureStarted;
+            captureSweepRenderer.enabled = !ReducedEffects && captureAge >= 0f && captureAge < .25f && sweepRows.Count > 0;
+            if (captureSweepRenderer.enabled) UpdateCaptureSweep(captureAge / .25f);
             captureFlare.enabled = !ReducedEffects && captureAge >= 0f && captureAge < .4f && state.capturePolygon != null && state.capturePolygon.Count > 0;
             if (captureFlare.enabled)
             {
@@ -525,6 +543,57 @@ namespace SnakeClub
             scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)]], Color.white, .65f);
             scaleMaterial.SetColor("_EmissionColor", scaleMaterial.color * .18f);
             DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, scaleMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+        }
+
+        // Thin scanline bands leave the original path and characters readable.
+        // They are derived from the resolved polygon and never affect rules.
+        private void BuildCaptureSweep(List<Point> polygon, bool captured)
+        {
+            sweepVertices.Clear(); sweepTriangles.Clear(); sweepColors.Clear(); sweepRows.Clear();
+            captureSweepMesh.Clear();
+            if (!captured || polygon == null || polygon.Count < 3) return;
+            float bottom = polygon[0].y, top = bottom;
+            foreach (var point in polygon) { bottom = Mathf.Min(bottom, point.y); top = Mathf.Max(top, point.y); }
+            if (top - bottom < .001f) return;
+            const int bands = 32;
+            float step = (top - bottom) / bands;
+            float halfWidth = Mathf.Min(.035f, step * .2f);
+            for (int row = 0; row < bands; row++)
+            {
+                float z = bottom + (row + .5f) * step;
+                CaptureGeometry.Scanline(polygon, z, sweepIntersections);
+                for (int i = 0; i + 1 < sweepIntersections.Count; i += 2)
+                {
+                    float left = sweepIntersections[i], right = sweepIntersections[i + 1];
+                    if (right - left < .001f) continue;
+                    int start = sweepVertices.Count;
+                    sweepVertices.Add(new Vector3(left, .025f, z - halfWidth));
+                    sweepVertices.Add(new Vector3(left, .025f, z + halfWidth));
+                    sweepVertices.Add(new Vector3(right, .025f, z + halfWidth));
+                    sweepVertices.Add(new Vector3(right, .025f, z - halfWidth));
+                    sweepTriangles.Add(start); sweepTriangles.Add(start + 1); sweepTriangles.Add(start + 2);
+                    sweepTriangles.Add(start); sweepTriangles.Add(start + 2); sweepTriangles.Add(start + 3);
+                    for (int v = 0; v < 4; v++) { sweepRows.Add((row + .5f) / bands); sweepColors.Add(new Color32(255, 239, 146, 0)); }
+                }
+            }
+            captureSweepMesh.SetVertices(sweepVertices); captureSweepMesh.SetTriangles(sweepTriangles, 0);
+            captureSweepMesh.SetColors(sweepColors); captureSweepMesh.RecalculateBounds();
+        }
+
+        private void UpdateCaptureSweep(float progress)
+        {
+            float wave = Mathf.Lerp(-.22f, 1.22f, progress);
+            for (int i = 0; i < sweepRows.Count; i++)
+            {
+                float intensity = Mathf.Clamp01(1f - Mathf.Abs(sweepRows[i] - wave) / .24f);
+                sweepColors[i] = new Color32(255, 239, 146, (byte)(intensity * 105f));
+            }
+            captureSweepMesh.SetColors(sweepColors);
+        }
+
+        private void OnDestroy()
+        {
+            if (captureSweepMesh != null) Destroy(captureSweepMesh);
         }
 
         private void DrawOpponentMarker(string id, Vector3 center, Color color)

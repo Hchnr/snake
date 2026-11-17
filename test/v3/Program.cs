@@ -43,6 +43,7 @@ var cases = new (string name, Action run)[]
     ("music respects interaction, suspension and bounded loop samples", MusicBehavior),
     ("pending settlement retries back off and stay bound to their account", PendingRetries),
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
+    ("capture sweep follows even-odd geometry for concave and crossing loops", CaptureSweepCases),
     ("capture geometry is deterministic and includes its boundary", CaptureGeometryCases),
     ("a starting-length player can actually close a loop", CapturePlayable),
     ("closed loops eliminate unshielded targets and grow the survivor", CaptureResolution),
@@ -389,6 +390,40 @@ static void PreviousDailyReplay()
     Check(match.State.tick == 1200 && match.Score == 90, "daily-2 replay changed from its recorded result");
     Check(match.State.captureTick == -1, "daily-2 unexpectedly enabled capture");
     Check(DailyMatch.MaxScoreFor(DailyMatch.PreviousRulesVersion) == 1540 && DailyMatch.MaxScoreFor(DailyMatch.RulesVersion) == 1460, "score bounds not versioned");
+}
+
+static void CaptureSweepCases()
+{
+    var shapes = new[]
+    {
+        new List<Point> { new(0, 0), new(6, 0), new(6, 6), new(4, 6), new(4, 2), new(2, 2), new(2, 6), new(0, 6) },
+        new List<Point> { new(0, 0), new(6, 6), new(0, 6), new(6, 0) }
+    };
+    var intersections = new List<float>();
+    foreach (var shape in shapes)
+    {
+        var integer = shape.Select(p => new CapturePoint((int)(p.x * 1000), (int)(p.y * 1000))).ToList();
+        for (int row = 0; row < 24; row++)
+        {
+            float y = (row + .37f) / 4;
+            CaptureGeometry.Scanline(shape, y, intersections);
+            Check(intersections.Count % 2 == 0, "scanline has unmatched edge intersections");
+            for (int column = -2; column <= 26; column++)
+            {
+                float x = (column + .31f) / 4;
+                bool visual = false;
+                for (int i = 0; i + 1 < intersections.Count; i += 2)
+                    if (x >= intersections[i] && x <= intersections[i + 1]) visual = true;
+                bool captured = CaptureGeometry.Contains(integer, new CapturePoint((int)(x * 1000), (int)(y * 1000)));
+                Check(visual == captured, "sweep disagrees with capture area");
+            }
+        }
+        shape.Reverse();
+        CaptureGeometry.Scanline(shape, 1.5f, intersections);
+        Check(intersections.Count == 2, "winding reversed or horizontal edge mishandled");
+    }
+    CaptureGeometry.Scanline(null, 0, intersections);
+    Check(intersections.Count == 0, "invalid polygon retained stale scanlines");
 }
 
 static void CaptureGeometryCases()
