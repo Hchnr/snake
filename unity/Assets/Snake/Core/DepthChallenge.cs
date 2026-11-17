@@ -10,6 +10,12 @@ namespace SnakeClub.Core
             => profile == null ? 0 : Math.Max(profile.completedMatches, profile.tutorialComplete ? 1 : 0);
         public static bool IsUnlocked(PlayerProgress profile) => CompletedMatches(profile) >= 3;
 
+        public static string BonusSummary(int shield, int rebound, int growth)
+        {
+            return "当前构筑：收圈护盾 " + Math.Min(2, Math.Max(0, shield)) * 2 + " 秒 · 反弹免费加速 " +
+                Math.Min(2, Math.Max(0, rebound)) * 3 + " 秒 · 淘汰增长 " + Math.Min(2, Math.Max(0, growth)) * 3 + " 节";
+        }
+
         public static bool GoalReached(int room, ArenaState world, string playerId)
         {
             if (world == null || room < 1 || room > RoomCount) return false;

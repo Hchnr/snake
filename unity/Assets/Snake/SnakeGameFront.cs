@@ -212,13 +212,15 @@ namespace SnakeClub
             string title = depthWon ? depthRoom == 3 ? "深潜完成！" : "房间完成！" : "本次深潜结束";
             Label(new Rect(140, 530, 800, 90), title, 49, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(150, 640, 780, 70), me == null ? "" : "淘汰 " + me.kills + "  ·  长度 " + me.segments.Count, 29, new Color(.75f, .92f, .88f), TextAnchor.MiddleCenter);
-            Label(new Rect(150, 715, 780, 90), resultNote, 22, new Color(.75f, .88f, .91f), TextAnchor.MiddleCenter);
+            Label(new Rect(150, 710, 780, 70), resultNote, 22, new Color(.75f, .88f, .91f), TextAnchor.MiddleCenter);
+            Label(new Rect(140, 780, 800, 60), DepthChallenge.BonusSummary(depthShield, depthRebound, depthGrowth), 20, new Color(.68f, .84f, .86f), TextAnchor.MiddleCenter);
             if (depthWon && depthRoom < 3)
             {
-                Label(new Rect(150, 815, 780, 65), "选择一个本次深潜增益", 29, new Color(1f, .86f, .56f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(150, 835, 780, 55), busy ? "正在准备下一间…" : "选择一个本次深潜增益", 29, new Color(1f, .86f, .56f), TextAnchor.MiddleCenter, true);
                 if (Button(new Rect(175, 900, 730, 100), "收圈护盾  ·  捕获后护盾 2 秒", new Color(.13f, .51f, .46f))) SelectDepthBonus(0);
                 if (Button(new Rect(175, 1020, 730, 100), "反弹冲刺  ·  撞墙后 3 秒加速免费", new Color(.23f, .40f, .62f))) SelectDepthBonus(1);
                 if (Button(new Rect(175, 1140, 730, 100), "猎手长尾  ·  淘汰额外增长 3 节", new Color(.42f, .33f, .60f))) SelectDepthBonus(2);
+                if (Button(new Rect(250, 1280, 580, 85), "退出深潜，返回大厅", new Color(.15f, .22f, .31f)) && !busy) BackToMenu();
             }
             else
             {

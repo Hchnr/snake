@@ -196,6 +196,7 @@ namespace SnakeClub.Core
         private readonly Dictionary<string, Control> controls = new Dictionary<string, Control>();
         private readonly Random random;
         private readonly bool nearbyOpponents, enableCaptures, rotatingEvents;
+        private bool starEnabled = true;
         private readonly int rotatingEventType;
         private float eventElapsed, eventTimeLeft;
         private int nextColor;
@@ -278,6 +279,11 @@ namespace SnakeClub.Core
         {
             if (State.phase != "waiting") return;
             starDelay = Math.Max(0, delay); starSpawnNear = nearSnakeId ?? "";
+        }
+
+        public void DisableStar()
+        {
+            if (State.phase == "waiting") starEnabled = false;
         }
 
         public void ConfigureBoss(string id)
@@ -366,7 +372,7 @@ namespace SnakeClub.Core
             ResolveCollisions();
             if (enableCaptures) ResolveCaptures(previousHeads);
             CollectFruits();
-            if (!rotatingEvents || (State.eventStatus == "active" && State.eventKind == "star")) UpdateStar(dt);
+            if (starEnabled && (!rotatingEvents || (State.eventStatus == "active" && State.eventKind == "star"))) UpdateStar(dt);
             if (rotatingEvents) UpdateRotatingEvent(dt);
             int alive = State.snakes.FindAll(s => s.alive).Count;
             if (State.remaining <= 0 || (participantsAtStart >= 2 && alive <= 1)) Finish();
