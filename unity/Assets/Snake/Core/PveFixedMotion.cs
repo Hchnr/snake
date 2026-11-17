@@ -57,7 +57,7 @@ namespace SnakeClub.Core
         public static int DirectionX(byte heading) => Sin(heading * 256 + 16384);
         public static int DirectionY(byte heading) => Sin(heading * 256);
         // Integer square root gives the same segment relaxation in each runtime.
-        private static int Distance(int x, int y)
+        internal static int Distance(int x, int y)
         {
             ulong n = (ulong)((long)x * x + (long)y * y), result = 0, bit = 1UL << 62;
             while (bit > n) bit >>= 2;

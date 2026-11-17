@@ -74,6 +74,7 @@ var cases = new (string name, Action run)[]
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
     ("integer PvE combat respects actual collision and protection", PveFixedCombatCases),
     ("integer PvE world replays AI and fruit deterministically", PveFixedWorldCases),
+    ("integer PvE bots avoid real dangerous trails", PveBotAvoidanceCases),
     ("integer PvE events respect real outcomes and timing", PveFixedEventsCases),
     ("local arena captures multiple opponents without defeating protected targets", LocalCaptureResolution),
     ("match highlights preserve only real, credited capture peaks", HighlightSummary),
@@ -993,6 +994,24 @@ static void LocalRotatingEvents()
     early.AddSnake("you", "you", false); early.AddSnake("bot", "bot", true); early.Start(); early.EndRound();
     for (int i = 0; i < 200; i++) early.Tick(.1f);
     Check(early.State.eventStatus == "" && !early.State.starVisible, "event began after an early round end");
+}
+
+static void PveBotAvoidanceCases()
+{
+    var bot = new PveFixedFighter("bot", new PveFixedMotion(0, 0, 0, 16));
+    var threat = new PveFixedFighter("other", new PveFixedMotion(6000, 0, 0, 16));
+    var fighters = new[] { bot, threat }; long x = 0, y = 0;
+    PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
+    Check(x < 0 && y == 0, "nearby collision trail did not push bot away");
+    threat.shieldTicks = 1; x = 0; y = 0;
+    PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
+    Check(x == 0 && y == 0, "protected trail incorrectly affected bot");
+    threat.shieldTicks = 0; bot.shieldTicks = 1;
+    PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
+    Check(x == 0 && y == 0, "protected bot incorrectly avoided trail");
+    bot.shieldTicks = 0; threat.alive = false;
+    PveFixedWorld.AccumulateTrailAvoidance(bot, fighters, ref x, ref y);
+    Check(x == 0 && y == 0, "dead trail incorrectly affected bot");
 }
 
 static void PveFixedEventsCases()

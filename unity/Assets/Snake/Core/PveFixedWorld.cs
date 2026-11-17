@@ -34,6 +34,7 @@ namespace SnakeClub.Core
         private readonly PveFixedFighter[] fighters = new PveFixedFighter[8];
         private readonly int[] botTimer = new int[8];
         private readonly byte[] botDirection = new byte[8];
+        private readonly bool[] botBoost = new bool[8];
         private readonly bool[] previouslyAlive = new bool[8];
         private readonly List<PveFixedFruit> fruit = new List<PveFixedFruit>(Arena.FruitCount);
         public IReadOnlyList<PveFixedFighter> Fighters => fighters;
@@ -84,6 +85,25 @@ namespace SnakeClub.Core
             return new CapturePoint(Math.Max(-PveFixedMotion.Edge, Math.Min(PveFixedMotion.Edge, candidate.x)),
                 Math.Max(-PveFixedMotion.Edge, Math.Min(PveFixedMotion.Edge, candidate.y)));
         }
+        // Use only currently visible, unprotected bodies. The neck is not a
+        // collision target and dead or shielded snakes cannot threaten us.
+        internal static void AccumulateTrailAvoidance(PveFixedFighter self, IReadOnlyList<PveFixedFighter> opponents, ref long vx, ref long vy)
+        {
+            if (self == null || !self.alive || self.shieldTicks > 0) return;
+            foreach (var other in opponents)
+            {
+                if (other == null || other == self || !other.alive || other.shieldTicks > 0) continue;
+                for (int part = 2; part < other.motion.Length; part += 2)
+                {
+                    var point = other.motion.Segments[part];
+                    int dx = self.motion.X - point.x, dy = self.motion.Y - point.y;
+                    int distance = PveFixedMotion.Distance(dx, dy);
+                    if (distance <= 10 || distance >= 5000) continue;
+                    long weight = (5000 - distance) * 8L;
+                    vx += dx * weight / distance; vy += dy * weight / distance;
+                }
+            }
+        }
         private byte BotHeading(int index)
         {
             if (--botTimer[index] > 0) return botDirection[index];
@@ -102,6 +122,19 @@ namespace SnakeClub.Core
                 vx += (long)(fighters[nearest].motion.X - self.motion.X) * sign;
                 vy += (long)(fighters[nearest].motion.Y - self.motion.Y) * sign;
             }
+            AccumulateTrailAvoidance(self, fighters, ref vx, ref vy);
+            if (nearest < 0 || closest > 10000L * 10000L)
+            {
+                long closestFruit = 18000L * 18000L; int fruitIndex = -1;
+                for (int i = 0; i < fruit.Count; i++)
+                {
+                    long d = DistanceSquared(fruit[i].position.x - self.motion.X, fruit[i].position.y - self.motion.Y);
+                    if (d < closestFruit) { closestFruit = d; fruitIndex = i; }
+                }
+                if (fruitIndex >= 0)
+                { vx += (fruit[fruitIndex].position.x - self.motion.X) / 2; vy += (fruit[fruitIndex].position.y - self.motion.Y) / 2; }
+            }
+            botBoost[index] = nearest >= 0 && closest < 15000L * 15000L && self.motion.Length > fighters[nearest].motion.Length + 3;
             if (eventActive && eventType == 1)
             {
                 if (starHolder >= 0 && starHolder != index && fighters[starHolder].alive)
@@ -197,7 +230,7 @@ namespace SnakeClub.Core
             {
                 var fighter = fighters[i]; if (!fighter.alive) continue;
                 if (fighter.shieldTicks > 0) fighter.shieldTicks--;
-                fighter.motion.Step(i == 0 ? heading : BotHeading(i), i == 0 && boost,
+                fighter.motion.Step(i == 0 ? heading : BotHeading(i), i == 0 ? boost : botBoost[i],
                     i == 0 ? playerBonuses : new PveFixedBonuses());
             }
             PveFixedCombat.Resolve(fighters);
