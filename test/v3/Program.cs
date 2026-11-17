@@ -9,6 +9,24 @@ if (args.Length == 1 && args[0] == "pve-vector")
     return;
 }
 
+if (args.Length >= 2 && args[0] == "fixed-replay")
+{
+    int seed = int.Parse(args[1]);
+    var profile = args.Length > 2 ? new PlayerProgress() : new PlayerProgress { selectedSkin = 2, talents = new[] { 1, 2, 1, 0, 1, 0, 0, 0, 0 } };
+    var world = new PveFixedWorld(seed, true, profile);
+    var inputs = new List<byte>();
+    while (!world.Finished)
+    {
+        byte heading = (byte)(world.Tick / 53 * 37 + seed);
+        bool boost = world.Tick % 120 >= 95;
+        inputs.Add(heading); inputs.Add(boost ? (byte)1 : (byte)0);
+        world.Step(heading, boost);
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new { ticks = world.Tick, winner = world.Winner, kills = world.Fighters[0].kills,
+        length = world.Fighters[0].motion.Length, eventPoints = world.Fighters[0].eventPoints, inputs = Convert.ToBase64String(inputs.ToArray()) }));
+    return;
+}
+
 if (args.Length >= 2 && args[0] == "replay")
 {
     int seed = int.Parse(args[1]);

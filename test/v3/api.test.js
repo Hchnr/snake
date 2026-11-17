@@ -19,6 +19,7 @@ async function startServer() {
   const env = { ...process.env, SNAKE_ENV: 'development', SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), SNAKE_DEV_AUTH: '1', SNAKE_DEV_ADS: '0', SNAKE_DATA_FILE: dataFile, SNAKE_SESSION_KEY: 'v3-isolated-test-key', DOTNET_CLI_TELEMETRY_OPTOUT: '1' };
   delete env.SNAKE_SQLITE_FILE;
   delete env.SNAKE_RATE_LIMIT_PER_MIN;
+  delete env.SNAKE_FIXED_PVE_EVAL;
   server = spawn('dotnet', [serverDll], {
     cwd: root,
     env,
@@ -110,6 +111,10 @@ before(async () => {
 after(async () => {
   await stopServer();
   if (temp) fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test('experimental fixed PvE routes are disabled by default', async () => {
+  assert.equal((await fetch(`${base}/api/v3/internal/fixed-pve/start`, { method: 'POST' })).status, 404);
 });
 
 test('expired completed receipts recover without re-awarding, but expired unfinished runs remain invalid', async () => {
