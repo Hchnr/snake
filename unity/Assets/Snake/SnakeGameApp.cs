@@ -536,7 +536,10 @@ namespace SnakeClub
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
             else Label(new Rect(88, 135, 410, 52), depthMode ? (activeRun == null ? "练习 · " : "") + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
-            Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), 40, Color.white, TextAnchor.MiddleCenter, true);
+            bool urgent = RoundTimerPresentation.IsUrgent(state);
+            int timerSize = urgent ? (reducedEffects ? 44 : Mathf.RoundToInt(42 + 2 * Mathf.Sin(state.remaining * Mathf.PI * 2))) : 40;
+            Color timerColor = urgent ? new Color(1f, .76f, .40f) : Color.white;
+            Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), timerSize, timerColor, TextAnchor.MiddleCenter, true);
             Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
             Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + (depthMode ? "  星核 " : "  事件 ") + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
 
@@ -569,7 +572,7 @@ namespace SnakeClub
             }
             if (Time.unscaledTime < killFlashUntil && state != null && state.phase == "running")
             {
-                float flash = 1f + .10f * Mathf.Sin((killFlashUntil - Time.unscaledTime) * 14f);
+                float flash = reducedEffects ? 1f : 1f + .10f * Mathf.Sin((killFlashUntil - Time.unscaledTime) * 14f);
                 Label(new Rect(250, 430, 580, 110), "围猎成功  ·  变长！", Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
             }
             if (state != null && state.phase == "running" && state.captureOwner == playerId && state.captureTick >= 0 && state.tick - state.captureTick < 12)
