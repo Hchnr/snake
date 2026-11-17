@@ -12,6 +12,7 @@ sealed class GameApi
     private readonly object gate = new();
     private readonly string path;
     private readonly byte[] secret;
+    private readonly bool production;
     private GameData data;
     private readonly GameStore? store;
     private SqliteConnection? activeConnection;
@@ -25,7 +26,7 @@ sealed class GameApi
         path = Environment.GetEnvironmentVariable("SNAKE_DATA_FILE") ?? Path.Combine(root, "data", "v0.0.3.json");
         string? key = Environment.GetEnvironmentVariable("SNAKE_SESSION_KEY");
         string? database = Environment.GetEnvironmentVariable("SNAKE_SQLITE_FILE");
-        bool production = string.Equals(Environment.GetEnvironmentVariable("SNAKE_ENV"), "production", StringComparison.OrdinalIgnoreCase);
+        production = string.Equals(Environment.GetEnvironmentVariable("SNAKE_ENV"), "production", StringComparison.OrdinalIgnoreCase);
         if (production && (string.IsNullOrWhiteSpace(database) || string.IsNullOrWhiteSpace(key) || key.Length < 32))
             throw new InvalidOperationException("Production requires SNAKE_SQLITE_FILE and a stable SNAKE_SESSION_KEY of at least 32 characters.");
         if (production && (Environment.GetEnvironmentVariable("SNAKE_DEV_AUTH") == "1" || Environment.GetEnvironmentVariable("SNAKE_DEV_ADS") == "1"))
@@ -216,6 +217,7 @@ sealed class GameApi
 
     private IResult StartRun(PlayerProgress p, DateTimeOffset now, string mode, string? requestedRules = null)
     {
+        if (production && mode == "pve") return Fail("普通对局奖励验证尚未开放，请先进行练习", 503);
         string date = Day(now);
         string rules = requestedRules ?? DailyMatch.RulesVersion;
         var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
@@ -234,6 +236,7 @@ sealed class GameApi
         var run = FindRun(p, request.runId, request.token, "pve", now);
         if (run == null) return Fail("对局凭证无效或已过期");
         if (run.completed) return Results.Json(new { ok = true, profile = p, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin });
+        if (production) return Fail("普通对局奖励验证尚未开放，请先进行练习", 503);
         double elapsed = (now.ToUnixTimeMilliseconds() - run.startedAt) / 1000.0;
         if (request.seconds < 3 || request.seconds > 180 || request.seconds > elapsed + 2) return Fail("对局时长无效");
         if (request.actions < 1) return Fail("未检测到操作，本局不发放账号奖励");
