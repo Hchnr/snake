@@ -10,10 +10,15 @@ namespace SnakeClub.Core
             => profile == null ? 0 : Math.Max(profile.completedMatches, profile.tutorialComplete ? 1 : 0);
         public static bool IsUnlocked(PlayerProgress profile) => CompletedMatches(profile) >= 3;
 
+        // Growth is a high-risk choice: each level trades one second of
+        // the next room's normal spawn protection for extra elimination growth.
+        public static float SpawnProtection(int growth)
+            => Arena.SpawnShieldSeconds - Math.Min(2, Math.Max(0, growth));
+
         public static string BonusSummary(int shield, int rebound, int growth)
         {
             return "当前构筑：收圈护盾 " + Math.Min(2, Math.Max(0, shield)) * 2 + " 秒 · 反弹免费加速 " +
-                Math.Min(2, Math.Max(0, rebound)) * 3 + " 秒 · 淘汰增长 " + Math.Min(2, Math.Max(0, growth)) * 3 + " 节";
+                Math.Min(2, Math.Max(0, rebound)) * 3 + " 秒 · 淘汰增长 " + Math.Min(2, Math.Max(0, growth)) * 3 + " 节\n出生保护 " + SpawnProtection(growth) + " 秒";
         }
 
         public enum RoomStatus { InProgress, Won, Lost }
@@ -61,7 +66,7 @@ namespace SnakeClub.Core
                     return "反弹免费加速 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 秒\n下次使用 · 松开结束 · 8 秒冷却";
                 case 2:
                     current = Math.Min(2, Math.Max(0, growth));
-                    return "淘汰额外增长 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 节";
+                    return "淘汰额外增长 " + current * 3 + " → " + Math.Min(2, current + 1) * 3 + " 节\n出生保护 " + SpawnProtection(current) + " → " + SpawnProtection(current + 1) + " 秒";
                 default: return "";
             }
         }

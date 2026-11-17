@@ -233,7 +233,7 @@ namespace SnakeClub
             Label(new Rect(140, 530, 800, 90), title, 49, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(150, 640, 780, 70), me == null ? "" : "淘汰 " + me.kills + "  ·  长度 " + me.segments.Count, 29, new Color(.75f, .92f, .88f), TextAnchor.MiddleCenter);
             Label(new Rect(150, 710, 780, 70), resultNote, 22, new Color(.75f, .88f, .91f), TextAnchor.MiddleCenter);
-            Label(new Rect(140, 780, 800, 60), DepthChallenge.BonusSummary(depthShield, depthRebound, depthGrowth), 20, new Color(.68f, .84f, .86f), TextAnchor.MiddleCenter);
+            Label(new Rect(140, 765, 800, 75), DepthChallenge.BonusSummary(depthShield, depthRebound, depthGrowth), 20, new Color(.68f, .84f, .86f), TextAnchor.MiddleCenter);
             if (depthWon && depthRoom < 3)
             {
                 Label(new Rect(150, 835, 780, 55), busy ? "正在准备下一间…" : "选择一个本次深潜增益", 29, new Color(1f, .86f, .56f), TextAnchor.MiddleCenter, true);

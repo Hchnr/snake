@@ -162,7 +162,8 @@ namespace SnakeClub
             else
             {
                 arena = new Arena(arenaSeed, roundSeconds: 55f, nearbyOpponents: true, enableCaptures: true);
-                arena.AddSnake(playerId, playerName, false);
+                var depthPlayer = arena.AddSnake(playerId, playerName, false);
+                depthPlayer.shield = DepthChallenge.SpawnProtection(depthGrowth);
                 for (int i = 0; i < 7; i++) arena.AddSnake("bot-" + i, "AI " + (i + 1), true);
                 if (depthRoom == 2) arena.ConfigureStar(5f, playerId);
                 else arena.DisableStar();

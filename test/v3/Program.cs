@@ -1559,6 +1559,9 @@ static void DepthRoomFlow()
     Check(DepthChallenge.BonusChoice(0, 1, 0, 0).Contains("2 → 4 秒"), "stacked capture shield preview is incorrect");
     Check(DepthChallenge.BonusChoice(1, 0, 0, 0).Contains("0 → 3 秒"), "rebound preview is incorrect");
     Check(DepthChallenge.BonusChoice(2, 0, 0, 2).Contains("6 → 6 节"), "capped growth preview is incorrect");
+    Check(DepthChallenge.SpawnProtection(0) == 3 && DepthChallenge.SpawnProtection(1) == 2 && DepthChallenge.SpawnProtection(2) == 1 && DepthChallenge.SpawnProtection(99) == 1 && DepthChallenge.SpawnProtection(-1) == 3, "growth protection tradeoff did not respect its bounds");
+    Check(DepthChallenge.BonusChoice(2, 0, 0, 0).Contains("出生保护 3 → 2 秒") && DepthChallenge.BonusChoice(2, 0, 0, 1).Contains("出生保护 2 → 1 秒"), "growth choice did not disclose its cost");
+    Check(summary.Contains("出生保护 1 秒"), "build summary omitted the protection tradeoff");
     string capped = DepthChallenge.BonusSummary(int.MaxValue, -1, int.MaxValue);
     Check(capped.Contains("护盾 4 秒") && capped.Contains("加速 0 秒") && capped.Contains("增长 6 节"), "bonus summary did not enforce limits");
     var hintWorld = new ArenaState { phase = "running" };
