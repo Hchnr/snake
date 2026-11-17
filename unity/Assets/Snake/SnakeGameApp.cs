@@ -53,6 +53,7 @@ namespace SnakeClub
         private readonly DragSteering dragSteering = new DragSteering();
         private readonly MatchHighlights matchHighlights = new MatchHighlights();
         private readonly NameplateLayout nameplates = new NameplateLayout();
+        private string opponentEdgeId = "";
         private struct NameplateEntry { public Rect box; public Vector2 anchor; public Color color; public string label; }
         private readonly List<NameplateEntry> nameplateEntries = new List<NameplateEntry>(8);
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
@@ -148,7 +149,7 @@ namespace SnakeClub
 
         private void BeginPve(ApiReply run)
         {
-            nameplates.ClearHistory();
+            nameplates.ClearHistory(); opponentEdgeId = "";
             dragSteering.Reset();
             fixedPve = null;
             connection.Close();
@@ -208,7 +209,7 @@ namespace SnakeClub
 
         private void BeginFixedPveWithRun(ApiReply run)
         {
-            nameplates.ClearHistory();
+            nameplates.ClearHistory(); opponentEdgeId = "";
             dragSteering.Reset(); connection.Close();
             online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = null; depthMode = false;
@@ -230,7 +231,7 @@ namespace SnakeClub
 
         private void StartOnline(string action)
         {
-            nameplates.ClearHistory();
+            nameplates.ClearHistory(); opponentEdgeId = "";
             dragSteering.Reset();
             string address = serverInput.Trim();
             if (!address.StartsWith("ws://", StringComparison.OrdinalIgnoreCase) && !address.StartsWith("wss://", StringComparison.OrdinalIgnoreCase))
@@ -292,7 +293,7 @@ namespace SnakeClub
 
         private void BackToMenu()
         {
-            nameplates.ClearHistory();
+            nameplates.ClearHistory(); opponentEdgeId = "";
             dragSteering.Reset();
             connection.Close();
             inGame = false;
@@ -688,7 +689,12 @@ namespace SnakeClub
                 Panel(new Rect(220, 1510, 640, 70), new Color(.035f, .12f, .17f, .90f));
                 Label(new Rect(235, 1515, 610, 60), boostHint, 24, new Color(.75f, 1f, .90f), TextAnchor.MiddleCenter, true);
             }
-            if (state != null && state.phase == "running") { DrawNames(state); DrawEventTargetEdge(state); }
+            if (state != null && state.phase == "running")
+            {
+                DrawNames(state);
+                bool hasObjectiveEdge = DrawEventTargetEdge(state, out Rect objectiveEdge);
+                DrawOpponentEdge(state, hasObjectiveEdge, objectiveEdge);
+            }
             if (firstRun && tutorialHints && !online && !paused && state != null && state.phase == "running")
             {
                 string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills, FirstRunHints.ApproachingOwnTrail(me), tutorialBoosted);
@@ -783,20 +789,77 @@ namespace SnakeClub
             }
         }
 
-        private void DrawEventTargetEdge(ArenaState world)
+        private bool DrawEventTargetEdge(ArenaState world, out Rect box)
         {
-            if (!EventTargetIndicator.TryTarget(world, playerId, out var target, out string name)) return;
+            box = default;
+            if (!EventTargetIndicator.TryTarget(world, playerId, out var target, out string name)) return false;
             Vector3 screen = arenaRenderer.WorldToScreen(target);
-            if (screen.z <= 0) return;
+            if (screen.z <= 0) return false;
             Vector2 projected = ToVirtual(screen);
-            if (!EventTargetIndicator.TryEdge(new Point(projected.x, projected.y), 110, 410, 970, 1450, out var edge)) return;
+            if (!EventTargetIndicator.TryEdge(new Point(projected.x, projected.y), 110, 410, 970, 1450, out var edge)) return false;
             // Keep the marker clear of the minimap in the upper right.
             if (edge.x > 760 && edge.y < 545) edge.y = 545;
-            Rect box = new Rect(Mathf.Clamp(edge.x - 65, 30, 920), Mathf.Clamp(edge.y - 27, 250, 1550), 130, 54);
+            box = new Rect(Mathf.Clamp(edge.x - 65, 30, 920), Mathf.Clamp(edge.y - 27, 250, 1550), 130, 54);
             Panel(box, new Color(.15f, .11f, .06f, .88f));
             Color previous = GUI.color; GUI.color = new Color(1f, .82f, .35f);
             GUI.DrawTexture(new Rect(box.x + 13, box.y + 21, 12, 12), rounded); GUI.color = previous;
             Label(new Rect(box.x + 20, box.y, box.width - 20, box.height), name, 22, new Color(1f, .88f, .55f), TextAnchor.MiddleCenter, true);
+            return true;
+        }
+
+        private void DrawOpponentEdge(ArenaState world, bool hasObjective, Rect objectiveBox)
+        {
+            var player = world.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive || player.segments.Count == 0) { opponentEdgeId = ""; return; }
+            Vector3 playerScreen = arenaRenderer.HeadToScreen(player.segments[0]);
+            if (playerScreen.z <= 0) { opponentEdgeId = ""; return; }
+            Vector2 playerPosition = ToVirtual(playerScreen);
+            SnakeState selected = null, previous = null;
+            Rect selectedBox = default, previousBox = default;
+            Vector2 selectedDirection = default, previousDirection = default;
+            float best = float.PositiveInfinity, previousDistance = float.PositiveInfinity;
+            foreach (var other in world.snakes)
+            {
+                if (other == null || other.segments == null || other.segments.Count == 0) continue;
+                Vector3 screen = arenaRenderer.HeadToScreen(other.segments[0]);
+                if (screen.z <= 0) continue;
+                Vector2 target = ToVirtual(screen);
+                if (!OpponentEdgeIndicator.TryCandidate(world, playerId, other, new Point(target.x, target.y), out float distance, out Point edge)) continue;
+                Point origin = OpponentEdgeIndicator.BoxOrigin(edge);
+                Rect box = new Rect(origin.x, origin.y, 140, 54);
+                if (hasObjective && box.Overlaps(objectiveBox)) continue;
+                bool blocked = false;
+                foreach (var entry in nameplateEntries) if (box.Overlaps(entry.box)) { blocked = true; break; }
+                if (blocked) continue;
+                if (other.id == opponentEdgeId) { previous = other; previousBox = box; previousDirection = target - playerPosition; previousDistance = distance; }
+                if (distance < best) { selected = other; selectedBox = box; selectedDirection = target - playerPosition; best = distance; }
+            }
+            if (previous != null && OpponentEdgeIndicator.KeepPrevious(previousDistance, best))
+            { selected = previous; selectedBox = previousBox; selectedDirection = previousDirection; }
+            if (selected == null || selectedDirection.sqrMagnitude < .01f) { opponentEdgeId = ""; return; }
+            opponentEdgeId = selected.id;
+            Panel(selectedBox, new Color(.035f, .085f, .12f, .90f));
+            Color color = Color.Lerp(arenaRenderer.TrailColor(selected, playerId), Color.white, .55f);
+            Vector2 tip = new Vector2(selectedBox.x + 30, selectedBox.center.y);
+            Vector2 direction = selectedDirection.normalized, side = new Vector2(-direction.y, direction.x);
+            DrawEdgeLine(tip - direction * 18 + side * 11, tip, color);
+            DrawEdgeLine(tip - direction * 18 - side * 11, tip, color);
+            Label(new Rect(selectedBox.x + 48, selectedBox.y, selectedBox.width - 48, selectedBox.height),
+                selected.bot ? "AI" : "玩家", 22, Color.white, TextAnchor.MiddleCenter, true);
+        }
+
+        private void DrawEdgeLine(Vector2 start, Vector2 end, Color color)
+        {
+            Vector2 delta = end - start;
+            Color previousColor = GUI.color;
+            GUI.color = color;
+            int steps = Mathf.Max(1, Mathf.CeilToInt(delta.magnitude / 3f));
+            for (int i = 0; i <= steps; i++)
+            {
+                Vector2 point = Vector2.Lerp(start, end, (float)i / steps);
+                GUI.DrawTexture(new Rect(point.x - 3, point.y - 3, 6, 6), Texture2D.whiteTexture);
+            }
+            GUI.color = previousColor;
         }
 
         private void DrawNames(ArenaState world)
