@@ -15,6 +15,7 @@ parser.add_argument('target', choices=('mac', 'webgl'))
 parser.add_argument('--output', required=True, help='new player output path')
 parser.add_argument('--offline-practice', action='store_true', help='disable development login and reference-only characters in the copied project')
 parser.add_argument('--fixed-pve-preview', action='store_true', help='enable experimental integer PvE in an offline practice build')
+parser.add_argument('--no-graphics', action='store_true', help='run the build with Unity -nographics (availability depends on build target)')
 args = parser.parse_args()
 if args.fixed_pve_preview and not args.offline_practice:
     parser.error('--fixed-pve-preview requires --offline-practice')
@@ -44,7 +45,10 @@ with tempfile.TemporaryDirectory(prefix='snake-unity-build-') as directory:
     environment = {**os.environ, 'SNAKE_BUILD_OUTPUT': str(output), 'SNAKE_BUILD_STAMP': str(stamp)}
     if args.offline_practice:
         environment['SNAKE_INCLUDE_REFERENCE_ASSETS'] = '0'
-    command = [str(editor), '-batchmode', '-quit', '-projectPath', str(project), '-buildTarget', target, '-executeMethod', method, '-logFile', str(log)]
+    command = [str(editor), '-batchmode']
+    if args.no_graphics:
+        command.append('-nographics')
+    command.extend(['-quit', '-projectPath', str(project), '-buildTarget', target, '-executeMethod', method, '-logFile', str(log)])
     print(f'Building {target} in an isolated project: {output}', flush=True)
     try:
         result = subprocess.run(command, env=environment, timeout=420, check=False)
