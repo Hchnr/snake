@@ -144,13 +144,27 @@ namespace SnakeClub
             if (!resolved()) timeout();
         }
 
+        private IEnumerator LoginCallbackTimeout(Action timeout)
+        {
+            yield return new WaitForSecondsRealtime(10f);
+            timeout();
+        }
+
         private void LoginDouyin(Action<ApiReply> done)
         {
             // Offline preview still initializes TTSDK for platform features,
             // but must not request an identity without a configured backend.
             if (string.IsNullOrWhiteSpace(Config.apiUrl)) { done(new ApiReply { error = "当前为离线练习" }); return; }
-            TT.Login((code, anonymousCode, isLogin) => PostRaw("auth/douyin", new ApiRequest { code = code, anonymousCode = anonymousCode }, reply => FinishLogin(reply, done)),
-                error => done(new ApiReply { error = "抖音登录失败" }), false);
+            int finished = 0;
+            void FinishOnce(ApiReply reply)
+            {
+                if (System.Threading.Interlocked.CompareExchange(ref finished, 1, 0) == 0) done(reply);
+            }
+            PlatformLoginFlow.Start(
+                (success, failure) => TT.Login((code, anonymousCode, isLogin) => success(code, anonymousCode), error => failure(), false),
+                timeout => StartCoroutine(LoginCallbackTimeout(timeout)),
+                (code, anonymousCode) => PostRaw("auth/douyin", new ApiRequest { code = code, anonymousCode = anonymousCode }, reply => FinishLogin(reply, FinishOnce)),
+                error => FinishOnce(new ApiReply { error = error }));
         }
 #endif
 
