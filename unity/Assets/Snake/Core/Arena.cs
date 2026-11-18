@@ -45,6 +45,7 @@ namespace SnakeClub.Core
         public List<Point> segments = new List<Point>();
         // Local strength-preview hints, aligned with segments; not an online snapshot field.
         internal int strengthAttackTick = -1, strengthDamageTick = -1;
+        internal int strengthHeadDefense, strengthTailDefense, strengthEffectFactor;
         internal readonly List<bool> strengthWeakSegments = new List<bool>();
         internal readonly List<bool> strengthThreatSegments = new List<bool>();
     }
@@ -429,6 +430,26 @@ namespace SnakeClub.Core
             Update(attackTick, ref seenAttack, ref attackStarted);
             Update(damageTick, ref seenDamage, ref damageStarted);
             return StrengthReaction.Sample(now - attackStarted, now - damageStarted, reduced);
+        }
+    }
+
+    public readonly struct StrengthAppearanceValues
+    {
+        public readonly float BodyWidth, HeadScale, TailRatio, Glow;
+        public StrengthAppearanceValues(float bodyWidth, float headScale, float tailRatio, float glow)
+        { BodyWidth = bodyWidth; HeadScale = headScale; TailRatio = tailRatio; Glow = glow; }
+    }
+
+    // Bounded visual cues, not hitboxes or a prediction of the next encounter.
+    public static class StrengthAppearance
+    {
+        public static StrengthAppearanceValues FromDefense(int head, int tail, int effect)
+        {
+            if (head <= 0 || tail < 0) return new StrengthAppearanceValues(.8f, 1f, 1f, 0f);
+            float strength = Math.Max(0, Math.Min(1, (head - 100) / 100f));
+            float taper = Math.Max(.5f, Math.Min(1f, tail / (float)head));
+            float glow = Math.Max(0, Math.Min(1, (effect - 1000) / 250f));
+            return new StrengthAppearanceValues(.8f + .55f * strength, 1f + .18f * strength, taper, glow);
         }
     }
 
