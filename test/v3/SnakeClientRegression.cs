@@ -511,6 +511,13 @@ namespace SnakeClub.Tests.Editor
                 actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(20000, 0, 0, 40));
                 for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
                 renderer.Draw(world.RenderState(), "you");
+                if (Screen.width > 0 && Screen.height > 0)
+                    Require(renderer.TryCharacterScreenBounds("you", out Rect spriteBounds) && spriteBounds.width > 0 && spriteBounds.height > 0,
+                        "rendered sprite did not expose screen bounds for minimap avoidance");
+                if (Screen.width > 0 && Screen.height > 0)
+                    Require(renderer.TryFallbackHeadScreenBounds(new Point(0, 0), out Rect fallbackBounds) && fallbackBounds.width > 0 && fallbackBounds.height > 0,
+                        "procedural fallback did not expose approximate screen bounds");
+                Require(!renderer.TryCharacterScreenBounds("absent", out _), "nonexistent character exposed bounds");
                 var trails = (System.Collections.Generic.Dictionary<string, LineRenderer[]>)typeof(ArenaRenderer).GetField("characterTrails", flags).GetValue(renderer);
                 Require(trails["bot-1"][0].widthMultiplier > trails["you"][0].widthMultiplier &&
                     trails["you"][0].widthCurve.Evaluate(1) < trails["you"][0].widthCurve.Evaluate(0),

@@ -53,6 +53,9 @@ namespace SnakeClub
         private readonly DragSteering dragSteering = new DragSteering();
         private readonly MatchHighlights matchHighlights = new MatchHighlights();
         private readonly NameplateLayout nameplates = new NameplateLayout();
+        private readonly MinimapOcclusion minimapOcclusion = new MinimapOcclusion();
+        private ArenaState minimapWorld;
+        private int minimapFrame = -1;
         private string opponentEdgeId = "";
         private struct NameplateEntry { public Rect box; public Vector2 anchor; public Color color; public string label; }
         private readonly List<NameplateEntry> nameplateEntries = new List<NameplateEntry>(8);
@@ -856,7 +859,24 @@ namespace SnakeClub
         private void DrawMiniMap(ArenaState world)
         {
             Rect map = new Rect(790, 285, 240, 240);
-            Panel(map, new Color(.025f, .06f, .10f, .85f));
+            if (!ReferenceEquals(minimapWorld, world)) { minimapWorld = world; minimapFrame = -1; minimapOcclusion.Reset(); }
+            if (minimapFrame != Time.frameCount)
+            {
+                minimapFrame = Time.frameCount;
+                bool covered = false;
+                foreach (var snake in world.snakes)
+                {
+                    if (!snake.alive || snake.segments == null || snake.segments.Count == 0) continue;
+                    if (!arenaRenderer.TryCharacterScreenBounds(snake.id, out Rect pixel) &&
+                        !arenaRenderer.TryFallbackHeadScreenBounds(snake.segments[0], out pixel)) continue;
+                    Vector2 a = ToVirtual(new Vector2(pixel.xMin, pixel.yMin)), b = ToVirtual(new Vector2(pixel.xMax, pixel.yMax));
+                    var character = Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
+                    if (map.Overlaps(character)) { covered = true; break; }
+                }
+                minimapOcclusion.Advance(world.tick, covered, Time.unscaledDeltaTime, SimulationSuspended, reducedEffects);
+            }
+            float visibility = minimapOcclusion.Visibility;
+            Panel(map, new Color(.025f, .06f, .10f, .85f * visibility));
             foreach (var snake in world.snakes)
             {
                 if (!snake.alive || snake.segments.Count == 0) continue;
@@ -868,10 +888,11 @@ namespace SnakeClub
                 bool target = world.eventStatus == "active" && world.eventTarget == snake.id;
                 if (target)
                 {
-                    GUI.color = new Color(1f, .83f, .35f);
+                    GUI.color = new Color(1f, .83f, .35f, visibility);
                     GUI.DrawTexture(new Rect(x - 10, y - 10, 20, 20), rounded);
                 }
                 GUI.color = snake.id == playerId ? Color.white : arenaRenderer.TrailColor(snake, playerId);
+                GUI.color = new Color(GUI.color.r, GUI.color.g, GUI.color.b, visibility);
                 GUI.DrawTexture(new Rect(x - size / 2, y - size / 2, size, size), rounded);
                 GUI.color = previous;
             }
@@ -882,7 +903,7 @@ namespace SnakeClub
                 float y = map.y + 15 + (1 - (p.y / world.halfSize + 1) * .5f) * (map.height - 30);
                 if (!string.IsNullOrEmpty(world.starHolder)) { x += 10; y -= 10; }
                 x = Mathf.Clamp(x, map.x + 8, map.xMax - 8); y = Mathf.Clamp(y, map.y + 8, map.yMax - 8);
-                Color previous = GUI.color; GUI.color = new Color(1f, .84f, .32f);
+                Color previous = GUI.color; GUI.color = new Color(1f, .84f, .32f, visibility);
                 GUI.DrawTexture(new Rect(x - 7, y - 7, 14, 14), rounded); GUI.color = previous;
             }
         }
