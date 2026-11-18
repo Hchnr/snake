@@ -3,6 +3,12 @@ using System.Collections;
 using System.Reflection;
 using SnakeClub.Core;
 
+if (args.Length == 1 && args[0] == "strength-pve-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.Compute());
+    return;
+}
+
 if (args.Length == 1 && args[0] == "pve-vector")
 {
     Console.WriteLine(SnakeClub.Tests.PveReplayVector.Compute() + ";matrix=" + SnakeClub.Tests.PveReplayVector.ComputeMatrix());
@@ -99,6 +105,7 @@ var cases = new (string name, Action run)[]
     ("strength match levels track actual actions after combat", StrengthLevelCases),
     ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
+    ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1602,6 +1609,50 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void StrengthRecordingCases()
+{
+    foreach (int seed in new[] { 1, 73, 12345 })
+    foreach (bool first in new[] { false, true })
+    {
+        var live = new PveFixedWorld(seed, first, null, strengthPreview: true);
+        var tape = new List<byte>();
+        while (!live.Finished)
+        {
+            int tick = live.Tick; byte heading = (byte)(tick / 53 * 37 + seed);
+            bool boost = tick % 120 >= 95;
+            tape.Add(heading); tape.Add(boost ? (byte)1 : (byte)0); live.Step(heading, boost);
+        }
+        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay) && replay.StrengthPreview &&
+            live.Tick == replay.Tick && live.Winner == replay.Winner && live.StrengthPickupVisible == replay.StrengthPickupVisible &&
+            live.StrengthPickupPosition.x == replay.StrengthPickupPosition.x && live.StrengthPickupPosition.y == replay.StrengthPickupPosition.y,
+            "completed strength recording did not reproduce match outcome");
+        for (int i = 0; i < live.Fighters.Count; i++)
+        {
+            var a = live.Fighters[i]; var b = replay.Fighters[i];
+            Check(a.alive == b.alive && a.kills == b.kills && a.motion.Angle == b.motion.Angle && a.motion.Length == b.motion.Length &&
+                a.eliminatedBy == b.eliminatedBy && a.eliminationReason == b.eliminationReason &&
+                live.StrengthLoopTicks(a.id) == replay.StrengthLoopTicks(b.id) && live.StrengthBuffTicks(a.id) == replay.StrengthBuffTicks(b.id),
+                "strength recording changed fighter outcome or buff");
+            Check(live.TryGetStrengthLevelProgress(a.id, out int la, out int xa, out int ra) == replay.TryGetStrengthLevelProgress(b.id, out int lb, out int xb, out int rb) &&
+                la == lb && xa == xb && ra == rb, "strength recording changed level progress");
+            for (int j = 0; j < a.motion.Length; j++)
+                Check(a.motion.Segments[j].x == b.motion.Segments[j].x && a.motion.Segments[j].y == b.motion.Segments[j].y,
+                    "strength recording changed a body segment");
+        }
+        Check(live.Fruit.Count == replay.Fruit.Count, "strength recording changed fruit count");
+        for (int i = 0; i < live.Fruit.Count; i++)
+            Check(live.Fruit[i].position.x == replay.Fruit[i].position.x && live.Fruit[i].position.y == replay.Fruit[i].position.y &&
+                live.Fruit[i].color == replay.Fruit[i].color, "strength recording changed fruit state");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _), "unfinished strength recording accepted");
+        tape.Add(0); tape.Add(0);
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _), "trailing strength input accepted");
+    }
+    Check(!PveFixedRecording.TryReplayStrength(1, true, null, out _) &&
+        !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0 }, out _) &&
+        !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0, 2 }, out _) &&
+        !PveFixedRecording.TryReplayStrength(1, true, new byte[(60 * PveFixedWorld.TickRate + 1) * 2], out _), "malformed strength recording accepted");
 }
 
 static void StrengthNoticeCases()

@@ -18,12 +18,20 @@ namespace SnakeClub.Core
         public const string ExperimentalRules = "fixed-pve-experiment-1";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
+            => TryReplayInternal(seed, firstRun, profile, inputs, false, out result);
+
+        // Diagnostic only: this mutable prototype is not a versioned ruleset
+        // and must not be used to verify accounts, rankings, or rewards.
+        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result)
+            => TryReplayInternal(seed, firstRun, null, inputs, true, out result);
+
+        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, out PveFixedWorld result)
         {
             result = null;
             int limit = (firstRun ? 60 : 90) * PveFixedWorld.TickRate;
             if (inputs == null || inputs.Length == 0 || inputs.Length % 2 != 0 || inputs.Length > limit * 2) return false;
             for (int i = 1; i < inputs.Length; i += 2) if (inputs[i] > 1) return false;
-            var world = new PveFixedWorld(seed, firstRun, profile);
+            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength);
             for (int i = 0; i < inputs.Length; i += 2)
             {
                 if (world.Finished) return false;
