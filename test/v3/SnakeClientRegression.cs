@@ -50,6 +50,7 @@ namespace SnakeClub.Tests.Editor
                 Debug.Log("PASS Unity strength server preview requires explicit loopback configuration");
                 TestPendingStorageProtection();
                 TestFixedPvePreviewFlow();
+                TestStrengthPracticeFirstRun();
                 TestGameplayComparison();
                 TestPracticeTutorialAccess();
                 TestDepthPracticeIsolation();
@@ -436,6 +437,60 @@ namespace SnakeClub.Tests.Editor
                 Debug.Log("PASS Unity strength impacts follow real bite positions");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestStrengthPracticeFirstRun()
+        {
+            const string key = "snake.v033.strengthPracticeTutorial";
+            bool hadKey = PlayerPrefs.HasKey(key);
+            int original = PlayerPrefs.GetInt(key, 0);
+            var root = new GameObject("Strength practice progression regression");
+            try
+            {
+                PlayerPrefs.DeleteKey(key);
+                var app = root.AddComponent<SnakeGameApp>();
+                var api = root.AddComponent<GameApiClient>();
+                api.Configure(new GameConfiguration { experimentalFixedPve = true, experimentalStrengthPve = true,
+                    apiUrl = "", serverUrl = "", allowDevLogin = false });
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var connection = root.AddComponent<RoomConnection>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, renderer); Field("connection").SetValue(app, connection);
+                Call("LoadPreferences"); Call("StartMain");
+                var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                var practice = (PlayerProgress)Field("practiceProfile").GetValue(app);
+                Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "first strength match was not a tutorial");
+                Field("controlActions").SetValue(app, 1); Call("RecordResult");
+                Require(PlayerPrefs.GetInt(key, 0) == 0, "unfinished match completed the tutorial");
+                Call("StartMain"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                world.Fighters[0].alive = false; world.Step(0, false);
+                Require(world.Finished, "fixture did not finish after player elimination");
+                Call("RecordResult");
+                Require(PlayerPrefs.GetInt(key, 0) == 0, "unattended match completed the tutorial");
+                Call("StartMain"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                world.Fighters[0].alive = false; world.Step(0, false);
+                Require(world.Finished, "fixture did not finish after player elimination");
+                Field("controlActions").SetValue(app, 1); Call("RecordResult");
+                Require(PlayerPrefs.GetInt(key, 0) == 1 && !practice.tutorialComplete && practice.completedMatches == 0,
+                    "completed strength practice changed other progression or did not persist locally");
+                Call("LoadPreferences"); Call("StartMain");
+                world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(!(bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 90,
+                    "later strength match did not use normal duration after reload");
+                api.Configure(new GameConfiguration { experimentalFixedPve = true, apiUrl = "", serverUrl = "", allowDevLogin = false });
+                Call("StartMain");
+                Require((bool)Field("firstRun").GetValue(app), "strength tutorial changed the separate fixed PvE tutorial");
+                Debug.Log("PASS Unity strength practice remembers only completed active tutorials");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
+                PlayerPrefs.Save();
+            }
         }
 
         private static void TestGameplayComparison()

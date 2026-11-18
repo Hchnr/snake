@@ -35,6 +35,8 @@ namespace SnakeClub
         private int previewSkin, lastRewardCoins, localVisualSkin = -1;
         private ApiReply board;
         private int boardGeneration;
+        private const string StrengthPracticeTutorialKey = "snake.v033.strengthPracticeTutorial";
+        private bool strengthPracticeTutorialComplete;
         private const string PendingKey = "snake.v3.pending";
         private readonly PendingRetrySchedule pendingRetry = new PendingRetrySchedule();
         private readonly CaveSyncState caveSync = new CaveSyncState();
@@ -119,6 +121,7 @@ namespace SnakeClub
         {
             reducedEffects = PlayerPrefs.GetInt("snake.v031.reducedEffects", 0) != 0;
             tutorialHints = PlayerPrefs.GetInt("snake.v031.tutorialHints", 1) != 0;
+            strengthPracticeTutorialComplete = PlayerPrefs.GetInt(StrengthPracticeTutorialKey, 0) != 0;
         }
 
         private void SetTutorialHints(bool enabled)
@@ -344,6 +347,15 @@ namespace SnakeClub
         {
             var world = fixedPve;
             var run = activeRun;
+            if (world != null && world.StrengthPreview && world.Finished && run == null &&
+                api.Config.StrengthPvePreview && controlActions > 0 && !strengthPracticeTutorialComplete)
+            {
+                // Only this local preview changes; never mutate an account or
+                // mark an abandoned / unattended match as a completed tutorial.
+                strengthPracticeTutorialComplete = true;
+                try { PlayerPrefs.SetInt(StrengthPracticeTutorialKey, 1); PlayerPrefs.Save(); }
+                catch (Exception) { /* Keep session progress even if storage is unavailable. */ }
+            }
             bool strength = world != null && world.StrengthPreview && run != null && run.mode == "strength-eval" && api.Config.StrengthPveServerPreview;
             bool fixedEval = world != null && !world.StrengthPreview && run != null && run.mode == "fixed-eval" && api.Config.FixedPveServerPreview;
             if ((!strength && !fixedEval) || !api.Connected || api.Profile.playerId != activePlayerId)
