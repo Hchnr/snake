@@ -107,6 +107,7 @@ namespace SnakeClub.Core
                 case "trail": return "撞上对手轨迹，被淘汰";
                 case "head": return "正面相撞时长度较短，被淘汰";
                 case "head_tie": return "正面相撞且长度相同，双方出局";
+                case "strength_head": return "正面相撞时强度较弱，被淘汰";
                 case "capture": return "被对手收圈捕获";
                 default: return "本局已出局";
             }

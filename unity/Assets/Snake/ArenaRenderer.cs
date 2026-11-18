@@ -81,6 +81,8 @@ namespace SnakeClub
         private Vector3 reboundPosition;
         public int SelectedSkin { get; set; }
         public bool ReducedEffects { get; set; }
+        public bool LegacyDangerWarning { get; set; } = true;
+        public bool StrengthBodyVisual { get; set; }
         public bool MotionPaused { get; set; }
         public bool VisualFallback { get; private set; }
         public bool Visible
@@ -475,6 +477,15 @@ namespace SnakeClub
                         Vector3.Lerp(positions[i], target, 1f - Mathf.Exp(-16f * (MotionPaused ? 0f : Time.deltaTime)));
                     float taper = characterSprite != null ? .80f : i == 0 ? 1.65f : Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((snake.segments.Count - i) / 6f));
                     if (characterSprite == null) list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * taper));
+                    else if (StrengthBodyVisual && i > 0)
+                    {
+                        // Mark actual body-segment centres; taper makes the
+                        // weaker tail distinguishable without adding collision.
+                        float progress = (float)i / Mathf.Max(1, snake.segments.Count - 1);
+                        float bead = Mathf.Lerp(.36f, .18f, progress);
+                        Vector3 point = positions[i]; point.y = .38f;
+                        scales.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * bead));
+                    }
                     if (characterSprite == null && snake.id == playerId && i > 0 && i % (SelectedSkin == 1 ? 3 : 2) == 0)
                     {
                         float scale = SelectedSkin == 2 ? .45f : .35f;
@@ -505,7 +516,7 @@ namespace SnakeClub
                 }
                 if (characterSprite != null)
                 {
-                    DrawCharacterTrail(snake.id, positions, Palette[color]);
+                    DrawCharacterTrail(snake.id, positions, Palette[color], StrengthBodyVisual ? 1 : 2);
                     if (!characters.TryGetValue(snake.id, out var character) || character == null)
                     {
                         var item = new GameObject("Full character " + snake.id); item.transform.SetParent(runtimeRoot, false);
@@ -568,7 +579,7 @@ namespace SnakeClub
                             trail.Add(Matrix4x4.TRS(glow, Quaternion.identity, Vector3.one * size));
                         }
                     }
-                    if (DangerProbe.Find(state, playerId, out var danger) || DangerProbe.FindBeforeProtectionEnds(state, playerId, out danger))
+                    if (LegacyDangerWarning && (DangerProbe.Find(state, playerId, out var danger) || DangerProbe.FindBeforeProtectionEnds(state, playerId, out danger)))
                     {
                         Point offset = danger - snake.segments[0];
                         if (offset.Length > .01f)
@@ -746,11 +757,11 @@ namespace SnakeClub
             PlaceRing(ring, center + Vector3.up * .03f, 1.12f);
         }
 
-        private void DrawCharacterTrail(string id, List<Vector3> positions, Color color)
+        private void DrawCharacterTrail(string id, List<Vector3> positions, Color color, int firstSegment)
         {
-            // Segments 0 and 1 are excluded by body collision, so the visible
-            // collidable trail begins at segment 2 rather than at the avatar.
-            if (positions.Count < 4) return;
+            // Old rules start body collision at segment 2; strength practice
+            // includes segment 1. Segment 0 remains the character's head.
+            if (positions.Count < firstSegment + 2) return;
             if (!characterTrails.TryGetValue(id, out var lines) || lines[0] == null)
             {
                 lines = new LineRenderer[2];
@@ -766,17 +777,17 @@ namespace SnakeClub
             }
             for (int layer = 0; layer < lines.Length; layer++)
             {
-                var line = lines[layer]; line.enabled = true; line.positionCount = positions.Count - 2;
+                var line = lines[layer]; line.enabled = true; line.positionCount = positions.Count - firstSegment;
                 Color shade = layer == 0 ? color : Color.Lerp(color, Color.white, .78f);
                 float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(visualClock.Time * 4f);
                 line.startColor = line.endColor = new Color(shade.r * pulse, shade.g * pulse, shade.b * pulse, 1f);
-                for (int i = 2; i < positions.Count; i++) line.SetPosition(i - 2, new Vector3(positions[i].x, .23f + layer * .02f, positions[i].z));
+                for (int i = firstSegment; i < positions.Count; i++) line.SetPosition(i - firstSegment, new Vector3(positions[i].x, .23f + layer * .02f, positions[i].z));
             }
             if (!ReducedEffects)
             {
                 // Moving highlights remain inside the real collidable path.
                 float phase = Mathf.Repeat(visualClock.Time * 3f, 5f);
-                for (float sample = 2f + phase; sample < positions.Count - 1; sample += 5f)
+                for (float sample = firstSegment + phase; sample < positions.Count - 1; sample += 5f)
                 {
                     int i = Mathf.FloorToInt(sample);
                     Vector3 point = Vector3.Lerp(positions[i], positions[i + 1], sample - i);

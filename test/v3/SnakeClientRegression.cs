@@ -30,6 +30,14 @@ namespace SnakeClub.Tests.Editor
                 local.apiUrl = "http://127.0.0.1:2568"; local.allowDevLogin = false; Require(!local.FixedPveServerPreview, "local verifier allowed without development login");
                 local.allowDevLogin = true; local.serverUrl = "ws://127.0.0.1:2567/ws"; Require(!local.FixedPveServerPreview, "local verifier allowed room backend");
                 Debug.Log("PASS Unity fixed PvE server preview requires explicit loopback configuration");
+                var strengthConfig = new GameConfiguration { experimentalFixedPve = true, experimentalStrengthPve = true,
+                    serverUrl = "", apiUrl = "", allowDevLogin = false };
+                Require(strengthConfig.StrengthPvePreview, "offline strength preview was rejected");
+                strengthConfig.apiUrl = "https://example.invalid"; Require(!strengthConfig.StrengthPvePreview, "strength preview allowed an API backend");
+                strengthConfig.apiUrl = ""; strengthConfig.allowDevLogin = true; Require(!strengthConfig.StrengthPvePreview, "strength preview allowed login");
+                strengthConfig.allowDevLogin = false; strengthConfig.experimentalComparison = true; Require(!strengthConfig.StrengthPvePreview, "strength preview allowed comparison mode");
+                strengthConfig.experimentalComparison = false; strengthConfig.experimentalFixedPveServer = true; Require(!strengthConfig.StrengthPvePreview, "strength preview allowed verifier mode");
+                Debug.Log("PASS Unity strength preview is restricted to offline practice");
                 TestFixedPvePreviewFlow();
                 TestGameplayComparison();
                 TestPracticeTutorialAccess();
@@ -502,6 +510,20 @@ namespace SnakeClub.Tests.Editor
                 Require(((string)Field("resultNote").GetValue(app)).Contains("试玩"), "preview result was not labelled");
                 Call("BackToMenu");
                 Require(Field("fixedPve").GetValue(app) == null && !(bool)Field("inGame").GetValue(app), "preview did not return to menu");
+                api.Configure(new GameConfiguration { experimentalFixedPve = true, experimentalStrengthPve = true,
+                    apiUrl = "", serverUrl = "", allowDevLogin = false });
+                Call("StartMain");
+                var strengthWorld = Field("fixedPve").GetValue(app) as PveFixedWorld;
+                Require(strengthWorld != null && strengthWorld.StrengthPreview && Field("activeRun").GetValue(app) == null,
+                    "main entry did not start isolated strength practice");
+                renderer.StrengthBodyVisual = true; renderer.Draw(strengthWorld.RenderState(), "you");
+                var bodyLines = (System.Collections.Generic.Dictionary<string, LineRenderer[]>)typeof(ArenaRenderer).GetField("characterTrails", rendererFlags).GetValue(renderer);
+                Require(bodyLines.ContainsKey("you") && bodyLines["you"][0].positionCount == strengthWorld.Fighters[0].motion.Length - 1,
+                    "strength preview did not show the first collidable body segment");
+                Call("RecordResult");
+                Require(((string)Field("resultNote").GetValue(app)).Contains("强弱吞食试玩") && PlayerPrefs.GetString("snake.v3.pending", "") == pendingBefore,
+                    "strength practice changed a settlement or was not labelled");
+                Call("BackToMenu");
                 api.Configure(new GameConfiguration { experimentalFixedPveServer = true, apiUrl = "http://127.0.0.1:2568", serverUrl = "", allowDevLogin = true });
                 typeof(GameApiClient).GetProperty("Profile").SetValue(api, new PlayerProgress { playerId = "local-eval" });
                 var snapshot = new PveStartConfig { version = PveStartConfig.CurrentVersion, firstRun = true, skin = 2,
