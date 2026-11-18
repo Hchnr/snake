@@ -169,6 +169,20 @@ python3 scripts/build-douyin-preview.py --appid '你的小游戏AppID' --output 
 
 仅为经授权的小范围内部审阅，且本机已准备参考素材时，可显式加上 `--include-reference-skins`；该选项会将参考图放入测试包，不代表正式联动或已获商业使用权。构建完成后可将输出的 `tt-minigame` 目录导入抖音开发者工具生成预览码：预览时产物会交给抖音处理，并不等同于上传测试通道或更新已发布的版本。构建副本启用 `SNAKE_DOUYIN_TTSDK` 编译开关；离线预览会初始化 SDK，但不会请求抖音登录或连接账号服务。此前生成的预览包没有自动启用该开关，需重新构建才能验证这些平台适配代码。本离线练习包不使用本机游戏服务器，手机需要能够访问抖音获取预览内容。抖音账号登录、分享和广告需要另行配置与真机验证；普通 WebGL 构建或旧版 `dist/douyin` 都不是本 Unity 版本的抖音发布包。
 
+## 微信小游戏隔离转换实验
+
+微信仍是后续目标，当前没有微信真机或平台能力验收。使用[微信官方 Unity SDK 仓库](https://github.com/wechat-miniprogram/minigame-tuanjie-transform-sdk)，在本机单独检出已测试提交；SDK 不加入本仓库。以下占位配置只验证转换，不能用于扫码：
+
+```sh
+git clone https://github.com/wechat-miniprogram/minigame-tuanjie-transform-sdk.git /tmp/snake-wxsdk
+git -C /tmp/snake-wxsdk checkout --detach 915d4bf4f60ef0cd1c29316a8d67257185d609a7
+python3 scripts/build-wechat-isolated.py --sdk /tmp/snake-wxsdk --appid wx0000000000000000 \
+  --cdn https://example.invalid/snake-probe/ --output /tmp/snake-wechat-probe \
+  --strength-pve-preview --diagnostic
+```
+
+构建在临时工程中以 `-batchmode -nographics` 运行，不上传任何产物，关闭账号服务、开发登录及内部参考素材；脚本要求干净的指定 SDK Git 提交，不覆盖已有输出。产物包含 `minigame` 工程、`webgl` 资源和构建日志。使用真实 AppID 和 HTTPS 资源域名时需去掉 `--diagnostic` 并选择新的输出目录；还需自行配置平台域名、部署资源并用微信开发者工具与真机验证，构建成功不代表可以发布。SDK 仓库的根许可证为 MIT，SDK 附带的第三方组件应分别核对其许可证。
+
 ## 资源许可
 
 大厅秘境背景、战场地表与四个原创角色为本项目生成的图片；角色素材的生成方式和参考范围见[素材记录](docs/asset-generation-v0032.md)。节奏盒子参考角色仅用于本机造型试作，正式使用需确认相应权利。界面字体是 Noto Sans SC 的 400 字重字符子集，原始字体来自 [Google Fonts](https://github.com/google/fonts/tree/main/ofl/notosanssc)，以 SIL Open Font License 1.1 发布；许可文本位于 `unity/Assets/Resources/NotoSansSC-OFL.txt`。子集不包含所有生僻字。
