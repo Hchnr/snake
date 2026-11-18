@@ -104,11 +104,11 @@ namespace SnakeClub.Tests.Editor
                 }
                 Debug.Log("PASS Unity preserves character sprite proportions and transparent edges");
 
-                int selected = -1, equipped = -1, started = 0, retried = 0;
+                int selected = -1, equipped = -1, started = 0, retried = 0, backed = 0;
                 var screen = owner.AddComponent<HomeScreen>();
                 var font = Resources.Load<Font>("NotoSansSC");
                 Require(font != null, "UI font is missing");
-                screen.Setup(font, () => started++, () => { }, () => { }, () => { }, () => { }, () => { },
+                screen.Setup(font, () => started++, () => { }, () => { }, () => { }, () => { }, () => backed++,
                     index => selected = index, index => equipped = index, () => { });
                 screen.SetupResults(() => retried++, () => { }, () => { }, () => { });
                 screen.Visible = true; screen.SetPage(true);
@@ -121,6 +121,10 @@ namespace SnakeClub.Tests.Editor
                 FindButton("Skin card 4").onClick.Invoke();
                 FindButton("Equip skin").onClick.Invoke();
                 Require(selected == 4 && equipped == 4, "skin selection or local preview action is not wired");
+                var skinBack = FindButton("Skin back");
+                Require(skinBack.GetComponent<RectTransform>().sizeDelta.x >= 220 && skinBack.GetComponent<RectTransform>().sizeDelta.y >= 100,
+                    "skin back button did not keep the larger touch target");
+                skinBack.onClick.Invoke(); Require(backed == 1, "skin back action did not fire after selecting a skin");
                 FindButton("Skin preview toggle").onClick.Invoke();
                 Require(screen.ArenaPreview, "arena preview toggle did not activate");
                 screen.SetArenaPreview(background);

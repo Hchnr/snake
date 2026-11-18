@@ -91,6 +91,7 @@ var cases = new (string name, Action run)[]
     ("seeded PvE setup and inputs reproduce locally", PveReplayFoundation),
     ("ordinary PvE bots avoid head threats and pursue visible players", ArenaBotEncounterCases),
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
+    ("experimental body strength is bounded and weakens toward the tail", BodyStrengthCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1590,6 +1591,36 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void BodyStrengthCases()
+{
+    var baseline = new StrengthInputs { basePower = 100, length = 16, speed = 1000, baseSpeed = 1000,
+        randomFactor = 1000, operationFactor = 1000 };
+    Check(BodyStrength.TryCalculate(baseline, 0, out var head) && head.attack == 100 && head.defense == 100, "neutral head calculation changed");
+    Check(BodyStrength.TryCalculate(baseline, 15, out var tail) && tail.defense == 55 && BodyStrength.CanEat(head.attack, tail.defense), "equal base power could not eat the tail");
+    Check(!BodyStrength.CanEat(105, 100) && BodyStrength.CanEat(106, 100) && !BodyStrength.CanEat(0, 0), "strict 5% boundary is wrong");
+    for (int length = 1; length <= 80; length++)
+    {
+        baseline.length = length; int last = int.MaxValue;
+        for (int i = 0; i < length; i++)
+        {
+            Check(BodyStrength.TryCalculate(baseline, i, out var body) && body.defense <= last, "body defense increased toward the tail");
+            last = body.defense;
+        }
+    }
+    baseline.length = 16; baseline.hardness = 300;
+    Check(BodyStrength.TryCalculate(baseline, 15, out tail) && tail.defense == 85 && !BodyStrength.CanEat(80, tail.defense), "hardness did not protect the tail");
+    baseline.boosting = true; baseline.speed = 1500;
+    Check(BodyStrength.TryCalculate(baseline, 0, out var boost) && boost.speedFactor == 1120 && boost.attack == 112, "actual boost speed did not change attack");
+    baseline.speed = 1000;
+    Check(BodyStrength.TryCalculate(baseline, 0, out boost) && boost.speedFactor == 1000, "boost without extra speed changed attack");
+    baseline.basePower = int.MaxValue; baseline.matchLevel = int.MaxValue; baseline.hardness = int.MaxValue;
+    baseline.speed = int.MaxValue; baseline.baseSpeed = 1; baseline.randomFactor = int.MaxValue; baseline.operationFactor = int.MaxValue;
+    Check(BodyStrength.TryCalculate(baseline, 15, out var bounded) && bounded.baseStrength == 300 && bounded.effectFactor == 1250 && bounded.attack <= 420, "extreme inputs escaped bounds");
+    Check(!BodyStrength.TryCalculate(baseline, 16, out _) && !BodyStrength.TryCalculate(baseline, -1, out _), "invalid body segment accepted");
+    baseline.baseSpeed = 0; Check(!BodyStrength.TryCalculate(baseline, 0, out _), "zero reference speed accepted");
+    Check(BodyStrength.CanEat(int.MaxValue, 0) && !BodyStrength.CanEat(-1, 0), "comparison overflowed or accepted negative power");
 }
 
 static void CompletedPveRecordingCases()
