@@ -96,6 +96,7 @@ var cases = new (string name, Action run)[]
     ("strength practice world uses new body and head combat", StrengthPracticeWorldCases),
     ("strength pickup applies visible temporary power fairly and expires", StrengthPickupCases),
     ("strength loops reward real maneuver without elimination", StrengthLoopCases),
+    ("strength match levels track actual actions after combat", StrengthLevelCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1601,6 +1602,54 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
 }
 
+static void StrengthLevelCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    PveFixedWorld Match(int playerX, int playerLength, int botX, int botLength)
+    {
+        var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+        var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+        fighters[0] = new PveFixedFighter("you", new PveFixedMotion(playerX, 0, 0, playerLength));
+        fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(botX, 0, 0, botLength));
+        for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+        ((List<PveFixedFruit>)world.Fruit).Clear();
+        return world;
+    }
+    var fruitWorld = Match(0, 16, 50000, 16);
+    var fruit = (List<PveFixedFruit>)fruitWorld.Fruit;
+    for (int i = 0; i < 5; i++) fruit.Add(new PveFixedFruit(new CapturePoint(300, 0), 0));
+    fruitWorld.Step(0, false);
+    Check(fruitWorld.TryGetStrengthLevelProgress("you", out int level, out int progress, out int required) &&
+        level == 1 && progress == 0 && required == 7 && fruitWorld.TryGetStrength("you", out var strength, out _) && strength.baseStrength == 110,
+        "five collected fruit did not grant the first level and its real strength");
+    var biteWorld = Match(-11700, 16, 0, 16); biteWorld.Step(0, false);
+    Check(biteWorld.LastPlayerBiteCount == 3 && biteWorld.StrengthLevel("you") == 1 &&
+        biteWorld.TryGetStrengthLevelProgress("you", out level, out progress, out required) && progress == 1,
+        "actual body segments did not award two experience each");
+    var headWorld = Match(0, 30, 0, 5); headWorld.Step(0, false);
+    Check(!headWorld.Fighters[1].alive && headWorld.Fighters[0].kills == 1 && headWorld.StrengthLevel("you") == 1,
+        "credited head elimination did not grant five experience");
+    var blocked = Match(-3600, 16, 0, 21);
+    var xp = (int[])typeof(PveFixedWorld).GetField("strengthExperience", flags).GetValue(blocked);
+    xp[0] = 4;
+    var fruits = (List<PveFixedFruit>)blocked.Fruit;
+    fruits.Add(new PveFixedFruit(new CapturePoint(-3600, 1350), 0));
+    fruits.Add(new PveFixedFruit(new CapturePoint(-3600, -1350), 0));
+    blocked.Step(0, false);
+    Check(blocked.LastPlayerBlockedTick == 1 && blocked.LastPlayerBiteTick < 0 && blocked.StrengthLevel("you") == 1,
+        "fruit XP changed a collision already decided in the same tick");
+    xp[0] = 480;
+    Check(blocked.TryGetStrengthLevelProgress("you", out level, out progress, out required) && level == 20 && required == 0,
+        "level cap did not stop progression");
+    Check(!blocked.TryGetStrengthLevelProgress("missing", out _, out _, out _) &&
+        !new PveFixedWorld(42, false, null).TryGetStrengthLevelProgress("you", out _, out _, out _), "level leaked into legacy or missing player");
+    var bots = Match(50000, 16, 0, 16);
+    var botFruit = (List<PveFixedFruit>)bots.Fruit;
+    for (int i = 0; i < 5; i++) botFruit.Add(new PveFixedFruit(new CapturePoint(0, 0), 0));
+    bots.Step(0, false);
+    Check(bots.StrengthLevel("bot-1") == 1, "AI fruit did not use the same level threshold");
+}
+
 static void StrengthLoopCases()
 {
     int foundTurn = 0, foundStep = 0; CapturePoint target = default;
@@ -1864,8 +1913,12 @@ static void StrengthPracticeWorldCases()
         for (int j = 0; j < first.Fighters.Count; j++)
         {
             var a = first.Fighters[j]; var b = second.Fighters[j];
-            Check(a.alive == b.alive && a.kills == b.kills && a.motion.Length == b.motion.Length && a.motion.X == b.motion.X && a.motion.Y == b.motion.Y,
-                "strength preview fighter diverged for identical input");
+            Check(a.alive == b.alive && a.kills == b.kills && a.motion.Length == b.motion.Length && a.motion.X == b.motion.X && a.motion.Y == b.motion.Y &&
+                first.StrengthLevel(a.id) == second.StrengthLevel(b.id), "strength preview fighter or level diverged for identical input");
+            bool progressA = first.TryGetStrengthLevelProgress(a.id, out int levelA, out int xpA, out int neededA);
+            bool progressB = second.TryGetStrengthLevelProgress(b.id, out int levelB, out int xpB, out int neededB);
+            Check(progressA == progressB && levelA == levelB && xpA == xpB && neededA == neededB,
+                "strength experience diverged for identical input");
         }
         Check(first.EventStatus == "", "old event leaked into strength practice");
     }

@@ -629,13 +629,15 @@ namespace SnakeClub
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
+            else if (fixedPve != null && fixedPve.TryGetStrengthLevelProgress(playerId, out int matchLevel, out int matchXp, out int nextXp))
+                Label(new Rect(88, 135, 410, 52), "试玩 · 升级 " + (nextXp > 0 ? matchXp + "/" + nextXp : "已满级"), 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             else Label(new Rect(88, 135, 410, 52), comparisonVariant >= 0 && api.Config.ComparisonPreview ? "试玩 · 不计奖励或排行" : depthMode ? "练习 · " + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             bool urgent = RoundTimerPresentation.IsUrgent(state);
             int timerSize = urgent ? (reducedEffects ? 44 : Mathf.RoundToInt(42 + 2 * Mathf.Sin(state.remaining * Mathf.PI * 2))) : 40;
             Color timerColor = urgent ? new Color(1f, .76f, .40f) : Color.white;
             Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), timerSize, timerColor, TextAnchor.MiddleCenter, true);
             Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null && !(comparisonVariant >= 0 && api.Config.ComparisonPreview) ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
-            Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + (fixedPve != null && fixedPve.StrengthPreview ? "" : (depthMode ? "  星核 " : "  事件 ") + me.starPoints), 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
+            Label(new Rect(720, 135, 250, 52), me == null ? "" : (fixedPve != null && fixedPve.StrengthPreview ? "等级 " + fixedPve.StrengthLevel(playerId) + " · 淘汰 " + me.kills : "淘汰 " + me.kills + (depthMode ? "  星核 " : "  事件 ") + me.starPoints), 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
 
             if (arenaRenderer.VisualFallback)
                 Label(new Rect(300, 235, 500, 45), "造型素材不可用 · 备用显示", 19, new Color(.9f, .92f, .84f), TextAnchor.MiddleCenter);
@@ -712,7 +714,7 @@ namespace SnakeClub
             if (StrengthIntroVisible())
             {
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 560, 830, 80), "攻超防 5% 可吃 · 围住对手获强化", 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(125, 560, 830, 80), state.tick < 80 ? "吃果实和身体升级 · 攻超防 5% 可吃" : "围住对手可获得短时强化", 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
@@ -953,11 +955,11 @@ namespace SnakeClub
             if (!nameplates.TryPlace(snake.id, new Point(position.x, position.y), out var placed)) return;
             string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
             if (fixedPve != null && fixedPve.TryGetStrength(snake.id, out var power, out int tailDefense))
-                label = (snake.id == playerId ? "你 · 攻" + power.attack : (snake.bot ? "AI" : "玩家") + " · 尾" + tailDefense) +
+                label = (snake.id == playerId ? "你·攻" + power.attack : (snake.bot ? "AI" : "玩家") + "·尾" + tailDefense) +
                     (fixedPve.StrengthBuffTicks(snake.id) > 0 || fixedPve.StrengthLoopTicks(snake.id) > 0 ? "+" : "");
             if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
             if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
-            if (snake.shield > 0) label += " · 保护";
+            if (snake.shield > 0) label += fixedPve != null && fixedPve.StrengthPreview ? " 保护" : " · 保护";
             nameplateEntries.Add(new NameplateEntry { box = new Rect(placed.x, placed.y, NameplateLayout.Width, NameplateLayout.Height),
                 anchor = position, color = arenaRenderer.TrailColor(snake, playerId), label = label });
         }
