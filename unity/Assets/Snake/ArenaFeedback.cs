@@ -11,7 +11,7 @@ namespace SnakeClub
         private AudioSource output, musicOutput;
         private AudioClip homeMusic, battleMusic;
         private bool interacted, musicPaused, homeAttempted, battleAttempted, homeGenerated, battleGenerated;
-        private AudioClip growth, rebound, elimination, capture, star, finish;
+        private AudioClip growth, rebound, elimination, capture, star, finish, strengthBite, strengthDamage;
         private int length, kills, stars;
         private readonly FeedbackCursor cursor = new FeedbackCursor();
         private int captureTick = -1;
@@ -65,14 +65,17 @@ namespace SnakeClub
             capture = MakeClip("Loop closed", 520, 780, .12f);
             star = MakeClip("Star", 620, 1180, .24f);
             finish = MakeClip("Finish", 600, 360, .28f);
+            strengthBite = MakeClip("Body bite", 520, 1040, .10f);
+            strengthDamage = MakeClip("Body damage", 480, 190, .16f);
         }
 
-        public void Observe(ArenaState state, string playerId)
+        public void Observe(ArenaState state, string playerId, PveFixedWorld strengthWorld = null)
         {
             if (state == null || string.IsNullOrEmpty(playerId)) return;
             var snake = state.snakes.Find(item => item.id == playerId);
             if (snake == null) return;
             var boss = state.snakes.Find(item => item.boss);
+            int previousTick = cursor.LastTick;
             if (cursor.Observe(state.tick))
             {
                 length = snake.segments.Count; kills = snake.kills; stars = snake.starPoints;
@@ -84,8 +87,11 @@ namespace SnakeClub
             bool reboundOccurred = snake.rebound > 0 && pulse <= 0;
             bool starOccurred = snake.starPoints > stars;
             bool bossHit = boss != null && bossShield >= 0 && boss.bossShield < bossShield;
+            var strengthCue = StrengthSoundFeedback.Select(strengthWorld != null && strengthWorld.StrengthPreview,
+                previousTick, state.tick, strengthWorld != null ? strengthWorld.LastPlayerAttackTick : -1,
+                strengthWorld != null ? strengthWorld.LastPlayerDamageTick : -1);
             if (HapticsEnabled && GamePlatform.SupportsHaptics && Time.unscaledTime >= nextHaptic &&
-                (eliminationOccurred || captureOccurred || reboundOccurred || starOccurred || bossHit))
+                (eliminationOccurred || captureOccurred || reboundOccurred || starOccurred || bossHit || strengthCue != StrengthSoundCue.None))
             {
                 GamePlatform.VibrateShort();
                 nextHaptic = Time.unscaledTime + .5f;
@@ -96,6 +102,8 @@ namespace SnakeClub
                 else if (boss != null && bossShield >= 0 && boss.bossShield < bossShield) output.PlayOneShot(star);
                 else if (snake.starPoints > stars) output.PlayOneShot(star);
                 else if (snake.kills > kills) output.PlayOneShot(elimination);
+                else if (strengthCue == StrengthSoundCue.Damage) output.PlayOneShot(strengthDamage);
+                else if (strengthCue == StrengthSoundCue.Bite) output.PlayOneShot(strengthBite);
                 else if (state.captureOwner == playerId && state.captureTick >= 0 && state.captureTick != captureTick) output.PlayOneShot(capture);
                 else if (snake.rebound > 0 && pulse <= 0) output.PlayOneShot(rebound);
                 else if (snake.segments.Count > length && Time.unscaledTime >= nextGrowth)
@@ -193,6 +201,7 @@ namespace SnakeClub
             if (homeGenerated && homeMusic != null) Destroy(homeMusic); if (battleGenerated && battleMusic != null) Destroy(battleMusic);
             if (growth != null) Destroy(growth); if (rebound != null) Destroy(rebound);
             if (elimination != null) Destroy(elimination); if (capture != null) Destroy(capture); if (star != null) Destroy(star); if (finish != null) Destroy(finish);
+            if (strengthBite != null) Destroy(strengthBite); if (strengthDamage != null) Destroy(strengthDamage);
         }
     }
 }

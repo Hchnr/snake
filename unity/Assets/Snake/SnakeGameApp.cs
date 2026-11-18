@@ -429,7 +429,7 @@ namespace SnakeClub
                 }
             }
             if (inGame && !online && state != null && state.phase == "ended" && !resultRecorded) RecordResult();
-            if (inGame && !SimulationSuspended) feedback.Observe(state, playerId);
+            if (inGame && !SimulationSuspended) feedback.Observe(state, playerId, fixedPve);
             arenaRenderer.SetPreviewMode(renderWardrobePreview);
             if (wardrobePreview) arenaRenderer.SelectedSkin = previewSkin;
             arenaRenderer.Visible = appFocused && !appPaused && platformVisible && !adShowing &&

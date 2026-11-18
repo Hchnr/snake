@@ -336,6 +336,19 @@ static void AudioFeedbackCursorCases()
     Check(cursor.PendingBaseline && cursor.Observe(200), "resume did not discard background events");
     Check(!cursor.Observe(201), "first new simulation step after resume was suppressed");
     Check(cursor.Observe(0) && !cursor.Observe(1), "new match did not reset event counters");
+    Check(StrengthSoundFeedback.Select(true, 0, 1, 1, -1) == StrengthSoundCue.Bite &&
+        StrengthSoundFeedback.Select(true, 1, 2, 1, 2) == StrengthSoundCue.Damage, "real strength contacts did not produce distinct cues");
+    Check(StrengthSoundFeedback.Select(true, 1, 3, 2, 3) == StrengthSoundCue.Damage &&
+        StrengthSoundFeedback.Select(true, 1, 3, 3, 2) == StrengthSoundCue.Bite &&
+        StrengthSoundFeedback.Select(true, 1, 3, 3, 3) == StrengthSoundCue.Damage, "latest or simultaneous contact priority changed");
+    Check(StrengthSoundFeedback.Select(false, 0, 1, 1, 1) == StrengthSoundCue.None &&
+        StrengthSoundFeedback.Select(true, 5, 5, 5, 5) == StrengthSoundCue.None &&
+        StrengthSoundFeedback.Select(true, 5, 6, 5, 7) == StrengthSoundCue.None &&
+        StrengthSoundFeedback.Select(true, -1, 0, 0, 0) == StrengthSoundCue.None, "stale, future, initial or non-strength events made a sound");
+    cursor.Suspend(); Check(cursor.Observe(200), "sound did not rebaseline on resume");
+    Check(StrengthSoundFeedback.Select(true, cursor.LastTick, 201, 198, -1) == StrengthSoundCue.None &&
+        StrengthSoundFeedback.Select(true, cursor.LastTick, 201, 201, -1) == StrengthSoundCue.Bite,
+        "resume replayed an old bite or suppressed a new bite");
 }
 
 static void MusicBehavior()
