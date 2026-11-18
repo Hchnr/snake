@@ -20,29 +20,7 @@ namespace SnakeClub.Tests
             Add(value.Length); foreach (char c in value) Add(c);
         }
         // Fingerprint of observable terminal state only, used by diagnostics.
-        public static string Terminal(PveFixedWorld world)
-        {
-            if (world == null || !world.StrengthPreview || !world.Finished) throw new ArgumentException("Expected a completed strength preview");
-            hash = 14695981039346656037UL;
-            Add(world.Tick); Add(world.Winner); Add(world.StrengthPickupVisible ? 1 : 0);
-            Add(world.StrengthPickupPosition.x); Add(world.StrengthPickupPosition.y);
-            Add(world.LastPlayerAttackTick); Add(world.LastPlayerAttackCount); Add(world.LastPlayerDamageTick); Add(world.LastPlayerDamageCount);
-            Add(world.LastPlayerBlockedTick); Add(world.LastPlayerHeadTieTick);
-            foreach (var fighter in world.Fighters)
-            {
-                Add(fighter.id); Add(fighter.alive ? 1 : 0); Add(fighter.shieldTicks); Add(fighter.kills);
-                Add(fighter.eliminatedBy); Add(fighter.eliminationReason); Add(fighter.motion.Angle);
-                Add(fighter.motion.Length); Add(fighter.motion.ReboundTicks); Add(fighter.motion.ReboundCooldown);
-                Add(fighter.motion.Boosting ? 1 : 0); Add(world.StrengthBuffTicks(fighter.id)); Add(world.StrengthLoopTicks(fighter.id));
-                bool hasLevel = world.TryGetStrengthLevelProgress(fighter.id, out int level, out int xp, out int required);
-                Add(hasLevel ? 1 : 0); Add(level); Add(xp); Add(required);
-                bool hasPower = world.TryGetStrength(fighter.id, out var power, out int tail);
-                Add(hasPower ? 1 : 0); Add(power.attack); Add(power.defense); Add(tail);
-                foreach (var part in fighter.motion.Segments) { Add(part.x); Add(part.y); }
-            }
-            foreach (var fruit in world.Fruit) { Add(fruit.position.x); Add(fruit.position.y); Add(fruit.color); }
-            return hash.ToString("x16");
-        }
+        public static string Terminal(PveFixedWorld world) => StrengthStateDigest.Compute(world);
         public static string Compute()
         {
             var result = new StringBuilder("strength=");

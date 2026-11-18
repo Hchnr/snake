@@ -321,11 +321,13 @@ sealed class GameApi
             return Fail("强弱实验对局时长无效");
         run.completed = true; run.finishedAt = now.ToUnixTimeMilliseconds(); run.score = world.Tick;
         run.fixedWinner = world.Winner; run.fixedKills = world.Fighters[0].kills; run.fixedLength = world.Fighters[0].motion.Length;
+        run.strengthStateDigest = StrengthStateDigest.Compute(world);
         return StrengthPveReceipt(run);
     }
 
     private static IResult StrengthPveReceipt(RunRecord run) => Results.Json(new { ok = true, verified = true, experimental = true,
-        rules = run.rules, ticks = run.score, winner = run.fixedWinner, kills = run.fixedKills, length = run.fixedLength, rewards = 0 });
+        rules = run.rules, ticks = run.score, winner = run.fixedWinner, kills = run.fixedKills, length = run.fixedLength,
+        stateDigest = run.strengthStateDigest, rewards = 0 });
 
     private static IResult FixedPveReceipt(RunRecord run) => Results.Json(new { ok = true, verified = true, experimental = true,
         rules = run.rules, ticks = run.score, winner = run.fixedWinner, kills = run.fixedKills,
@@ -512,7 +514,7 @@ sealed class RunRecord
     public bool completed;
     public PveStartConfig? startConfig;
     public StrengthEvalStartConfig? strengthStartConfig;
-    public string fixedWinner = "";
+    public string fixedWinner = "", strengthStateDigest = "";
     public int fixedKills, fixedLength, fixedEventPoints;
 }
 sealed class RewardSource { public string playerId = "", kind = ""; public int baseCoins; public bool adClaimed; }

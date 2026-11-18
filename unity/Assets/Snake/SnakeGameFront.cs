@@ -356,8 +356,9 @@ namespace SnakeClub
                 bool matches = reply.ok && reply.verified && reply.experimental && reply.rules == (strength ? PveFixedRecording.ExperimentalStrengthRules : PveFixedRecording.ExperimentalRules) &&
                     reply.rewards == 0 && reply.ticks == world.Tick && reply.winner == world.Winner &&
                     reply.kills == world.Fighters[0].kills && reply.length == world.Fighters[0].motion.Length &&
-                    (strength || reply.eventPoints == world.Fighters[0].eventPoints);
-                resultNote = matches ? "本机回放一致 · 不计奖励或排行" : reply.ok ?
+                    (strength ? StrengthStateDigest.Matches(world, reply.stateDigest) : reply.eventPoints == world.Fighters[0].eventPoints);
+                resultNote = matches ? "本机回放一致 · 不计奖励或排行" : reply.ok && strength && string.IsNullOrEmpty(reply.stateDigest) ?
+                    "回执缺少状态校验 · 不计奖励或排行" : reply.ok ?
                     "本机回放结果不一致 · 不计奖励或排行" : "本机回放未验证 · 不计奖励或排行";
             });
         }

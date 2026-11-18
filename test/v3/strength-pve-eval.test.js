@@ -72,7 +72,7 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     assert.equal((await request('internal/strength-pve/verify', { ...payload(valid), token: tokenFor({ ...valid, seed: valid.seed + 1 }) })).status, 400);
     assert.equal((await request('internal/fixed-pve/verify', payload(valid))).status, 400);
     assert.deepEqual((await request('internal/strength-pve/verify', payload(oldReceipt, 'broken'))).data,
-      { ok: true, verified: true, experimental: true, rules: base.rules, ticks: 100, winner: 'you', kills: 1, length: 20, rewards: 0 });
+      { ok: true, verified: true, experimental: true, rules: base.rules, ticks: 100, winner: 'you', kills: 1, length: 20, stateDigest: '', rewards: 0 });
     const other = sign(`other-player:${Math.floor(Date.now() / 1000) + 3600}`);
     assert.equal((await request('internal/strength-pve/verify', payload(valid), other)).status, 400);
     for (const run of [fast, unknown, missing, badSnapshot, tamperedGrowth, expired])
@@ -89,12 +89,12 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     ]);
     assert.equal(verified.status, 200); assert.deepEqual(concurrent.data, verified.data);
     assert.deepEqual(verified.data, { ok: true, verified: true, experimental: true, rules: base.rules, ticks: replay.ticks,
-      winner: replay.winner, kills: replay.kills, length: replay.length, rewards: 0 });
+      winner: replay.winner, kills: replay.kills, length: replay.length, stateDigest: replay.stateDigest, rewards: 0 });
     assert.deepEqual((await request('internal/strength-pve/verify', payload(valid, 'broken'))).data, verified.data);
     const growthReplay = JSON.parse(execFileSync('dotnet', [coreDll, 'strength-growth-replay', String(base.seed), '700', '1'], { encoding: 'utf8' }));
     const growthVerified = await request('internal/strength-pve/verify', payload(growth, growthReplay.inputs));
     assert.deepEqual(growthVerified.data, { ok: true, verified: true, experimental: true, rules: base.rules, ticks: growthReplay.ticks,
-      winner: growthReplay.winner, kills: growthReplay.kills, length: growthReplay.length, rewards: 0 });
+      winner: growthReplay.winner, kills: growthReplay.kills, length: growthReplay.length, stateDigest: growthReplay.stateDigest, rewards: 0 });
     const profile = (await request('bootstrap')).data.profile;
     assert.equal(profile.coins, 73); assert.equal(profile.experience, 29); assert.equal(profile.completedMatches, 4);
     const created = await request('internal/strength-pve/start', {});

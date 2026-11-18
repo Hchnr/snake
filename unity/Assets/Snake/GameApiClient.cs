@@ -78,7 +78,7 @@ namespace SnakeClub
         public string error = "", session = "", runId = "", token = "", date = "", mode = "", rules = "", id = "", shareToken = "";
         public int seed, score, rank, total, gap, coins, baseCoins, experience, fragments, questCoins, questExperience;
         public int ticks, kills, length, eventPoints, rewards;
-        public string winner = "";
+        public string winner = "", stateDigest = "";
         public int trialSkin = -1, unlockedSkin = -1;
         public long serverTime, expiresAt;
         public PlayerProgress profile;
