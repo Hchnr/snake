@@ -967,7 +967,7 @@ namespace SnakeClub
             if (!paused && string.IsNullOrEmpty(killFeedback.Current(world)) && !string.IsNullOrEmpty(StrengthLevelNotice.Text(fixedPve, world.tick)))
                 nameplates.Reserve(250, 430, 580, 110);
             if (StrengthIntroVisible()) nameplates.Reserve(100, 550, 880, 100);
-            else if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
+            else if (firstRun && tutorialHints && !online && !paused && !(fixedPve != null && fixedPve.StrengthPreview) && CanControlPlayer())
             {
                 var own = world.snakes.Find(s => s.id == playerId);
                 string hint = FirstRunHints.Select(world.tick, hasSteered, tutorialClosedLoop, tutorialRebounded,
@@ -996,7 +996,7 @@ namespace SnakeClub
             foreach (var entry in nameplateEntries) DrawNameplate(entry);
         }
 
-        private bool StrengthIntroVisible() => fixedPve != null && fixedPve.StrengthPreview && state != null &&
+        private bool StrengthIntroVisible() => firstRun && tutorialHints && fixedPve != null && fixedPve.StrengthPreview && state != null &&
             state.phase == "running" && state.tick < 260 && !paused &&
             string.IsNullOrEmpty(StrengthContactNotice.Text(fixedPve, state.tick, out _));
 
