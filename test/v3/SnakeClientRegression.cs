@@ -48,6 +48,7 @@ namespace SnakeClub.Tests.Editor
                 strengthServer.experimentalFixedPveServer = false; strengthServer.experimentalComparison = true; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed comparison mode");
                 strengthServer.experimentalComparison = false; strengthServer.serverUrl = "ws://127.0.0.1:2567/ws"; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed room backend");
                 Debug.Log("PASS Unity strength server preview requires explicit loopback configuration");
+                TestPendingStorageProtection();
                 TestFixedPvePreviewFlow();
                 TestGameplayComparison();
                 TestPracticeTutorialAccess();
@@ -432,6 +433,47 @@ namespace SnakeClub.Tests.Editor
                 Debug.Log("PASS Unity offline comparison is isolated and selectable");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestPendingStorageProtection()
+        {
+            const string key = "snake.v3.pending";
+            bool hadKey = PlayerPrefs.HasKey(key);
+            string original = PlayerPrefs.GetString(key, "");
+            var flags = BindingFlags.Static | BindingFlags.NonPublic;
+            var read = typeof(SnakeGameApp).GetMethod("ReadPending", flags);
+            try
+            {
+                PlayerPrefs.DeleteKey(key);
+                Require(read.Invoke(null, null) != null, "missing queue should be readable");
+                PlayerPrefs.SetString(key, "{\"entries\":[]}");
+                Require(read.Invoke(null, null) != null, "valid empty queue was rejected");
+                foreach (string damaged in new[] { "", "{", "{}", "{\"entries\":null}" })
+                {
+                    PlayerPrefs.SetString(key, damaged);
+                    Require(read.Invoke(null, null) == null, "damaged queue was treated as empty: " + damaged);
+                    Require(PlayerPrefs.GetString(key) == damaged, "damaged queue was overwritten");
+                }
+                PlayerPrefs.SetString(key, "{}");
+                var owner = new GameObject("Pending storage regression");
+                try
+                {
+                    var app = owner.AddComponent<SnakeGameApp>();
+                    var instance = BindingFlags.Instance | BindingFlags.NonPublic;
+                    typeof(SnakeGameApp).GetField("activeRun", instance).SetValue(app, new ApiReply { runId = "run-1", token = "token" });
+                    typeof(SnakeGameApp).GetField("activePlayerId", instance).SetValue(app, "player-1");
+                    typeof(SnakeGameApp).GetMethod("RecordResult", instance).Invoke(app, null);
+                    Require(((string)typeof(SnakeGameApp).GetField("resultNote", instance).GetValue(app)).Contains("未保存"), "unsaved result was not disclosed");
+                    Require(PlayerPrefs.GetString(key) == "{}", "recording overwrote damaged queue");
+                }
+                finally { UnityEngine.Object.DestroyImmediate(owner); }
+                Debug.Log("PASS Unity preserves unreadable pending settlements");
+            }
+            finally
+            {
+                if (hadKey) PlayerPrefs.SetString(key, original); else PlayerPrefs.DeleteKey(key);
+                PlayerPrefs.Save();
+            }
         }
 
         private static void TestFixedPvePreviewFlow()
