@@ -51,7 +51,8 @@ namespace SnakeClub.Tests
             for (int pattern = 0; pattern < 3; pattern++)
             {
                 hash = 14695981039346656037UL;
-                var world = new PveFixedWorld(seed, first, null, strengthPreview: true);
+                var snapshot = pattern == 2 ? StrengthEvalStartConfig.Capture(new PlayerProgress { experience = 700, tutorialComplete = !first }) : null;
+                var world = new PveFixedWorld(seed, first, null, strengthPreview: true, strengthSnapshot: snapshot);
                 int flags = 0;
                 while (!world.Finished)
                 {

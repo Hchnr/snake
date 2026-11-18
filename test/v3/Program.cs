@@ -3,10 +3,11 @@ using System.Collections;
 using System.Reflection;
 using SnakeClub.Core;
 
-if (args.Length == 3 && args[0] == "strength-replay")
+if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && args[0] == "strength-growth-replay"))
 {
-    int seed = int.Parse(args[1]); bool first = args[2] == "1";
-    var world = new PveFixedWorld(seed, first, null, strengthPreview: true);
+    int seed = int.Parse(args[1]); bool growth = args[0] == "strength-growth-replay"; bool first = args[growth ? 3 : 2] == "1";
+    var snapshot = growth ? StrengthEvalStartConfig.Capture(new PlayerProgress { experience = int.Parse(args[2]), tutorialComplete = !first }) : null;
+    var world = new PveFixedWorld(seed, first, null, strengthPreview: true, strengthSnapshot: snapshot);
     var inputs = new List<byte>();
     while (!world.Finished)
     {
@@ -130,6 +131,7 @@ var cases = new (string name, Action run)[]
     ("strength match levels track actual actions after combat", StrengthLevelCases),
     ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
+    ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
@@ -1641,6 +1643,39 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+
+static void StrengthGrowthCases()
+{
+    var legacy = new StrengthEvalStartConfig { version = StrengthEvalStartConfig.LegacyVersion, firstRun = false };
+    Check(legacy.Supported && legacy.EffectivePower == 100 && legacy.EffectiveHardness == 0, "legacy snapshot changed");
+    int previousPower = 99, previousHardness = -1;
+    for (int level = 1; level <= 41; level++)
+    {
+        var snap = StrengthEvalStartConfig.Capture(new PlayerProgress { experience = Progression.ExperienceForLevel(level) });
+        Check(snap.Supported && snap.accountLevel == level && snap.basePower >= previousPower && snap.hardness >= previousHardness, "growth must be valid and monotonic");
+        previousPower = snap.basePower; previousHardness = snap.hardness;
+    }
+    var max = StrengthEvalStartConfig.Capture(new PlayerProgress { experience = int.MaxValue });
+    Check(max.accountLevel == 41 && max.basePower == 120 && max.hardness == 80, "growth cap changed");
+    var snapshot = StrengthEvalStartConfig.Capture(new PlayerProgress { experience = 700, tutorialComplete = true });
+    var world = new PveFixedWorld(42, false, null, true, snapshot);
+    snapshot.basePower = 120;
+    Check(!snapshot.Supported && world.StrengthBasePower == 103 && world.StrengthHardness == 14, "snapshot was not frozen or validated");
+    Check(!PveFixedRecording.TryReplayStrength(42, snapshot, new byte[0], out _), "invalid snapshot accepted");
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    PveFixedWorld Bite(bool growth)
+    {
+        var cfg = growth ? StrengthEvalStartConfig.Capture(new PlayerProgress { experience = 700, tutorialComplete = true }) : null;
+        var match = new PveFixedWorld(42, false, null, true, cfg);
+        var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(match);
+        actors[0] = new PveFixedFighter("you", new PveFixedMotion(-3600, 0, 0, 16));
+        actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 21));
+        for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+        match.Step(0, false); return match;
+    }
+    Check(Bite(false).LastPlayerBlockedTick == 1 && Bite(true).LastPlayerBiteTick == 1, "account growth did not change a real body collision");
 }
 
 static void StrengthWeakPointCases()

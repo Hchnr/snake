@@ -45,17 +45,29 @@ namespace SnakeClub.Core
         public bool Supported => version == CurrentVersion;
     }
 
-    // Local diagnostic only; this records a server-chosen first-run value.
-    // The strength rules and future account attributes are not frozen here.
+    // Local, no-reward candidate. Version 1 is neutral; version 2 freezes the
+    // server-derived account level and bounded candidate attributes at start.
     [Serializable]
     public sealed class StrengthEvalStartConfig
     {
-        public const string CurrentVersion = "strength-eval-setup-1";
+        public const string LegacyVersion = "strength-eval-setup-1";
+        public const string CurrentVersion = "strength-eval-setup-2";
         public string version = "";
         public bool firstRun;
+        public int accountLevel, basePower, hardness;
+        private static int PowerFor(int level) => 100 + Math.Min(20, (level - 1) / 2);
+        private static int HardnessFor(int level) => Math.Min(80, (level - 1) * 2);
         public static StrengthEvalStartConfig Capture(PlayerProgress profile)
-            => new StrengthEvalStartConfig { version = CurrentVersion, firstRun = !profile.tutorialComplete };
-        public bool Supported => version == CurrentVersion;
+        {
+            if (profile == null) throw new ArgumentNullException(nameof(profile));
+            int level = Math.Max(1, Math.Min(41, Progression.Level(profile.experience)));
+            return new StrengthEvalStartConfig { version = CurrentVersion, firstRun = !profile.tutorialComplete,
+                accountLevel = level, basePower = PowerFor(level), hardness = HardnessFor(level) };
+        }
+        public bool Supported => version == LegacyVersion || (version == CurrentVersion && accountLevel >= 1 && accountLevel <= 41 &&
+            basePower == PowerFor(accountLevel) && hardness == HardnessFor(accountLevel));
+        public int EffectivePower => version == LegacyVersion ? 100 : basePower;
+        public int EffectiveHardness => version == LegacyVersion ? 0 : hardness;
     }
 
     [Serializable]
