@@ -728,8 +728,10 @@ namespace SnakeClub.Core
                 ApplyStrengthLoops();
                 var separatedHeads = StrengthHeadCombat.SeparateTiesBuffered(fighters, strengthHeadTies, bites, strengthSeparatedHeads);
                 if (separatedHeads[0]) LastPlayerHeadTieTick = Tick;
-                foreach (var contact in strengthCombat.BlockedContacts)
+                var blockedContacts = strengthCombat.BlockedContacts;
+                for (int contactIndex = 0; contactIndex < blockedContacts.Count; contactIndex++)
                 {
+                    var contact = blockedContacts[contactIndex];
                     bool bit = false;
                     foreach (var bite in bites) if (bite.attacker == contact.attacker) { bit = true; break; }
                     if (bit) continue;
