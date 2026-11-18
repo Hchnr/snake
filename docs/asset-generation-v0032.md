@@ -16,6 +16,8 @@
 
 生成提示要求三分之四侧视、非对称蜷曲轮廓与清晰边缘；当前图的头部偏离画面中心、尾部占比大，与现有以精灵中心为头部碰撞锚点的表现不匹配，直接接入可能误导玩家。后续需设计正确的头部锚点和方向、分层或骨骼动作，验证小尺寸辨识度、透明边缘、包体和抖音真机表现，并记录素材使用权审查；不得将该概念图当作完整角色验收。
 
+2026-11-18 固定场景诊断：在临时工程中替换玩家造型，尝试把图像归一化坐标 `(0.35, 0.67)` 设为精灵锚点（仅为目测候选，非已校准碰撞区域），并移除原有底部抬升。Unity 无图形构建、静音无头浏览器竖屏截图显示[角色下半部被地面截断](research/characters/forest-anchor-clipped.png)。第二个临时构建沿摄像机方向将该精灵前移 4 世界单位，[固定画面不再截断](research/characters/forest-anchor-depth.png)，但可能影响与其他角色、身体和场景的遮挡排序；名牌位置、动态转向、碰撞提示、不同相机和真机表现都未验证。这只是临时渲染实验，未修改正式资源或角色目录，不能据此声称碰撞已对齐或可上线。
+
 位置：[`unity/Assets/Resources/Characters/`](../unity/Assets/Resources/Characters/)，文件分别为 `lanlight.png`、`ember.png`、`stardust.png`、`crystal.png`。通用提示词如下，`{subject}` 分别替换为下表内容：
 
 > Use case: stylized-concept. Asset type: original full-character sprite for a polished 2.5D mobile arcade game. Create {subject}. A single full front-facing character, expressive and distinct silhouette, no limbs; occupies most of image with transparent margins. Professional crisp flat 2D puppet-inspired shapes with clean dark colored outlines, gentle luminous shading, limited highlights and harmonious eye design; vivid but sophisticated, read clearly at small size. Entire silhouette must be visible. Completely original design. No snake body, no floor, no text, no logo, no background or cast shadow.
