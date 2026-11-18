@@ -874,6 +874,33 @@ namespace SnakeClub.Core
             enabled && interacted && focused && !paused && !adShowing;
     }
 
+    // A single-source fade avoids abruptly cutting between the home and
+    // battle loops. The caller freezes this state whenever music is suspended.
+    public sealed class MusicTransition
+    {
+        private const float FadeSeconds = .20f;
+        private int current = -1;
+        public float Gain { get; private set; }
+        public void Reset() { current = -1; Gain = 0; }
+
+        // Returns true only once the caller may switch clips at zero gain.
+        public bool Advance(bool battle, float delta)
+        {
+            int desired = battle ? 1 : 0;
+            if (float.IsNaN(delta) || float.IsInfinity(delta) || delta < 0) delta = 0;
+            delta = Math.Min(delta, .1f);
+            if (current < 0) { current = desired; Gain = 0; return true; }
+            if (current != desired)
+            {
+                Gain = Math.Max(0, Gain - delta / FadeSeconds);
+                if (Gain > 0) return false;
+                current = desired; return true;
+            }
+            Gain = Math.Min(1, Gain + delta / FadeSeconds);
+            return false;
+        }
+    }
+
     [Serializable]
     public sealed class CombatBonuses
     {
