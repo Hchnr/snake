@@ -94,7 +94,10 @@ namespace SnakeClub.Core
             random = unchecked((uint)seed); if (random == 0) random = 0x6d2b79f5;
             maxTicks = (firstRun ? 60 : 90) * TickRate;
             uint selection = unchecked((uint)seed); eventType = (int)((selection ^ (selection >> 16)) % 3);
-            playerBonuses = PveFixedBonuses.From(profile);
+            // The experimental strength practice uses equal neutral movement
+            // attributes. Account talents and skins need a separately reviewed
+            // growth model before they can affect this ruleset.
+            playerBonuses = StrengthPreview ? new PveFixedBonuses() : PveFixedBonuses.From(profile);
             for (int i = 0; i < Arena.FruitCount; i++) fruit.Add(NewFruit());
             for (int i = 0; i < fighters.Length; i++)
             {
@@ -469,9 +472,14 @@ namespace SnakeClub.Core
             { StrengthPickupVisible = false; nextStrengthPickupTick = Tick + 160 + Next(81); }
             if (!StrengthPickupVisible && Tick >= nextStrengthPickupTick && fighters[0].alive)
             {
+                int living = 0;
+                for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) living++;
+                int choice = Next(living), anchor = 0;
+                for (int i = 0; i < fighters.Length; i++)
+                    if (fighters[i].alive && choice-- == 0) { anchor = i; break; }
                 byte angle = (byte)Next(256); int radius = 10000 + Next(6001);
-                StrengthPickupPosition = new CapturePoint(ClampEvent(fighters[0].motion.X + PveFixedMotion.DirectionX(angle) * radius / 10000),
-                    ClampEvent(fighters[0].motion.Y + PveFixedMotion.DirectionY(angle) * radius / 10000));
+                StrengthPickupPosition = new CapturePoint(ClampEvent(fighters[anchor].motion.X + PveFixedMotion.DirectionX(angle) * radius / 10000),
+                    ClampEvent(fighters[anchor].motion.Y + PveFixedMotion.DirectionY(angle) * radius / 10000));
                 StrengthPickupVisible = true; strengthPickupExpires = Tick + 200;
             }
         }
