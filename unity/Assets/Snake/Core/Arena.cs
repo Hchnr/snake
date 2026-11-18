@@ -130,6 +130,28 @@ namespace SnakeClub.Core
     // that every survivor tied for first place.
     public static class StrengthMatchOutcome
     {
+        // A blank winner means a shared lead only at the time limit. Require
+        // at least two equal leaders and compare against every living snake.
+        public static bool IsSharedFirst(ArenaState state, string playerId)
+        {
+            if (state == null || state.phase != "ended" || state.remaining > 0 ||
+                !string.IsNullOrEmpty(state.winner) || string.IsNullOrEmpty(playerId)) return false;
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive) return false;
+            int equals = 0;
+            foreach (var other in state.snakes)
+            {
+                if (!other.alive) continue;
+                if (other.segments.Count > player.segments.Count ||
+                    (other.segments.Count == player.segments.Count && other.kills > player.kills)) return false;
+                if (other.segments.Count == player.segments.Count && other.kills == player.kills) equals++;
+            }
+            return equals >= 2;
+        }
+
+        public static bool IsVictory(ArenaState state, string playerId) =>
+            MatchOutcome.IsVictory(state, playerId) || IsSharedFirst(state, playerId);
+
         public static string Explain(ArenaState state, string playerId)
         {
             if (state == null || state.phase != "ended" || string.IsNullOrEmpty(playerId)) return "";
@@ -138,7 +160,21 @@ namespace SnakeClub.Core
             if (!player.alive || state.remaining > 0) return MatchOutcome.Explain(state, playerId);
             int length = player.segments.Count;
             if (state.winner == playerId) return "时间到 · 当前长度 " + length + "，你位居第一";
-            if (string.IsNullOrEmpty(state.winner)) return "时间到 · 第一名并列";
+            if (string.IsNullOrEmpty(state.winner))
+            {
+                if (IsSharedFirst(state, playerId)) return "时间到 · 你并列第一";
+                int ahead = 0, leaders = 0;
+                SnakeState best = null;
+                foreach (var other in state.snakes)
+                {
+                    if (!other.alive) continue;
+                    if (other.segments.Count > length || (other.segments.Count == length && other.kills > player.kills)) ahead++;
+                    if (best == null || other.segments.Count > best.segments.Count ||
+                        (other.segments.Count == best.segments.Count && other.kills > best.kills)) { best = other; leaders = 1; }
+                    else if (other.segments.Count == best.segments.Count && other.kills == best.kills) leaders++;
+                }
+                return ahead > 0 ? "时间到 · 第 " + (ahead + 1) + " 名" + (leaders > 1 ? "，第一名并列" : "") : "时间到 · 你成功存活";
+            }
             var winner = state.snakes.Find(s => s.id == state.winner && s.alive);
             if (winner == null) return "时间到 · 你成功存活";
             int winningLength = winner.segments.Count;

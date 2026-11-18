@@ -836,10 +836,20 @@ static void ResultMotionCases()
     winner.segments.RemoveRange(10, 2); winner.kills = 2;
     Check(StrengthMatchOutcome.Explain(world, "you").Contains("对手淘汰更多"), "equal-length tiebreak was not explained");
     world.winner = "";
-    Check(StrengthMatchOutcome.Explain(world, "you").Contains("第一名并列"), "tied lead was not explained");
+    var leader = new SnakeState { id = "leader", alive = true, kills = 2 }; world.snakes.Add(leader);
+    for (int i = 0; i < 10; i++) leader.segments.Add(new Point());
+    Check(!StrengthMatchOutcome.IsVictory(world, "you") && StrengthMatchOutcome.Explain(world, "you").Contains("第 3 名，第一名并列"), "non-leader was incorrectly treated as tied first");
+    player.kills = 2;
+    Check(StrengthMatchOutcome.IsSharedFirst(world, "you") && StrengthMatchOutcome.IsVictory(world, "you") &&
+        StrengthMatchOutcome.Explain(world, "you").Contains("你并列第一"), "shared first was not recognized");
+    leader.alive = false; winner.alive = false;
+    Check(!StrengthMatchOutcome.IsSharedFirst(world, "you"), "single survivor was called a shared leader");
+    winner.alive = true; leader.alive = true;
+    world.remaining = 1; Check(!StrengthMatchOutcome.IsSharedFirst(world, "you"), "early finish was called a timed tie");
     world.remaining = 10; world.winner = "you";
     Check(StrengthMatchOutcome.Explain(world, "you") == "你赢得了本局", "early victory was described as a timeout");
     world.remaining = 0; player.alive = false; player.eliminationReason = "strength_head";
+    Check(!StrengthMatchOutcome.IsVictory(world, "you"), "eliminated player was called shared first");
     Check(StrengthMatchOutcome.Explain(world, "you").Contains("强度较弱"), "elimination reason was lost");
     player.eliminationReason = ""; world.winner = "you";
     player.alive = false; Check(!MatchOutcome.IsVictory(world, "you"), "eliminated player was called a winner");

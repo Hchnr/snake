@@ -199,6 +199,13 @@ namespace SnakeClub.Tests.Editor
                 var resultStats = FindText("Result stats"); var resultOutcome = FindText("Result outcome");
                 Require(resultStats.preferredHeight <= resultStats.rectTransform.rect.height && resultOutcome.preferredWidth <= resultOutcome.rectTransform.rect.width,
                     "strength result explanation did not fit the result card");
+                screen.SetResult("并列第一", "当前长度 80   ·   淘汰 7\n最长 80", "时间到 · 你并列第一", "强弱吞食试玩 · 不计账号奖励或排行", false, false, 0, "吃到 4 节 · 被吃 2 节", true);
+                Canvas.ForceUpdateCanvases();
+                Require(FindText("Result title").text == "并列第一" && resultOutcome.preferredWidth <= resultOutcome.rectTransform.rect.width,
+                    "shared-first result title or explanation was not shown correctly");
+                screen.SetResult("吞食结束", "当前长度 80   ·   淘汰 0\n最长 80", "时间到 · 第 8 名，第一名并列", "强弱吞食试玩 · 不计账号奖励或排行", false, false, 0);
+                Canvas.ForceUpdateCanvases();
+                Require(resultOutcome.preferredWidth <= resultOutcome.rectTransform.rect.width, "non-leader tie explanation did not fit the result card");
                 screen.SetResult("挑战结束", "得分 100", "", "正在结算…", false, true, 0);
                 FindButton("Result retry").onClick.Invoke();
                 Require(retried == 1 && FindButton("Result share").gameObject.activeSelf, "result actions are not wired");

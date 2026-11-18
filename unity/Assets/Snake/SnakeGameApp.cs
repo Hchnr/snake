@@ -340,7 +340,8 @@ namespace SnakeClub
             bool wardrobePreview = homeVisible && frontPage == "skins" && homeScreen != null && homeScreen.ArenaPreview;
             bool renderWardrobePreview = wardrobePreview && appFocused && !appPaused && platformVisible && !adShowing;
             bool resultVisible = inGame && !online && !depthMode && state != null && state.phase == "ended" && string.IsNullOrEmpty(status);
-            bool resultWon = resultVisible && MatchOutcome.IsVictory(state, playerId);
+            bool resultWon = resultVisible && (fixedPve != null && fixedPve.StrengthPreview ?
+                StrengthMatchOutcome.IsVictory(state, playerId) : MatchOutcome.IsVictory(state, playerId));
             if (homeScreen != null)
             {
                 homeScreen.Visible = homeVisible || resultVisible;
@@ -354,7 +355,7 @@ namespace SnakeClub
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
-                        string title = comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : fixedPve != null && fixedPve.StrengthPreview ? (state.winner == playerId ? "吞食胜利" : "吞食结束") : state.winner == playerId ? "围猎胜利" : "围猎结束";
+                        string title = comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : fixedPve != null && fixedPve.StrengthPreview ? (StrengthMatchOutcome.IsSharedFirst(state, playerId) ? "并列第一" : resultWon ? "吞食胜利" : "吞食结束") : state.winner == playerId ? "围猎胜利" : "围猎结束";
                         string stats = comparisonVariant >= 0 && api.Config.ComparisonPreview ?
                             "最长 " + daily.PeakLength + "   ·   淘汰 " + (own != null ? own.kills : 0) :
                             daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
@@ -822,7 +823,7 @@ namespace SnakeClub
             if (depthMode) { DrawDepthResult(me); return; }
             Panel(new Rect(125, 610, 830, 690), new Color(.035f, .065f, .12f, .96f));
             bool comparison = comparisonVariant >= 0 && api.Config.ComparisonPreview;
-            string result = comparison ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : state.winner == playerId ? "竞技胜利" : state.winner == "" ? "对局结束" : "对局结束";
+            string result = comparison ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : fixedPve != null && fixedPve.StrengthPreview && StrengthMatchOutcome.IsSharedFirst(state, playerId) ? "并列第一" : state.winner == playerId ? "竞技胜利" : "对局结束";
             Label(new Rect(170, 665, 740, 100), result, 58, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(170, 790, 740, 75), daily != null && !comparison ? "挑战得分 " + daily.Score : me == null ? "" : "长度 " + me.segments.Count + "     淘汰 " + me.kills, 34, new Color(.64f, .80f, .83f), TextAnchor.MiddleCenter);
             if (!string.IsNullOrEmpty(resultNote)) Label(new Rect(170, 850, 740, 85), resultNote, 22, new Color(.72f, .82f, .87f), TextAnchor.MiddleCenter);
