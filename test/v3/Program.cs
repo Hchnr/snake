@@ -95,6 +95,7 @@ var cases = new (string name, Action run)[]
     ("experimental strength combat bites real body segments deterministically", StrengthBodyCombatCases),
     ("strength practice world uses new body and head combat", StrengthPracticeWorldCases),
     ("strength pickup applies visible temporary power fairly and expires", StrengthPickupCases),
+    ("strength loops reward real maneuver without elimination", StrengthLoopCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1598,6 +1599,90 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void StrengthLoopCases()
+{
+    int foundTurn = 0, foundStep = 0; CapturePoint target = default;
+    for (int turn = 1; turn <= 8 && foundStep == 0; turn++)
+    {
+        var motion = new PveFixedMotion(0, 0, 0, 80);
+        for (int step = 1; step <= 200 && foundStep == 0; step++)
+        {
+            motion.Step((byte)(step * turn), false, new PveFixedBonuses());
+            if (!motion.TryCapture(out var loop)) continue;
+            for (int x = -15000; x <= 15000 && foundStep == 0; x += 500)
+                for (int y = -15000; y <= 15000 && foundStep == 0; y += 500)
+                {
+                    var p = new CapturePoint(x, y);
+                    if (!CaptureGeometry.Contains(loop.polygon, p) ||
+                        !CaptureGeometry.Contains(loop.polygon, new CapturePoint(x + 600, y)) ||
+                        !CaptureGeometry.Contains(loop.polygon, new CapturePoint(x - 600, y)) ||
+                        !CaptureGeometry.Contains(loop.polygon, new CapturePoint(x, y + 600)) ||
+                        !CaptureGeometry.Contains(loop.polygon, new CapturePoint(x, y - 600))) continue;
+                    bool clear = true;
+                    foreach (var part in motion.Segments)
+                    { long dx = (long)part.x - x, dy = (long)part.y - y; if (dx * dx + dy * dy < 2000L * 2000L) { clear = false; break; } }
+                    if (clear) { foundTurn = turn; foundStep = step; target = p; }
+                }
+        }
+    }
+    Check(foundStep > 0, "could not construct a genuine loop around a safe target");
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    PveFixedWorld MakeWorld(bool protectedTarget = false, bool absentTarget = false)
+    {
+        var world = new PveFixedWorld(52, false, null, strengthPreview: true);
+        var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+        var motion = new PveFixedMotion(0, 0, 0, 80);
+        for (int i = 1; i < foundStep; i++) motion.Step((byte)(i * foundTurn), false, new PveFixedBonuses());
+        fighters[0] = new PveFixedFighter("you", motion);
+        fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(absentTarget ? 50000 : target.x, absentTarget ? 50000 : target.y, 0, 16)) { shieldTicks = protectedTarget ? 10 : 0 };
+        for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+        return world;
+    }
+    var match = MakeWorld(); match.Step((byte)(foundStep * foundTurn), false);
+    Check(match.Fighters[1].alive && match.StrengthLoopTicks("you") == 80 && match.TryGetStrength("you", out var powered, out _) &&
+        powered.effectFactor == 1100 && match.RenderState().capturePolygon.Count > 2 && match.RenderState().captureCount == 0,
+        "real closure did not grant visible operation strength without elimination");
+    var energyTicks = (int[])typeof(PveFixedWorld).GetField("strengthBuffTicks", flags).GetValue(match);
+    energyTicks[0] = 120;
+    Check(match.TryGetStrength("you", out var combined, out _) && combined.effectFactor == 1232,
+        "energy and maneuver effects did not combine according to the capped formula");
+    energyTicks[0] = 0;
+    var protectedMatch = MakeWorld(protectedTarget: true); protectedMatch.Step((byte)(foundStep * foundTurn), false);
+    var emptyMatch = MakeWorld(absentTarget: true); emptyMatch.Step((byte)(foundStep * foundTurn), false);
+    Check(protectedMatch.StrengthLoopTicks("you") == 0 && emptyMatch.StrengthLoopTicks("you") == 0,
+        "empty or protected loop granted an operation bonus");
+    var cooldown = (int[])typeof(PveFixedWorld).GetField("strengthLoopCooldown", flags).GetValue(match);
+    Check(cooldown[0] == 200, "loop bonus did not start cooldown");
+    var detect = typeof(PveFixedWorld).GetMethod("DetectStrengthLoops", flags);
+    var apply = typeof(PveFixedWorld).GetMethod("ApplyStrengthLoops", flags);
+    detect.Invoke(match, null); apply.Invoke(match, null);
+    Check(match.StrengthLoopTicks("you") == 79 && cooldown[0] == 199, "cooldown allowed the same loop to refresh");
+    for (int i = 0; i < 79; i++) apply.Invoke(match, null);
+    Check(match.StrengthLoopTicks("you") == 0, "operation bonus did not expire");
+    var removedTarget = MakeWorld();
+    var removedFighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(removedTarget);
+    removedFighters[0].motion.Step((byte)(foundStep * foundTurn), false, new PveFixedBonuses());
+    detect.Invoke(removedTarget, null); removedFighters[1].alive = false; apply.Invoke(removedTarget, null);
+    Check(removedTarget.StrengthLoopTicks("you") == 0, "eliminated target granted a loop bonus");
+    var removedOwner = MakeWorld();
+    removedFighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(removedOwner);
+    removedFighters[0].motion.Step((byte)(foundStep * foundTurn), false, new PveFixedBonuses());
+    detect.Invoke(removedOwner, null); removedFighters[0].alive = false; apply.Invoke(removedOwner, null);
+    Check(((int[])typeof(PveFixedWorld).GetField("strengthLoopTicks", flags).GetValue(removedOwner))[0] == 0,
+        "eliminated owner received a loop bonus");
+    var aiMatch = MakeWorld();
+    var aiFighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(aiMatch);
+    var ownerMotion = aiFighters[0].motion;
+    ownerMotion.Step((byte)(foundStep * foundTurn), false, new PveFixedBonuses());
+    aiFighters[0] = new PveFixedFighter("you", aiFighters[1].motion);
+    aiFighters[1] = new PveFixedFighter("bot-1", ownerMotion);
+    detect.Invoke(aiMatch, null); apply.Invoke(aiMatch, null);
+    Check(aiFighters[0].alive && aiMatch.StrengthLoopTicks("bot-1") == 80 && aiMatch.TryGetStrength("bot-1", out var aiPower, out _) &&
+        aiPower.effectFactor == 1100, "AI did not receive the same loop reward");
+    var legacy = new PveFixedWorld(52, false, null);
+    Check(legacy.StrengthLoopTicks("you") == 0, "operation bonus leaked into legacy rules");
 }
 
 static void StrengthPickupCases()
