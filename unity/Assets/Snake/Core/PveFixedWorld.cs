@@ -205,7 +205,7 @@ namespace SnakeClub.Core
         }
         private byte BotHeading(int index)
         {
-            if (--botTimer[index] > 0) return botDirection[index];
+            if (--botTimer[index] > 0) return StrengthPreview ? AvoidLethalHead(index, botDirection[index]) : botDirection[index];
             botTimer[index] = 6 + Next(8);
             var self = fighters[index]; int nearest = -1; long closest = long.MaxValue;
             for (int i = 0; i < fighters.Length; i++)
@@ -294,7 +294,44 @@ namespace SnakeClub.Core
                 long dot = vx * PveFixedMotion.DirectionX((byte)a) + vy * PveFixedMotion.DirectionY((byte)a);
                 if (dot > best) { best = dot; heading = a; }
             }
-            return botDirection[index] = (byte)heading;
+            botDirection[index] = (byte)heading;
+            return StrengthPreview ? AvoidLethalHead(index, botDirection[index]) : botDirection[index];
+        }
+        // Check every step, including between normal AI planning updates. Only
+        // currently lethal head contacts cause a retreat; edible bodies remain
+        // valid targets. Both sides use the same comparison as head combat.
+        private byte AvoidLethalHead(int index, byte planned)
+        {
+            var self = fighters[index];
+            if (!self.alive || self.shieldTicks > 1 || !BodyStrength.TryCalculate(StrengthFor(self), 0, out var own)) return planned;
+            long vx = 0, vy = 0;
+            foreach (var other in fighters)
+            {
+                if (other == self || !other.alive || other.shieldTicks > 1) continue;
+                int dx = self.motion.X - other.motion.X, dy = self.motion.Y - other.motion.Y;
+                if ((long)dx * dx + (long)dy * dy >= 3500L * 3500L) continue;
+                int distance = PveFixedMotion.Distance(dx, dy);
+                if (!BodyStrength.TryCalculate(StrengthFor(other), 0, out var threat)) continue;
+                long incoming = (long)threat.attack * 100 - (long)own.defense * 105;
+                long outgoing = (long)own.attack * 100 - (long)threat.defense * 105;
+                if (incoming <= 0 || incoming <= outgoing) continue;
+                byte otherHeading = (byte)(other.motion.Angle >> 8);
+                long toward = (long)dx * PveFixedMotion.DirectionX(otherHeading) + (long)dy * PveFixedMotion.DirectionY(otherHeading);
+                if (distance > 2200 && toward <= 0) continue;
+                if (distance == 0) { dx = string.CompareOrdinal(self.id, other.id) < 0 ? -1 : 1; dy = 0; distance = 1; }
+                long weight = 3500 - distance;
+                vx += dx * weight / distance; vy += dy * weight / distance;
+            }
+            if (vx == 0 && vy == 0) return planned;
+            if (Math.Abs(self.motion.X) > 105000) vx -= self.motion.X / 4;
+            if (Math.Abs(self.motion.Y) > 105000) vy -= self.motion.Y / 4;
+            long best = long.MinValue; int heading = planned;
+            for (int a = 0; a < 256; a++)
+            {
+                long dot = vx * PveFixedMotion.DirectionX((byte)a) + vy * PveFixedMotion.DirectionY((byte)a);
+                if (dot > best) { best = dot; heading = a; }
+            }
+            return (byte)heading;
         }
         private static int ClampEvent(int value) => Math.Max(-107280, Math.Min(107280, value));
         private void StartEvent()

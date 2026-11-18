@@ -130,6 +130,7 @@ var cases = new (string name, Action run)[]
     ("strength loops reward real maneuver without elimination", StrengthLoopCases),
     ("strength match levels track actual actions after combat", StrengthLevelCases),
     ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
+    ("strength bots promptly avoid lethal heads but not protected or equal heads", StrengthBotHeadCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
@@ -1676,6 +1677,41 @@ static void StrengthGrowthCases()
         match.Step(0, false); return match;
     }
     Check(Bite(false).LastPlayerBlockedTick == 1 && Bite(true).LastPlayerBiteTick == 1, "account growth did not change a real body collision");
+}
+
+static void StrengthBotHeadCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    PveFixedWorld Match(bool strong)
+    {
+        var snapshot = strong ? StrengthEvalStartConfig.Capture(new PlayerProgress {
+            experience = Progression.ExperienceForLevel(41), tutorialComplete = true }) : null;
+        var world = new PveFixedWorld(42, false, null, true, snapshot);
+        var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+        actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+        actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(3000, 0, 32768, 16));
+        for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+        ((int[])typeof(PveFixedWorld).GetField("botTimer", flags).GetValue(world))[1] = 10;
+        ((byte[])typeof(PveFixedWorld).GetField("botDirection", flags).GetValue(world))[1] = 128;
+        return world;
+    }
+    byte Heading(PveFixedWorld world) => (byte)typeof(PveFixedWorld).GetMethod("BotHeading", flags).Invoke(world, new object[] { 1 });
+    var dangerous = Match(true); byte away = Heading(dangerous);
+    Check(PveFixedMotion.DirectionX(away) > 0, "bot did not avoid a lethal head between planning updates");
+    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(dangerous);
+    actors[0].shieldTicks = 2;
+    Check(Heading(dangerous) == 128, "bot avoided a protected head");
+    actors[0].shieldTicks = 0; actors[1].shieldTicks = 2;
+    Check(Heading(dangerous) == 128, "protected bot avoided a head");
+    actors[1].shieldTicks = 0;
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 32768, 16));
+    Check(Heading(dangerous) == 128, "bot avoided a distant head moving away");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(2000, 0, 32768, 16));
+    Check(PveFixedMotion.DirectionX(Heading(dangerous)) > 0, "bot ignored a lethal head in immediate contact range");
+    var equal = Match(false);
+    Check(Heading(equal) == 128, "bot avoided an equally strong head as if it were lethal");
+    var repeated = Match(true);
+    Check(Heading(repeated) == away, "head avoidance was not deterministic");
 }
 
 static void StrengthWeakPointCases()
