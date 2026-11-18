@@ -201,7 +201,7 @@ namespace SnakeClub
             for (int i = 0; i < skinCards.Length; i++)
             {
                 var card = skinCards[i];
-                bool show = (i < SkinCatalog.OwnedSkinCount || referencesEnabled) && i / 6 == skinPageIndex;
+                bool show = (SkinCatalog.IsOwnedSkin(i) || referencesEnabled) && SkinCatalog.DisplayPosition(i) / 6 == skinPageIndex;
                 if (card.gameObject.activeSelf != show) card.gameObject.SetActive(show);
                 var thumbnail = skinThumbnails[i];
                 if (show && thumbnail.texture == null)
@@ -220,7 +220,7 @@ namespace SnakeClub
                 Set(skinStates[i], SkinCatalog.Get(i).ReferencePreview ? "造型预览" : profile.ownedSkins.Contains(i) ? "已拥有" :
                     i == 1 ? (strengthPvePreview ? (connected ? "旧版完成 2 场领取" : "联网完成旧版 2 场领取") : connected ? "完成 2 场免费领取" : "联网完成 2 场领取") : SkinCatalog.Get(i).Price + " 金币");
             }
-            int pages = referencesEnabled ? (SkinCatalog.All.Length + 5) / 6 : 1;
+            int pages = ((referencesEnabled ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount) + 5) / 6;
             if (skinPageIndex >= pages) skinPageIndex = pages - 1;
             skinPrevious.interactable = skinPageIndex > 0;
             skinNext.interactable = skinPageIndex + 1 < pages;
@@ -342,7 +342,7 @@ namespace SnakeClub
             for (int i = 0; i < skinCards.Length; i++)
             {
                 int index = i;
-                int slot = i % 6;
+                int slot = SkinCatalog.DisplayPosition(i) % 6;
                 var card = MakeButton("Skin card " + i, skinPage, new Rect(85 + slot % 2 * 465, 925 + slot / 2 * 175, 445, 155),
                     new Color(.035f, .14f, .21f, .94f), () => onSkinSelect?.Invoke(index));
                 skinCards[i] = card.image;

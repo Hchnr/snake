@@ -2878,10 +2878,13 @@ static void SkinVisualFallback()
 
 static void SkinIdentities()
 {
-    Check(SkinCatalog.OwnedSkinCount == 4 && SkinCatalog.IndexOf("lanlight") == 0 && SkinCatalog.IndexOf("crystal") == 3,
+    Check(SkinCatalog.OwnedSkinCount == 5 && SkinCatalog.IndexOf("lanlight") == 0 && SkinCatalog.IndexOf("crystal") == 3,
         "original inventory IDs changed");
     Check(SkinCatalog.IndexOf("reference-wenda") == 4 && SkinCatalog.Get(4).ReferencePreview && SkinCatalog.Get(5).ReferencePreview,
         "reference previews must remain distinct from owned skins");
+    Check(SkinCatalog.IndexOf("tidal") == 24 && SkinCatalog.IsOwnedSkin(24) && !SkinCatalog.IsOwnedSkin(4), "new owned identity displaced a reference");
+    for (int i = 0; i < SkinCatalog.All.Length; i++)
+        Check(SkinCatalog.DisplayIndex(SkinCatalog.DisplayPosition(i)) == i, "display order did not preserve IDs");
     Check(SkinCatalog.IndexOf("missing") == -1, "unknown identity should not map to a skin");
 }
 

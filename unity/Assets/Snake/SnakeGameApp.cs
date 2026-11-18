@@ -204,7 +204,7 @@ namespace SnakeClub
                 bonuses.boostCostPenalty = DepthChallenge.GrowthBoostPenalty(depthGrowth);
             }
             arena.SetBonuses(playerId, bonuses);
-            arenaRenderer.SelectedSkin = EffectiveSkin >= SkinCatalog.OwnedSkinCount ? EffectiveSkin : skin;
+            arenaRenderer.SelectedSkin = SkinCatalog.IsReference(EffectiveSkin) ? EffectiveSkin : skin;
         }
 
         private void BeginFixedPve() => BeginFixedPveWithRun(null);
@@ -380,7 +380,7 @@ namespace SnakeClub
                 homeAvatar.ReducedEffects = reducedEffects;
                 homeAvatar.SetResult(resultVisible, resultWon);
                 if (homeAvatar.Visible) homeAvatar.Skin = homeVisible && frontPage == "skins" ? previewSkin :
-                    resultVisible && activeRun != null && activeRun.trialSkin > 0 && EffectiveSkin < SkinCatalog.OwnedSkinCount ? activeRun.trialSkin : EffectiveSkin;
+                    resultVisible && activeRun != null && activeRun.trialSkin > 0 && SkinCatalog.IsOwnedSkin(EffectiveSkin) ? activeRun.trialSkin : EffectiveSkin;
             }
             if (inGame && !SimulationSuspended && CanControlPlayer()) ReadControls();
             else { dragSteering.Reset(); pointerBoost = false; }

@@ -21,6 +21,12 @@
 | `stardust.png` | a dreamy lavender night-sky spirit with a crescent-moon crest, large expressive eyes, star-shaped cheek marks and a tapered purple body |
 | `crystal.png` | a bright cyan crystal spirit with translucent faceted crystal horns, large expressive eyes, a small smile and a tapered ice-blue body |
 
+### 沧澜（2026-11-18）
+
+位置：`unity/Assets/Resources/Characters/tidal.png`。使用内置 `image_gen` 生成透明 PNG，独立原创，不以内部参考角色为输入。Unity 导入尺寸上限 1024；当前为整张立绘，尚无分层、专属动作或目标用户验收。提示词：
+
+> Create one original 2D game character sprite for a polished cheerful casual mobile snake-arena game: a small cute blue aquatic otter spirit with flowing wave-shaped fins, luminous turquoise details, lively friendly eyes, a distinctive silhouette, rounded stylized vector-like painted shading. Full body centered, front-facing, upright, clear silhouette, occupies most of canvas with safe margin; no typography, no border, no shadow on ground, no other objects. Style consistent with colorful premium Chinese mobile game mascots, crisp linework, smooth shading. Transparent background.
+
 ## 内部参考角色
 
 本机位置：`unity/Assets/Editor/ReferenceSkins/`，该目录已被 Git 忽略，公开仓库不含这些图片。这些是基于 [Sprunki 非官方角色资料](https://sprunki.com/sprunki-characters)中角色普通形态图片生成的内部视觉参考；20 个 PNG 的文件名与 `SkinCatalog` 中 `reference-` 后的 ID 相同。它们**不是官方联动资产或授权证明**，不随默认播放器构建发布。
