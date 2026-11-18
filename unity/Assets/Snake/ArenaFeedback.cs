@@ -11,7 +11,7 @@ namespace SnakeClub
         private AudioSource output, musicOutput;
         private AudioClip homeMusic, battleMusic;
         private bool interacted, musicPaused, homeAttempted, battleAttempted, homeGenerated, battleGenerated;
-        private AudioClip growth, rebound, elimination, capture, star, finish, strengthBite, strengthDamage, strengthLevelUp;
+        private AudioClip growth, rebound, elimination, capture, star, finish, strengthBite, strengthDamage, strengthLevelUp, strengthPickup;
         private int length, kills, stars;
         private readonly FeedbackCursor cursor = new FeedbackCursor();
         private readonly MusicTransition musicTransition = new MusicTransition();
@@ -69,6 +69,7 @@ namespace SnakeClub
             strengthBite = MakeClip("Body bite", 520, 1040, .10f);
             strengthDamage = MakeClip("Body damage", 480, 190, .16f);
             strengthLevelUp = MakeClip("Match level up", 680, 1320, .18f);
+            strengthPickup = MakeClip("Energy pickup", 740, 1180, .13f);
         }
 
         public void Observe(ArenaState state, string playerId, PveFixedWorld strengthWorld = null)
@@ -91,7 +92,8 @@ namespace SnakeClub
             bool bossHit = boss != null && bossShield >= 0 && boss.bossShield < bossShield;
             var strengthCue = StrengthSoundFeedback.Select(strengthWorld != null && strengthWorld.StrengthPreview,
                 previousTick, state.tick, strengthWorld != null ? strengthWorld.LastPlayerAttackTick : -1,
-                strengthWorld != null ? strengthWorld.LastPlayerDamageTick : -1);
+                strengthWorld != null ? strengthWorld.LastPlayerDamageTick : -1,
+                strengthWorld != null ? strengthWorld.LastPlayerPickupTick : -1);
             if (HapticsEnabled && GamePlatform.SupportsHaptics && Time.unscaledTime >= nextHaptic &&
                 (eliminationOccurred || captureOccurred || reboundOccurred || starOccurred || bossHit || strengthCue != StrengthSoundCue.None))
             {
@@ -106,6 +108,7 @@ namespace SnakeClub
                 else if (snake.kills > kills) output.PlayOneShot(elimination);
                 else if (strengthCue == StrengthSoundCue.Damage) output.PlayOneShot(strengthDamage);
                 else if (strengthCue == StrengthSoundCue.Bite) output.PlayOneShot(strengthBite);
+                else if (strengthCue == StrengthSoundCue.Pickup) output.PlayOneShot(strengthPickup);
                 else if (StrengthLevelNotice.NewSince(strengthWorld, previousTick, state.tick)) output.PlayOneShot(strengthLevelUp);
                 else if (state.captureOwner == playerId && state.captureTick >= 0 && state.captureTick != captureTick) output.PlayOneShot(capture);
                 else if (snake.rebound > 0 && pulse <= 0) output.PlayOneShot(rebound);
@@ -212,7 +215,7 @@ namespace SnakeClub
             if (growth != null) Destroy(growth); if (rebound != null) Destroy(rebound);
             if (elimination != null) Destroy(elimination); if (capture != null) Destroy(capture); if (star != null) Destroy(star); if (finish != null) Destroy(finish);
             if (strengthBite != null) Destroy(strengthBite); if (strengthDamage != null) Destroy(strengthDamage);
-            if (strengthLevelUp != null) Destroy(strengthLevelUp);
+            if (strengthLevelUp != null) Destroy(strengthLevelUp); if (strengthPickup != null) Destroy(strengthPickup);
         }
     }
 }

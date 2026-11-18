@@ -351,6 +351,12 @@ static void AudioFeedbackCursorCases()
         StrengthSoundFeedback.Select(true, 5, 5, 5, 5) == StrengthSoundCue.None &&
         StrengthSoundFeedback.Select(true, 5, 6, 5, 7) == StrengthSoundCue.None &&
         StrengthSoundFeedback.Select(true, -1, 0, 0, 0) == StrengthSoundCue.None, "stale, future, initial or non-strength events made a sound");
+    Check(StrengthSoundFeedback.Select(true, 1, 2, -1, -1, 2) == StrengthSoundCue.Pickup &&
+        StrengthSoundFeedback.Select(true, 1, 2, 2, -1, 2) == StrengthSoundCue.Bite &&
+        StrengthSoundFeedback.Select(true, 1, 2, 2, 2, 2) == StrengthSoundCue.Damage &&
+        StrengthSoundFeedback.Select(true, 1, 3, 2, -1, 3) == StrengthSoundCue.Pickup &&
+        StrengthSoundFeedback.Select(true, 2, 3, -1, -1, 2) == StrengthSoundCue.None,
+        "pickup cue or simultaneous contact priority is incorrect");
     cursor.Suspend(); Check(cursor.Observe(200), "sound did not rebaseline on resume");
     Check(StrengthSoundFeedback.Select(true, cursor.LastTick, 201, 198, -1) == StrengthSoundCue.None &&
         StrengthSoundFeedback.Select(true, cursor.LastTick, 201, 201, -1) == StrengthSoundCue.Bite,
@@ -2341,9 +2347,9 @@ static void StrengthPickupCases()
     Check(world.RenderState().strengthPickupVisible, "real pickup was not projected");
     world.Step(0, false);
     Check(!world.StrengthPickupVisible && !world.RenderState().strengthPickupVisible && world.StrengthBuffTicks("you") == 120 &&
-        world.TryGetStrength("you", out var buffed, out _) && buffed.effectFactor == 1120, "pickup did not apply the displayed six-second effect");
+        world.TryGetStrength("you", out var buffed, out _) && buffed.effectFactor == 1120 && world.LastPlayerPickupTick == 1, "pickup did not apply the displayed six-second effect");
     Place(actors[0].motion.Segments[0]); world.Step(0, false);
-    Check(world.StrengthBuffTicks("you") == 120 && world.TryGetStrength("you", out buffed, out _) && buffed.effectFactor == 1120,
+    Check(world.StrengthBuffTicks("you") == 120 && world.LastPlayerPickupTick == 2 && world.TryGetStrength("you", out buffed, out _) && buffed.effectFactor == 1120,
         "repeated pickup stacked instead of refreshing");
     for (int i = 0; i < 119; i++) world.Step(0, false);
     Check(world.StrengthBuffTicks("you") == 1, "buff duration expired early");
@@ -2379,7 +2385,7 @@ static void StrengthPickupCases()
     typeof(PveFixedWorld).GetProperty("StrengthPickupPosition").SetValue(tied, new CapturePoint(0, 0));
     typeof(PveFixedWorld).GetProperty("StrengthPickupVisible").SetValue(tied, true);
     typeof(PveFixedWorld).GetMethod("CollectStrengthPickup", flags).Invoke(tied, null);
-    Check(tied.StrengthBuffTicks("bot-1") == 120 && tied.StrengthBuffTicks("you") == 0,
+    Check(tied.StrengthBuffTicks("bot-1") == 120 && tied.StrengthBuffTicks("you") == 0 && tied.LastPlayerPickupTick == -1,
         "equidistant pickup did not use stable ID ordering");
     var notice = new PveFixedWorld(44, true, null, strengthPreview: true);
     var noticeActors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(notice);

@@ -903,18 +903,20 @@ namespace SnakeClub.Core
         }
     }
 
-    public enum StrengthSoundCue { None, Bite, Damage }
+    public enum StrengthSoundCue { None, Bite, Damage, Pickup }
     public static class StrengthSoundFeedback
     {
         // Only events since the previous observed simulation step are audible.
-        // When both happen at the same time, the warning takes precedence.
-        public static StrengthSoundCue Select(bool active, int previousTick, int currentTick, int attackTick, int damageTick)
+        // At the same tick, damage takes precedence over a bite or pickup.
+        public static StrengthSoundCue Select(bool active, int previousTick, int currentTick, int attackTick, int damageTick, int pickupTick = -1)
         {
             if (!active || previousTick < 0 || currentTick <= previousTick) return StrengthSoundCue.None;
             int attack = attackTick > previousTick && attackTick <= currentTick ? attackTick : -1;
             int damage = damageTick > previousTick && damageTick <= currentTick ? damageTick : -1;
-            if (attack < 0 && damage < 0) return StrengthSoundCue.None;
-            return damage >= attack ? StrengthSoundCue.Damage : StrengthSoundCue.Bite;
+            int pickup = pickupTick > previousTick && pickupTick <= currentTick ? pickupTick : -1;
+            if (attack < 0 && damage < 0 && pickup < 0) return StrengthSoundCue.None;
+            if (damage >= attack && damage >= pickup) return StrengthSoundCue.Damage;
+            return attack >= pickup ? StrengthSoundCue.Bite : StrengthSoundCue.Pickup;
         }
     }
 
