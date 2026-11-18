@@ -82,6 +82,11 @@ namespace SnakeClub
         private int shownCaptureTick = -1;
         private float captureStarted = -10f;
         private float reboundStarted = -10f, previousRebound;
+        private LineRenderer strengthAttackRing, strengthDamageRing;
+        private ArenaState strengthImpactSource;
+        private int seenStrengthAttackTick = -1, seenStrengthDamageTick = -1;
+        private float strengthAttackStarted = -10f, strengthDamageStarted = -10f;
+        private Point strengthAttackPoint, strengthDamagePoint;
         private Vector3 reboundPosition;
         public int SelectedSkin { get; set; }
         public bool ReducedEffects { get; set; }
@@ -350,6 +355,8 @@ namespace SnakeClub
             captureSweepRenderer.receiveShadows = false; captureSweepRenderer.enabled = false;
             captureFlare = MakeEffectRing("Capture closing point", new Color(1f, .94f, .60f, 1f));
             reboundRipple = MakeEffectRing("Rebound ripple", new Color(.55f, 1f, .91f, 1f));
+            strengthAttackRing = MakeEffectRing("Strength attack impact", new Color(1f, .86f, .30f, 1f));
+            strengthDamageRing = MakeEffectRing("Strength damage impact", new Color(1f, .32f, .25f, 1f));
         }
 
         private LineRenderer MakeEffectRing(string name, Color color)
@@ -633,6 +640,34 @@ namespace SnakeClub
                     }
                 }
             }
+            if (!ReferenceEquals(strengthImpactSource, state))
+            {
+                strengthImpactSource = state; seenStrengthAttackTick = seenStrengthDamageTick = -1;
+                strengthAttackStarted = strengthDamageStarted = -10f;
+            }
+            if (StrengthBodyVisual && !MotionPaused)
+            {
+                if (state.strengthAttackTick >= 0 && state.strengthAttackTick != seenStrengthAttackTick &&
+                    state.tick >= state.strengthAttackTick && state.tick - state.strengthAttackTick <= 3)
+                {
+                    seenStrengthAttackTick = state.strengthAttackTick; strengthAttackStarted = visualClock.Time;
+                    strengthAttackPoint = state.strengthAttackPoint;
+                }
+                if (state.strengthDamageTick >= 0 && state.strengthDamageTick != seenStrengthDamageTick &&
+                    state.tick >= state.strengthDamageTick && state.tick - state.strengthDamageTick <= 3)
+                {
+                    seenStrengthDamageTick = state.strengthDamageTick; strengthDamageStarted = visualClock.Time;
+                    strengthDamagePoint = state.strengthDamagePoint;
+                }
+            }
+            else if (StrengthBodyVisual && MotionPaused)
+            {
+                // Do not replay a newly observed event after suspension.
+                if (state.strengthAttackTick >= 0) seenStrengthAttackTick = state.strengthAttackTick;
+                if (state.strengthDamageTick >= 0) seenStrengthDamageTick = state.strengthDamageTick;
+            }
+            DrawStrengthImpact(strengthAttackRing, strengthAttackPoint, strengthAttackStarted);
+            DrawStrengthImpact(strengthDamageRing, strengthDamagePoint, strengthDamageStarted);
             float reboundAge = visualClock.Time - reboundStarted;
             reboundRipple.enabled = !ReducedEffects && reboundAge >= 0f && reboundAge < .5f;
             if (reboundRipple.enabled)
@@ -672,6 +707,16 @@ namespace SnakeClub
             scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)]], Color.white, .65f);
             scaleMaterial.SetColor("_EmissionColor", scaleMaterial.color * .18f);
             DrawBatch(scales, scaleMaterial); DrawBatch(weakPoints, weakPointMaterial); DrawBatch(threatMarks, threatMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, trailPulseMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+        }
+
+        private void DrawStrengthImpact(LineRenderer ring, Point point, float started)
+        {
+            float age = visualClock.Time - started;
+            ring.enabled = StrengthBodyVisual && age >= 0f && age < .45f;
+            if (!ring.enabled) return;
+            float progress = age / .45f;
+            PlaceRing(ring, new Vector3(point.x, .32f, point.y), ReducedEffects ? .85f : Mathf.Lerp(.35f, 1.5f, progress));
+            ring.widthMultiplier = ReducedEffects ? .16f : .20f * (1f - progress);
         }
 
         // Thin scanline bands leave the original path and characters readable.

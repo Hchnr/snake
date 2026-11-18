@@ -1942,6 +1942,13 @@ static void StrengthNoticeCases()
     world.Step(0, false);
     Check(world.LastPlayerAttackTick == 1 && world.LastPlayerDamageTick == 1 && world.LastPlayerAttackCount > 0 && world.LastPlayerDamageCount > 0,
         "real mutual body collision did not record both directions");
+    var projection = world.RenderState();
+    Check(projection.strengthAttackTick == world.LastPlayerAttackTick && projection.strengthDamageTick == world.LastPlayerDamageTick &&
+        Math.Abs(projection.strengthAttackPoint.x * 1000 - world.LastPlayerAttackPoint.x) < .01 &&
+        Math.Abs(projection.strengthAttackPoint.y * 1000 - world.LastPlayerAttackPoint.y) < .01 &&
+        Math.Abs(projection.strengthDamagePoint.x * 1000 - world.LastPlayerDamagePoint.x) < .01 &&
+        Math.Abs(projection.strengthDamagePoint.y * 1000 - world.LastPlayerDamagePoint.y) < .01,
+        "real bite positions were not projected to presentation state");
     string notice = StrengthContactNotice.Text(world, 1, out bool warning);
     Check(warning && notice.Contains("互相吞食") && notice.Contains("吃 " + world.LastPlayerAttackCount) &&
         notice.Contains("失 " + world.LastPlayerDamageCount), "mutual bite omitted an actual outcome");
@@ -2409,11 +2416,17 @@ static void StrengthBodyCombatCases()
     Check(contested.Count == 1 && contested[0].attacker == "b", "ID order beat a stronger simultaneous attack");
     var mutualA = Fighter("a", 0);
     var mutualB = new PveFixedFighter("b", new PveFixedMotion(-11700, 0, 32768, 16));
+    var beforeA = mutualA.motion.Segments.ToArray(); var beforeB = mutualB.motion.Segments.ToArray();
     var mutual = new StrengthBodyCombat().Resolve(0, new[] { mutualA, mutualB }, new[] { Power(), Power() });
     Check(mutual.Count == 2 && mutualA.motion.Length == 16 && mutualB.motion.Length == 16 &&
         mutual.Any(x => x.attacker == "a" && x.defender == "b" && x.removed == 3) &&
         mutual.Any(x => x.attacker == "b" && x.defender == "a" && x.removed == 3),
         "simultaneous mutual bites did not use the same snapshot and apply both growth awards");
+    foreach (var hit in mutual)
+    {
+        var expected = (hit.defender == "a" ? beforeA : beforeB)[hit.segment];
+        Check(hit.point.x == expected.x && hit.point.y == expected.y, "bite effect position was not captured from the shared snapshot");
+    }
     var tiny = Fighter("tiny", 0, length: 5); attacker = Fighter("attacker", -2700);
     Check(new StrengthBodyCombat().Resolve(0, new[] { attacker, tiny }, new[] { Power(), Power() }).Count == 0 && tiny.motion.Length == 5,
         "minimum body length was not preserved");

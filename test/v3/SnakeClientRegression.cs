@@ -56,6 +56,7 @@ namespace SnakeClub.Tests.Editor
                 TestBackgroundSimulation();
                 TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
+                TestStrengthImpactVisual();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");
@@ -388,6 +389,51 @@ namespace SnakeClub.Tests.Editor
                 Require(!rings["you"].enabled && arrow.enabled, "protection did not transition to current danger");
                 state.phase = "ended"; renderer.Draw(state, "you"); Require(!arrow.enabled, "finished match kept the danger arrow");
                 Debug.Log("PASS Unity protection expiry stays legible with reduced effects");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestStrengthImpactVisual()
+        {
+            var root = new GameObject("Strength impact regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true;
+                PveFixedWorld World()
+                {
+                    var world = new PveFixedWorld(42, false, null, true);
+                    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+                    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+                    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-11700, 0, 32768, 16));
+                    for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+                    ((System.Collections.Generic.List<PveFixedFruit>)world.Fruit).Clear();
+                    return world;
+                }
+                var attack = (LineRenderer)typeof(ArenaRenderer).GetField("strengthAttackRing", flags).GetValue(renderer);
+                var damage = (LineRenderer)typeof(ArenaRenderer).GetField("strengthDamageRing", flags).GetValue(renderer);
+                var match = World(); renderer.Draw(match.RenderState(), "you");
+                Require(!attack.enabled && !damage.enabled, "impact displayed without a bite");
+                match.Step(0, false); renderer.Draw(match.RenderState(), "you");
+                Require(match.LastPlayerAttackTick == 1 && match.LastPlayerDamageTick == 1 && attack.enabled && damage.enabled,
+                    "actual mutual bite did not display both impacts");
+                Require(Mathf.Abs(attack.GetPosition(0).x - .35f - match.LastPlayerAttackPoint.x / 1000f) < .01f &&
+                    Mathf.Abs(damage.GetPosition(0).x - .35f - match.LastPlayerDamagePoint.x / 1000f) < .01f,
+                    "impact position differed from the actual bite");
+                renderer.ReducedEffects = true; renderer.Draw(match.RenderState(), "you");
+                Require(attack.enabled && damage.enabled && attack.widthMultiplier > 0, "reduced effects hid the impact");
+                var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
+                clock.Advance(1f, false); renderer.Draw(match.RenderState(), "you");
+                Require(!attack.enabled && !damage.enabled, "an expired event replayed on a later frame");
+                renderer.StrengthBodyVisual = false; renderer.Draw(match.RenderState(), "you");
+                Require(!attack.enabled && !damage.enabled, "impact leaked into another mode");
+                renderer.StrengthBodyVisual = true; renderer.MotionPaused = true;
+                var pausedMatch = World(); pausedMatch.Step(0, false); renderer.Draw(pausedMatch.RenderState(), "you");
+                renderer.MotionPaused = false; renderer.Draw(pausedMatch.RenderState(), "you");
+                Require(!attack.enabled && !damage.enabled, "suspension replayed an old impact");
+                Debug.Log("PASS Unity strength impacts follow real bite positions");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

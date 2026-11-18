@@ -85,6 +85,9 @@ namespace SnakeClub.Core
         public int captureTick = -1, captureCount;
         public string captureOwner = "";
         public List<Point> capturePolygon = new List<Point>();
+        // Local strength-practice presentation only; not a network event.
+        internal int strengthAttackTick = -1, strengthDamageTick = -1;
+        internal Point strengthAttackPoint, strengthDamagePoint;
     }
 
     // Describes only outcomes established by the simulation. Unknown or
