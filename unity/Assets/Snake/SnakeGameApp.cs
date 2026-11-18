@@ -204,7 +204,7 @@ namespace SnakeClub
                 bonuses.boostCostPenalty = DepthChallenge.GrowthBoostPenalty(depthGrowth);
             }
             arena.SetBonuses(playerId, bonuses);
-            arenaRenderer.SelectedSkin = SkinCatalog.IsReference(EffectiveSkin) ? EffectiveSkin : skin;
+            arenaRenderer.SelectedSkin = SkinCatalog.IsReference(EffectiveSkin) || (run == null && OfflineCosmeticPreview && offlineVisualSkin >= 0) ? EffectiveSkin : skin;
         }
 
         private void BeginFixedPve() => BeginFixedPveWithRun(null);
@@ -351,7 +351,7 @@ namespace SnakeClub
                     bool trial = !DefaultStrengthMain && CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview || DefaultStrengthMain, api.Config.StrengthPveServerPreview);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview || DefaultStrengthMain, api.Config.StrengthPveServerPreview, OfflineCosmeticPreview);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
