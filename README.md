@@ -67,7 +67,7 @@ python3 scripts/test-fullscreen-touch-webgl.py
 # 后台用模拟触摸完成强弱试玩，并将实际输入分别在 WebGL 与 .NET 重放
 python3 scripts/test-strength-touch-replay-webgl.py
 
-# 后台运行强弱试玩到本机实验服务器的无奖励回放验证
+# 后台用拖拽、双指加速及松开操作完成强弱试玩的本机服务端无奖励回放验证
 python3 scripts/test-strength-pve-client-e2e.py
 
 # 使用图形后端在临时 Unity 工程中验证运行时动画与 UI 命中

@@ -47,6 +47,12 @@ async function steer() {
     await pause(50);
     await call('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 270 + (x - 270) * i / 4, y: 540 + (y - 540) * i / 4, id: 1 }] });
   }
+  // Hold a second finger while retaining the steering finger, then release
+  // it separately so actual simulation input includes a boost interval.
+  await call('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }, { x: 450, y: 700, id: 2 }] });
+  await pause(700);
+  await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [{ x: 450, y: 700, id: 2 }] });
+  await pause(100);
   await call('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   sentInput = true;
 }
@@ -78,7 +84,13 @@ async function steer() {
           body = Buffer.concat(request.postDataEntries.map(entry => Buffer.from(entry.bytes || '', 'base64'))).toString('utf8');
         if (!body) body = (await call('Network.getRequestPostData', { requestId })).postData;
         const input = Buffer.from(JSON.parse(body).inputs, 'base64');
-        return input.length > 0 && input.length % 2 === 0 && input.some((v, i) => i % 2 === 0 && v !== 0);
+        const headings = new Set(); let boosted = false, released = false;
+        for (let i = 0; i + 1 < input.length; i += 2) {
+          headings.add(input[i]);
+          if (input[i + 1] === 1) boosted = true;
+          else if (boosted && input[i + 1] === 0) released = true;
+        }
+        return input.length > 0 && input.length % 2 === 0 && headings.size > 1 && boosted && released;
       })().catch(() => false);
     }
     if (event.method === 'Network.responseReceived') {
@@ -109,7 +121,7 @@ async function steer() {
       if (text.includes('SNAKE_STRENGTH_E2E ')) {
         inspectReplay.then(requestSeen => {
           if (text.includes('SNAKE_STRENGTH_E2E MATCH') && sentInput && requestSeen && verifySeen)
-            done(0, 'PASS: real touch input produced a matching strength experimental server receipt.');
+            done(0, 'PASS: touch steering, boost and release produced a matching strength experimental server receipt.');
           else done(1, 'Client reported mismatch or missing real touch/replay evidence.');
         }).catch(() => done(1, 'Unable to inspect bounded replay input'));
       }
@@ -117,7 +129,7 @@ async function steer() {
   };
   await call('Page.enable'); await call('Runtime.enable'); await call('Network.enable', { maxPostDataSize: 10000 });
   await call('Network.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36' });
-  await call('Emulation.setTouchEmulationEnabled', { enabled: true });
+  await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 2 });
   await call('Emulation.setDeviceMetricsOverride', { width: 540, height: 960, deviceScaleFactor: 1, mobile: true });
   await call('Page.navigate', { url: process.argv[3] });
 })().catch(e => done(1, String(e)));
