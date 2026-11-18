@@ -40,7 +40,7 @@ sealed class GameApi
     {
         var service = new GameApi(root);
         app.MapPost("/api/v3/auth/dev", (HttpContext context, AuthRequest request) => service.DevLogin(context, request));
-        app.MapPost("/api/v3/auth/douyin", (AuthRequest request) => service.DouyinLogin(request));
+        app.MapPost("/api/v3/auth/douyin", (HttpContext context, AuthRequest request) => service.DouyinLogin(context, request));
         app.MapGet("/api/v3/bootstrap", (HttpContext context) => service.WithPlayer(context, (profile, now) =>
             Results.Json(new { ok = true, profile, date = Day(now), seed = Seed(Day(now)), serverTime = now.ToUnixTimeMilliseconds(), adEnabled = Environment.GetEnvironmentVariable("SNAKE_DEV_ADS") == "1" })));
         app.MapPost("/api/v3/talent/allocate", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) =>
@@ -48,8 +48,8 @@ sealed class GameApi
         app.MapPost("/api/v3/talent/recommend", (HttpContext context) => service.WithPlayer(context, (p, now) =>
             Progression.AllocateRecommended(p) > 0 ? Results.Json(new { ok = true, profile = p }) : Fail("没有可分配的天赋点")));
         app.MapPost("/api/v3/talent/reset", (HttpContext context) => service.WithPlayer(context, (p, now) => { p.talents = new int[9]; return Results.Json(new { ok = true, profile = p }); }));
-        app.MapPost("/api/v3/skin/buy", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => service.BuySkin(p, request.index)));
-        app.MapPost("/api/v3/skin/equip", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => EquipSkin(p, request.index)));
+        app.MapPost("/api/v3/skin/buy", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => !SupportsSkin(context, request.index) ? UpgradeRequired() : service.BuySkin(p, request.index)));
+        app.MapPost("/api/v3/skin/equip", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => !SupportsSkin(context, request.index) ? UpgradeRequired() : EquipSkin(p, request.index)));
         app.MapPost("/api/v3/expedition/start", (HttpContext context, IndexRequest request) => service.WithPlayer(context, (p, now) => StartExpedition(p, request.index, now)));
         app.MapPost("/api/v3/expedition/claim", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.ClaimExpedition(p, request.id, now)));
         // Experimental diagnostics are absent from production and never issue rewards.
@@ -84,9 +84,19 @@ sealed class GameApi
             string? rules = RequestedDailyRules(context);
             return rules == null ? Fail("挑战规则不存在") : service.WithPlayer(context, (p, now) => service.Leaderboard(p, Day(now), rules, now.ToUnixTimeMilliseconds()));
         });
-        app.MapPost("/api/v3/ad/prepare", (HttpContext context, AdRequest request) => service.WithPlayer(context, (p, now) => service.PrepareAd(p, request, now)));
-        app.MapPost("/api/v3/ad/complete", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.CompleteAd(p, request.id, now)));
+        app.MapPost("/api/v3/ad/prepare", (HttpContext context, AdRequest request) => service.WithPlayer(context, (p, now) => request.kind == "trial" && !SupportsSkin(context, request.index) ? UpgradeRequired() : service.PrepareAd(p, request, now)));
+        app.MapPost("/api/v3/ad/complete", (HttpContext context, IdRequest request) => service.WithPlayer(context, (p, now) => service.CompleteAdForClient(context, p, request.id, now)));
     }
+
+    // Missing or unknown capability means the pre-Tidal catalogue. Treat the
+    // header as compatibility metadata, never as authorization.
+    private const int LegacyCatalogSize = 24;
+    private static bool SupportsExtendedCatalog(HttpContext context) => context.Request.Headers["X-Snake-Catalog"] == "2";
+    private static bool SupportsSkin(HttpContext context, int index) => index < LegacyCatalogSize || (index == LegacyCatalogSize && SupportsExtendedCatalog(context));
+    private static bool SupportsProfile(HttpContext context, PlayerProgress p, DateTimeOffset now) =>
+        SupportsSkin(context, p.selectedSkin) && (p.dailyKey != Day(now) || SupportsSkin(context, p.trialSkin)) &&
+        (p.ownedSkins == null || p.ownedSkins.All(index => SupportsSkin(context, index)));
+    private static IResult UpgradeRequired() => Fail("账号包含新版角色，请更新游戏后继续", 426);
 
     private const string FixedPveEvalRules = PveFixedRecording.ExperimentalRules;
     // Dev identifier only: prototype semantics may change, never use for rewards.
@@ -97,10 +107,10 @@ sealed class GameApi
     {
         if (Environment.GetEnvironmentVariable("SNAKE_DEV_AUTH") != "1" || context.Connection.RemoteIpAddress == null || !IPAddress.IsLoopback(context.Connection.RemoteIpAddress)) return Fail("本地开发登录未启用", 403);
         if (string.IsNullOrWhiteSpace(request.deviceId) || request.deviceId.Length > 100) return Fail("设备标识无效");
-        return Login("dev:" + request.deviceId);
+        return Login(context, "dev:" + request.deviceId);
     }
 
-    private async Task<IResult> DouyinLogin(AuthRequest request)
+    private async Task<IResult> DouyinLogin(HttpContext context, AuthRequest request)
     {
         string? appId = Environment.GetEnvironmentVariable("SNAKE_DOUYIN_APPID");
         string? appSecret = Environment.GetEnvironmentVariable("SNAKE_DOUYIN_SECRET");
@@ -108,10 +118,10 @@ sealed class GameApi
         if (result.Status != 200) return Fail(result.Error, result.Status);
         string identity = "douyin:" + appId + ":" + result.OpenId;
         string? anonymousIdentity = string.IsNullOrEmpty(result.AnonymousId) ? null : "douyin:" + appId + ":" + result.AnonymousId;
-        return Login(identity, anonymousIdentity);
+        return Login(context, identity, anonymousIdentity);
     }
 
-    private IResult Login(string identity, string? fallbackIdentity = null)
+    private IResult Login(HttpContext context, string identity, string? fallbackIdentity = null)
     {
         string identityId = IdentityId(identity);
         string? fallbackId = string.IsNullOrEmpty(fallbackIdentity) ? null : IdentityId(fallbackIdentity);
@@ -125,6 +135,7 @@ sealed class GameApi
                 if (data.identityLinks.TryGetValue(fallback, out var fallbackLinked)) fallback = fallbackLinked;
                 if (data.players.ContainsKey(fallback)) id = fallback;
             }
+            if (data.players.TryGetValue(id, out var existing) && !SupportsProfile(context, existing, now)) return UpgradeRequired();
             data.identityLinks[identityId] = id;
             if (!data.players.TryGetValue(id, out var profile))
             {
@@ -150,6 +161,7 @@ sealed class GameApi
         return Transact(parts[0], null, now, () =>
         {
             if (!data.players.TryGetValue(parts[0], out var profile)) return Fail("账号不存在", 401);
+            if (!SupportsProfile(context, profile, now)) return UpgradeRequired();
             if (profile.completedMatches == 0 && profile.tutorialComplete) profile.completedMatches = Math.Max(1, profile.dailyMatches);
             ResetDay(profile, now);
             profile.revision++;
@@ -414,6 +426,13 @@ sealed class GameApi
         int position = best.FindIndex(r => r.playerId == p.playerId);
         int gap = position > 0 ? best[position - 1].score - best[position].score : 0;
         return Results.Json(new { ok = true, date = day, rules, serverTime, rows, rank = position + 1, total = best.Count, gap });
+    }
+
+    private IResult CompleteAdForClient(HttpContext context, PlayerProgress p, string? id, DateTimeOffset now)
+    {
+        if (!string.IsNullOrEmpty(id) && data.ads.TryGetValue(id, out var ad) && ad.playerId == p.playerId &&
+            ad.kind == "trial" && !SupportsSkin(context, ad.skin)) return UpgradeRequired();
+        return CompleteAd(p, id ?? "", now);
     }
 
     private IResult PrepareAd(PlayerProgress p, AdRequest request, DateTimeOffset now)

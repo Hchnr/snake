@@ -245,6 +245,7 @@ namespace SnakeClub
             using (var request = new UnityWebRequest(url, method))
             {
                 request.downloadHandler = new DownloadHandlerBuffer();
+                request.SetRequestHeader("X-Snake-Catalog", "2");
                 request.timeout = 10;
                 if (method == "POST")
                 {

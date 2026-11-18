@@ -154,7 +154,7 @@ namespace SnakeClub
             api.Login(reply =>
             {
                 connecting = false;
-                frontNotice = reply.ok ? "进度已同步" : "离线练习 · 进度和排行暂不同步";
+                frontNotice = reply.ok ? "进度已同步" : reply.httpStatus == 426 && !string.IsNullOrEmpty(reply.error) ? reply.error : "离线练习 · 进度和排行暂不同步";
                 localVisualSkin = ReferencePreviewEnabled ? PlayerPrefs.GetInt("snake.v031.previewSkin", SkinCatalog.FirstReferenceIndex) : -1;
                 previewSkin = EffectiveSkin;
                 arenaRenderer.SelectedSkin = previewSkin;

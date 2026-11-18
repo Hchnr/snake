@@ -45,10 +45,10 @@ async function stop(server) {
   await new Promise(resolve => { server.child.once('exit', resolve); server.child.kill('SIGTERM'); });
 }
 
-async function request(endpoint, route, token, body) {
+async function request(endpoint, route, token, body, catalog = false) {
   const reply = await fetch(`${endpoint}/api/v3/${route}`, {
     method: body === undefined ? 'GET' : 'POST',
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(catalog ? { 'X-Snake-Catalog': '2' } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
   return { status: reply.status, data: await reply.json() };
@@ -111,11 +111,12 @@ test('legacy JSON imports once and a versioned leaderboard reads the shared data
 test('new original skin is purchased once across SQLite instances', async () => {
   const login = await request(endpoints[0], 'auth/dev', null, { deviceId: 'sqlite-tidal' });
   const token = login.data.session;
-  const [a, b] = await Promise.all(endpoints.map(endpoint => request(endpoint, 'skin/buy', token, { index: 24 })));
+  const [a, b] = await Promise.all(endpoints.map(endpoint => request(endpoint, 'skin/buy', token, { index: 24 }, true)));
   assert.equal(a.status, 200); assert.equal(b.status, 200);
   assert.equal(b.data.profile.coins, 400);
-  assert.equal((await request(endpoints[1], 'skin/equip', token, { index: 24 })).status, 200);
-  const profile = (await request(endpoints[0], 'bootstrap', token)).data.profile;
+  assert.equal((await request(endpoints[1], 'skin/equip', token, { index: 24 }, true)).status, 200);
+  assert.equal((await request(endpoints[1], 'bootstrap', token)).status, 426);
+  const profile = (await request(endpoints[0], 'bootstrap', token, undefined, true)).data.profile;
   assert.equal(profile.coins, 400); assert.deepEqual(profile.ownedSkins, [0, 24]); assert.equal(profile.selectedSkin, 24);
 });
 

@@ -39,10 +39,10 @@ async function stopServer() {
   if (!server || server.exitCode !== null || server.signalCode !== null) return;
   await new Promise(resolve => { server.once('exit', resolve); server.kill('SIGTERM'); });
 }
-async function request(route, { token, body, method = body === undefined ? 'GET' : 'POST' } = {}) {
+async function request(route, { token, body, catalog = false, method = body === undefined ? 'GET' : 'POST' } = {}) {
   const response = await fetch(`${base}/api/v3/${route}`, {
     method,
-    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { ...(body === undefined ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(catalog ? { 'X-Snake-Catalog': '2' } : {}) },
     ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
   return { status: response.status, data: await response.json() };
@@ -73,6 +73,10 @@ before(async () => {
   const receiptId = idFor('v3-receipt');
   const pursuitId = idFor('v3-pursuit');
   const tidalId = idFor('v3-tidal');
+  const trialCatalogId = idFor('v3-catalog-trial');
+  const expiredTrialId = idFor('v3-expired-catalog-trial');
+  const futureCatalogId = idFor('v3-future-catalog');
+  const activeTrialId = idFor('v3-active-catalog-trial');
   const legacy = { id: 'legacy-run', playerId: legacyId, mode: 'daily', date: chinaDay(), rules: 'daily-1', seed: 1,
     startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   const current = { id: 'capture-run', playerId: newId, mode: 'daily', date: chinaDay(), rules: 'daily-3', seed: 1,
@@ -83,6 +87,10 @@ before(async () => {
     players: {
       [pursuitId]: { playerId: pursuitId, displayName: '追逐测试', dailyKey: chinaDay() },
       [tidalId]: { playerId: tidalId, displayName: '角色测试', coins: 2200, ownedSkins: [0], selectedSkin: 0, dailyKey: chinaDay() },
+      [trialCatalogId]: { playerId: trialCatalogId, tutorialComplete: true, coins: 0, ownedSkins: [0], selectedSkin: 0, dailyKey: chinaDay() },
+      [expiredTrialId]: { playerId: expiredTrialId, ownedSkins: [0], selectedSkin: 0, dailyKey: '2000-01-01', trialSkin: 24 },
+      [futureCatalogId]: { playerId: futureCatalogId, ownedSkins: [0, 25], selectedSkin: 25, dailyKey: chinaDay() },
+      [activeTrialId]: { playerId: activeTrialId, ownedSkins: [0], selectedSkin: 0, dailyKey: chinaDay(), trialSkin: 24 },
       [receiptId]: { playerId: receiptId, displayName: '回执测试', tutorialComplete: true, coins: 73, experience: 29, dailyKey: chinaDay() },
       [caveOvercapId]: { playerId: caveOvercapId, displayName: '旧探洞', dailyKey: chinaDay(), experience: 29, dailyExpeditionXp: 99, expedition: { id: 'overcap-cave', cave: 0, durationMinutes: 120, startedAt: Date.now() - 9 * 3600000, bonusPercent: 0 } },
       [caveId]: { playerId: caveId, displayName: '洞穴测试', dailyKey: chinaDay(), expedition: { id: 'expedition-fixture', cave: 2, durationMinutes: 480, startedAt: Date.now() - 12 * 3600000, bonusPercent: 7 } },
@@ -145,18 +153,50 @@ test('authentication, skin inventory and talent points use server authority', as
   assert.equal((await request('talent/allocate', { token: alice.session, body: { index: 0 } })).status, 400);
 });
 
-test('appended original skin retains reference IDs and persists ownership', async () => {
+test('catalog capability protects old clients without changing new skin ownership', async () => {
   const user = await login('v3-tidal');
-  assert.equal((await request('skin/buy', { token: user.session, body: { index: 4 } })).status, 400);
-  const bought = await request('skin/buy', { token: user.session, body: { index: 24 } });
+  assert.equal((await request('skin/buy', { token: user.session, body: { index: 4 }, catalog: true })).status, 400);
+  const rejected = await request('skin/buy', { token: user.session, body: { index: 24 } });
+  assert.equal(rejected.status, 426); assert.match(rejected.data.error, /更新/);
+  const bought = await request('skin/buy', { token: user.session, body: { index: 24 }, catalog: true });
   assert.equal(bought.status, 200); assert.equal(bought.data.profile.coins, 400);
   assert.deepEqual(bought.data.profile.ownedSkins, [0, 24]);
-  const repeated = await request('skin/buy', { token: user.session, body: { index: 24 } });
+  assert.equal((await request('bootstrap', { token: user.session })).status, 426);
+  assert.equal((await request('auth/dev', { body: { deviceId: 'v3-tidal' } })).status, 426);
+  const repeated = await request('skin/buy', { token: user.session, body: { index: 24 }, catalog: true });
   assert.equal(repeated.data.profile.coins, 400);
-  const equipped = await request('skin/equip', { token: user.session, body: { index: 24 } });
+  const equipped = await request('skin/equip', { token: user.session, body: { index: 24 }, catalog: true });
   assert.equal(equipped.data.profile.selectedSkin, 24);
-  const profile = (await request('bootstrap', { token: user.session })).data.profile;
-  assert.equal(profile.selectedSkin, 24); assert.deepEqual(profile.ownedSkins, [0, 24]);
+  assert.equal((await request('talent/reset', { token: user.session, body: {} })).status, 426);
+  const profile = (await request('bootstrap', { token: user.session, catalog: true })).data.profile;
+  assert.equal(profile.selectedSkin, 24); assert.deepEqual(profile.ownedSkins, [0, 24]); assert.equal(profile.coins, 400);
+  assert.equal((await request('auth/dev', { body: { deviceId: 'v3-tidal' }, catalog: true })).status, 200);
+});
+
+test('catalog version 2 refuses unknown future skin IDs', async () => {
+  const reply = await request('auth/dev', { body: { deviceId: 'v3-future-catalog' }, catalog: true });
+  assert.equal(reply.status, 426); assert.match(reply.data.error, /更新/);
+});
+
+test('expired new-catalog trial does not block an old client', async () => {
+  const user = await login('v3-expired-catalog-trial');
+  assert.equal(user.profile.trialSkin, -1);
+  assert.equal((await request('bootstrap', { token: user.session })).status, 200);
+});
+
+test('active new-catalog trial requires a capable client', async () => {
+  assert.equal((await request('auth/dev', { body: { deviceId: 'v3-active-catalog-trial' } })).status, 426);
+  const login = await request('auth/dev', { body: { deviceId: 'v3-active-catalog-trial' }, catalog: true });
+  assert.equal(login.status, 200); assert.equal(login.data.profile.trialSkin, 24);
+});
+
+test('legacy client cannot prepare or complete a new-catalog trial', async () => {
+  const user = await login('v3-catalog-trial');
+  assert.equal((await request('ad/prepare', { token: user.session, body: { kind: 'trial', index: 24 } })).status, 426);
+  const prepared = await request('ad/prepare', { token: user.session, body: { kind: 'trial', index: 24 }, catalog: true });
+  assert.equal(prepared.status, 200);
+  assert.equal((await request('ad/complete', { token: user.session, body: { id: prepared.data.id } })).status, 426);
+  assert.equal((await request('bootstrap', { token: user.session })).status, 200);
 });
 
 test('old signed daily replay remains valid without entering the new leaderboard', async () => {
