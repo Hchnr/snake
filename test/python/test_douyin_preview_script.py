@@ -33,6 +33,9 @@ class PreviewScriptTests(unittest.TestCase):
         self.editor.write_text('''#!''' + sys.executable + '''
 import json, os, pathlib, sys
 project = pathlib.Path(sys.argv[sys.argv.index('-projectPath') + 1])
+if os.environ.get('SNAKE_TEST_FAIL') == '1':
+    pathlib.Path(sys.argv[sys.argv.index('-logFile') + 1]).write_text('native failure fixture\\nfull diagnostic tail\\n')
+    sys.exit(7)
 capture = pathlib.Path(os.environ['SNAKE_TEST_CAPTURE'])
 capture.write_text(json.dumps({
     'settings': (project / 'ProjectSettings/ProjectSettings.asset').read_text(),
@@ -104,6 +107,18 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
         result = self.build(no_graphics=True)
         self.assertTrue(result['noGraphics'])
         self.assertFalse(result['referencePresent'])
+
+    def test_failed_build_preserves_private_log(self):
+        env = {**os.environ, 'UNITY_EDITOR': str(self.editor), 'SNAKE_TEST_FAIL': '1', 'TMPDIR': str(self.root)}
+        completed = subprocess.run([sys.executable, str(self.root / 'scripts/build-douyin-preview.py'),
+                                    '--appid', 'test-appid', '--output', str(self.root / 'failed')],
+                                   capture_output=True, text=True, env=env)
+        self.assertEqual(completed.returncode, 7)
+        logs = list(self.root.glob('snake-douyin-failure-*.log'))
+        self.assertEqual(len(logs), 1)
+        self.assertIn('full diagnostic tail', logs[0].read_text())
+        self.assertIn(str(logs[0]), completed.stderr)
+        self.assertEqual(logs[0].stat().st_mode & 0o077, 0)
 
     def test_graphics_requires_explicit_opt_in(self):
         result = self.build(graphics=True)

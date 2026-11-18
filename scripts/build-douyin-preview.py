@@ -12,6 +12,20 @@ import tempfile
 from unity_defines import enable_webgl_define
 
 root = Path(__file__).resolve().parent.parent
+
+def preserve_failure_log(source):
+    # Temporary build projects are deleted at exit. Keep failed build logs
+    # private and separate so native failures can actually be investigated.
+    if not source.is_file():
+        return
+    try:
+        fd, name = tempfile.mkstemp(prefix='snake-douyin-failure-', suffix='.log')
+        with os.fdopen(fd, 'wb') as target, source.open('rb') as original:
+            shutil.copyfileobj(original, target)
+        print(f'Unity failure log preserved: {name}', file=sys.stderr)
+    except OSError as error:
+        print(f'Could not preserve Unity failure log: {error}', file=sys.stderr)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--appid', required=True, help='Douyin mini-game AppID')
 parser.add_argument('--output', required=True, help='new TTSDK build output directory')
@@ -70,13 +84,16 @@ with tempfile.TemporaryDirectory(prefix='snake-douyin-preview-') as directory:
     try:
         result = subprocess.run(command, env=environment, timeout=900, check=False)
     except subprocess.TimeoutExpired:
+        preserve_failure_log(log)
         sys.exit('TTSDK build timed out.')
     contents = log.read_text(errors='replace') if log.exists() else ''
     if result.returncode or not stamp.exists():
+        preserve_failure_log(log)
         errors = [line for line in contents.splitlines() if 'error CS' in line or 'DOUYIN_PREVIEW_BUILD_FAILED' in line]
         print('\n'.join(errors[-20:] or contents.splitlines()[-30:]), file=sys.stderr)
         sys.exit(result.returncode or 1)
     artifact = Path(stamp.read_text().strip())
     if not (artifact / 'game.json').is_file() or not (artifact / 'project.config.json').is_file():
+        preserve_failure_log(log)
         sys.exit(f'TTSDK returned an incomplete project: {artifact}')
     print(f'Douyin preview project: {artifact}')

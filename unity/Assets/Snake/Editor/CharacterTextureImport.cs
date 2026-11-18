@@ -8,7 +8,7 @@ namespace SnakeClub.Editor
     // default NPOT resize can otherwise visibly distort a portrait sprite.
     public sealed class CharacterTextureImport : AssetPostprocessor
     {
-        public override uint GetVersion() => 1;
+        public override uint GetVersion() => 4;
 
         private void OnPreprocessTexture()
         {
@@ -20,7 +20,12 @@ namespace SnakeClub.Editor
             importer.alphaIsTransparency = true;
             importer.mipmapEnabled = false;
             importer.wrapMode = TextureWrapMode.Clamp;
-            importer.maxTextureSize = 1024;
+            bool referenceLayer = (assetPath.StartsWith("Assets/Editor/ReferenceSkins/", StringComparison.OrdinalIgnoreCase) ||
+                assetPath.StartsWith("Assets/Resources/ReferenceSkins/", StringComparison.OrdinalIgnoreCase)) &&
+                (assetPath.IndexOf("/wenda_layers/", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 assetPath.IndexOf("/raddy_layers/", StringComparison.OrdinalIgnoreCase) >= 0);
+            bool raddyBody = referenceLayer && assetPath.EndsWith("/raddy_layers/body.png", StringComparison.OrdinalIgnoreCase);
+            importer.maxTextureSize = raddyBody ? 512 : 1024;
         }
     }
 }

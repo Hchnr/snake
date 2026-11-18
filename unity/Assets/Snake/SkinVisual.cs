@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using SnakeClub.Core;
 using UnityEngine;
@@ -52,7 +53,10 @@ namespace SnakeClub
                 if (b == null) b = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Editor/" + path + "body.png");
                 if (h == null) h = UnityEditor.AssetDatabase.LoadAssetAtPath<Texture2D>("Assets/Editor/" + path + "head.png");
 #endif
-                if (b == null || h == null || b.width != h.width || b.height != h.height) return false;
+                // Head and body can use different import resolutions while
+                // keeping the same full-canvas aspect ratio and sprite height.
+                if (b == null || h == null || b.height <= 0 || h.height <= 0 ||
+                    Math.Abs((double)b.width / b.height - (double)h.width / h.height) > .003) return false;
                 layers = new ReferenceLayerPair { neckY = neckY,
                     body = UnityEngine.Sprite.Create(b, new Rect(0, 0, b.width, b.height), new Vector2(.5f, .5f), b.height / 4f, 0, SpriteMeshType.FullRect),
                     head = UnityEngine.Sprite.Create(h, new Rect(0, 0, h.width, h.height), new Vector2(.5f, .5f), h.height / 4f, 0, SpriteMeshType.FullRect) };
