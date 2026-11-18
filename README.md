@@ -181,7 +181,7 @@ python3 scripts/build-wechat-isolated.py --sdk /tmp/snake-wxsdk --appid wx000000
   --strength-pve-preview --diagnostic
 ```
 
-构建在临时工程中以 `-batchmode -nographics` 运行，不上传任何产物，关闭账号服务、开发登录及内部参考素材；脚本要求干净的指定 SDK Git 提交，不覆盖已有输出。产物包含 `minigame` 工程、`webgl` 资源和构建日志。使用真实 AppID 和 HTTPS 资源域名时需去掉 `--diagnostic` 并选择新的输出目录；还需自行配置平台域名、部署资源并用微信开发者工具与真机验证，构建成功不代表可以发布。SDK 仓库的根许可证为 MIT，SDK 附带的第三方组件应分别核对其许可证。
+构建在临时工程中以 `-batchmode -nographics` 运行，不上传任何产物，关闭账号服务、开发登录及内部参考素材；微信 SDK 完成初始化并绑定前后台回调后才允许开始对局，退后台会暂停并清除输入，恢复时仍需玩家手动继续。脚本要求干净的指定 SDK Git 提交，不覆盖已有输出。产物包含 `minigame` 工程、`webgl` 资源和构建日志。使用真实 AppID 和 HTTPS 资源域名时需去掉 `--diagnostic` 并选择新的输出目录；还需自行配置平台域名、部署资源并用微信开发者工具与真机验证，构建成功不代表可以发布。SDK 仓库的根许可证为 MIT，SDK 附带的第三方组件应分别核对其许可证。 `python3 scripts/test-wechat-lifecycle.py` 可在无图形 Unity 中运行模拟回调测试；它不能替代微信真机的锁屏和前后台验证。
 
 ## 资源许可
 

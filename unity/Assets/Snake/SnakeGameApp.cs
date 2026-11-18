@@ -235,6 +235,7 @@ namespace SnakeClub
 
         private void StartOnline(string action)
         {
+            if (!api.PlatformGameReady) { status = api.PlatformGameStatus; return; }
             nameplates.ClearHistory(); opponentEdgeId = "";
             dragSteering.Reset();
             string address = serverInput.Trim();
@@ -322,7 +323,7 @@ namespace SnakeClub
             PumpCaveSync();
             bool interaction = Input.anyKeyDown || Input.GetMouseButtonDown(0);
             for (int i = 0; i < Input.touchCount; i++) if (Input.GetTouch(i).phase == TouchPhase.Began) interaction = true;
-            feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused && platformVisible, paused, adShowing, interaction);
+            feedback.UpdateMusic(inGame && state != null && state.phase == "running", appFocused && !appPaused && platformVisible && api.PlatformGameReady, paused, adShowing, interaction);
             if (inGame && !SimulationSuspended)
             {
                 feedback.RebaselineAfterSuspend(state, playerId);
@@ -341,9 +342,9 @@ namespace SnakeClub
                 {
                     homeScreen.SetPage(frontPage == "skins", resultVisible);
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
-                    homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
+                    homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, api.PlatformGameReady ? frontNotice : api.PlatformGameStatus, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview, api.Config.StrengthPveServerPreview);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview, api.Config.StrengthPveServerPreview, api.PlatformGameReady, api.PlatformGameStatus);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);

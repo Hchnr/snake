@@ -166,15 +166,15 @@ namespace SnakeClub
 
         public void SetState(PlayerProgress profile, Texture character, string message, bool busy, bool connected, bool sound,
             int equipped, int preview, bool referencesEnabled, bool trialAvailable, bool friendChallenge = false,
-            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100, int friendScore = 0, string friendRules = "", string friendDate = "", bool tutorialHints = true, bool fixedPvePreview = false, bool tutorialReady = false, bool strengthPvePreview = false, bool strengthServerPreview = false)
+            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100, int friendScore = 0, string friendRules = "", string friendDate = "", bool tutorialHints = true, bool fixedPvePreview = false, bool tutorialReady = false, bool strengthPvePreview = false, bool strengthServerPreview = false, bool platformReady = true, string platformStatus = "")
         {
             if (canvas == null || profile == null) return;
             reducedEffects = reduce;
             tutorialReady = tutorialReady || profile.tutorialComplete;
             Set(level, "等级 " + Progression.Level(profile.experience));
             Set(coins, "金币  " + profile.coins);
-            Set(primaryText, busy ? "正在准备…" : strengthPvePreview ? "开始吞食" : friendChallenge ? (tutorialReady ? "接受好友挑战" : "先完成新手练习") : "开始围猎");
-            Set(primaryHint, strengthServerPreview ? "本机成长实验 · 不计奖励和排行" : strengthPvePreview ? "强弱吞食试玩 · 不计奖励和排行" : fixedPvePreview ? "整数规则试玩 · 不计奖励和排行" : !connected ? "离线练习 · 不计排行榜" : !tutorialReady ? (friendChallenge ? "新手练习后可应战好友" : "新手练习 · 学会围猎") : friendChallenge ? friendDate + " · " + friendRules + " · 好友 " + friendScore + " 分" : "今日挑战 · 同图 60 秒");
+            Set(primaryText, !platformReady ? "暂不可开始" : busy ? "正在准备…" : strengthPvePreview ? "开始吞食" : friendChallenge ? (tutorialReady ? "接受好友挑战" : "先完成新手练习") : "开始围猎");
+            Set(primaryHint, !platformReady ? platformStatus : strengthServerPreview ? "本机成长实验 · 不计奖励和排行" : strengthPvePreview ? "强弱吞食试玩 · 不计奖励和排行" : fixedPvePreview ? "整数规则试玩 · 不计奖励和排行" : !connected ? "离线练习 · 不计排行榜" : !tutorialReady ? (friendChallenge ? "新手练习后可应战好友" : "新手练习 · 学会围猎") : friendChallenge ? friendDate + " · " + friendRules + " · 好友 " + friendScore + " 分" : "今日挑战 · 同图 60 秒");
             Set(caveText, connected && !profile.ownedSkins.Contains(1) && profile.completedMatches < 2 ?
                 "完成 2 场，免费解锁曜焰  " + profile.completedMatches + "/2" :
                 profile.expedition != null && !profile.expedition.claimed ? "梦游探洞进行中，回来可领取奖励" : "派灵蛇去梦游探洞，离线也有收获");
@@ -188,7 +188,7 @@ namespace SnakeClub
             Set(settingsHaptics, !hapticsSupported ? "震动：当前平台不可用" : haptics ? "震动：开" : "震动：关");
             Set(settingsEffects, reducedEffects ? "画面特效：简洁" : "画面特效：丰富");
             Set(settingsTutorial, tutorialHints ? "新手提示：开" : "新手提示：关");
-            primary.interactable = !busy;
+            primary.interactable = !busy && platformReady;
             if (reconnect.gameObject.activeSelf == connected) reconnect.gameObject.SetActive(!connected);
             if (portrait.texture != character) portrait.texture = character;
             if (skinPortrait.texture != character) skinPortrait.texture = character;

@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 from urllib.parse import urlsplit
+from unity_defines import enable_webgl_define
 
 ROOT = Path(__file__).resolve().parent.parent
 SDK_REVISION = '915d4bf4f60ef0cd1c29316a8d67257185d609a7'
@@ -87,6 +88,11 @@ def main():
         for name in ('Assets', 'Packages', 'ProjectSettings'):
             shutil.copytree(ROOT / 'unity' / name, project / name, ignore=exclude)
         export_sdk(sdk, project / 'Packages/com.qq.weixin.minigame')
+        settings = project / 'ProjectSettings/ProjectSettings.asset'
+        try:
+            settings.write_text(enable_webgl_define(settings.read_text(), 'SNAKE_WECHAT_WXSDK'))
+        except ValueError as error:
+            sys.exit(f'Cannot configure WeChat SDK in the isolated project: {error}')
         config_path = project / 'Assets/Resources/GameConfig.json'
         config = json.loads(config_path.read_text())
         config.update(serverUrl='', apiUrl='', rewardedAdUnitId='', allowDevLogin=False, allowReferenceSkinPreview=False,

@@ -5,6 +5,12 @@ using System.Text;
 using SnakeClub.Core;
 using UnityEngine;
 using UnityEngine.Networking;
+#if SNAKE_WECHAT_WXSDK && SNAKE_DOUYIN_TTSDK
+#error WeChat and Douyin SDK defines must not be enabled in the same build.
+#endif
+#if SNAKE_WECHAT_WXSDK && ((UNITY_WEBGL && !UNITY_EDITOR) || SNAKE_WECHAT_TEST)
+using WeChatWASM;
+#endif
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
 using TTSDK;
 using TTSDK.UNBridgeLib.LitJson;
@@ -31,7 +37,7 @@ namespace SnakeClub
         {
             get
             {
-#if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+#if (SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR) || (SNAKE_WECHAT_WXSDK && ((UNITY_WEBGL && !UNITY_EDITOR) || SNAKE_WECHAT_TEST))
                 return false;
 #else
                 return experimentalFixedPveServer && !experimentalStrengthPveServer && allowDevLogin &&
@@ -47,7 +53,7 @@ namespace SnakeClub
         {
             get
             {
-#if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+#if (SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR) || (SNAKE_WECHAT_WXSDK && ((UNITY_WEBGL && !UNITY_EDITOR) || SNAKE_WECHAT_TEST))
                 return false;
 #else
                 return experimentalStrengthPveServer && !experimentalFixedPveServer && !experimentalFixedPve &&
@@ -110,6 +116,53 @@ namespace SnakeClub
         private string session = "";
         private readonly SessionGeneration sessionGeneration = new SessionGeneration();
         private bool reachable;
+#if SNAKE_WECHAT_WXSDK && ((UNITY_WEBGL && !UNITY_EDITOR) || SNAKE_WECHAT_TEST)
+        private bool wxStarted, wxResolved, wxReady, wxDisposed, wxShowBound, wxHideBound;
+        public bool PlatformGameReady => wxReady && !wxDisposed;
+        public string PlatformGameStatus => wxResolved ? "微信初始化失败，请重新打开游戏" : "微信环境初始化中，请稍候";
+
+        private void Awake()
+        {
+            if (wxStarted || wxDisposed) return;
+            wxStarted = true;
+            try
+            {
+                // The pinned WXSDK's unity-sdk/index.js reports 200 on init.
+                WX.InitSDK(code =>
+                {
+                    if (wxResolved || wxDisposed) return;
+                    wxResolved = true;
+                    if (code != 200) return;
+                    try
+                    {
+                        WX.OnShow(OnWeChatShow); wxShowBound = true;
+                        WX.OnHide(OnWeChatHide); wxHideBound = true;
+                        wxReady = true;
+                    }
+                    catch (Exception) { UnbindWeChat(); }
+                });
+                if (!wxResolved && Application.isPlaying) StartCoroutine(WeChatInitTimeout());
+            }
+            catch (Exception) { wxResolved = true; UnbindWeChat(); }
+        }
+
+        private IEnumerator WeChatInitTimeout()
+        {
+            yield return new WaitForSecondsRealtime(10f);
+            if (!wxResolved && !wxDisposed) wxResolved = true;
+        }
+        private void OnWeChatShow(OnShowListenerResult _) { if (wxReady && !wxDisposed) NotifyPlatformVisibility(true); }
+        private void OnWeChatHide(GeneralCallbackResult _) { if (wxReady && !wxDisposed) NotifyPlatformVisibility(false); }
+        private void UnbindWeChat()
+        {
+            if (wxShowBound) { try { WX.OffShow(OnWeChatShow); } catch (Exception) { } wxShowBound = false; }
+            if (wxHideBound) { try { WX.OffHide(OnWeChatHide); } catch (Exception) { } wxHideBound = false; }
+            wxReady = false;
+        }
+#else
+        public bool PlatformGameReady => true;
+        public string PlatformGameStatus => "";
+#endif
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
         private bool platformReady;
         private TTAppLifeCycle lifecycle;
@@ -153,6 +206,9 @@ namespace SnakeClub
             {
                 if (!resolved) { resolved = true; done(new ApiReply { error = "抖音 SDK 初始化失败" }); }
             }
+#elif SNAKE_WECHAT_WXSDK && ((UNITY_WEBGL && !UNITY_EDITOR) || SNAKE_WECHAT_TEST)
+            // WeChat identity is not integrated; never fall back to dev login.
+            done(new ApiReply { error = "微信账号尚未接入，当前为离线练习" });
 #else
             if (!Config.allowDevLogin) { done(new ApiReply { error = "当前为离线练习" }); return; }
             string device = PlayerPrefs.GetString("snake.v3.dev.device", "");
@@ -219,6 +275,15 @@ namespace SnakeClub
                 timeout => StartCoroutine(LoginCallbackTimeout(timeout)),
                 (code, anonymousCode) => PostRaw("auth/douyin", new ApiRequest { code = code, anonymousCode = anonymousCode }, reply => FinishLogin(reply, FinishOnce)),
                 error => FinishOnce(new ApiReply { error = error }));
+        }
+#endif
+
+#if SNAKE_WECHAT_WXSDK && ((UNITY_WEBGL && !UNITY_EDITOR) || SNAKE_WECHAT_TEST)
+        private void OnDestroy()
+        {
+            wxDisposed = true;
+            wxResolved = true;
+            UnbindWeChat();
         }
 #endif
 
