@@ -823,10 +823,17 @@ namespace SnakeClub
                 Label(new Rect(120, 680, 840, 110), "已被淘汰 · 正在观战", 38, Color.white, TextAnchor.MiddleCenter, true);
             else if (paused)
             {
-                Panel(new Rect(160, 660, 760, 300), new Color(.035f, .065f, .12f, .94f));
-                Label(new Rect(200, 700, 680, 85), "游戏已暂停", 46, Color.white, TextAnchor.MiddleCenter, true);
-                if (Button(new Rect(265, 825, 550, 90), "继续对战", new Color(.10f, .60f, .49f))) paused = false;
-                if (Button(new Rect(345, 980, 390, 75), "返回菜单", new Color(.15f, .22f, .31f))) BackToMenu();
+                bool strengthGuide = fixedPve != null && fixedPve.StrengthPreview;
+                Panel(strengthGuide ? new Rect(130, 590, 820, 650) : new Rect(160, 660, 760, 300), new Color(.035f, .065f, .12f, .94f));
+                Label(strengthGuide ? new Rect(200, 625, 680, 85) : new Rect(200, 700, 680, 85), "游戏已暂停", 46, Color.white, TextAnchor.MiddleCenter, true);
+                if (strengthGuide)
+                {
+                    Label(new Rect(180, 730, 720, 260),
+                        "任意位置拖动转向 · 第二指按住加速\n强度足够才能吃身体，不足时弹开\n金点可尝试吞食 · 红叉提示身体危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
+                        27, new Color(.76f, .92f, .90f), TextAnchor.MiddleCenter);
+                }
+                if (Button(strengthGuide ? new Rect(265, 1010, 550, 90) : new Rect(265, 825, 550, 90), "继续对战", new Color(.10f, .60f, .49f))) paused = false;
+                if (Button(strengthGuide ? new Rect(345, 1120, 390, 75) : new Rect(345, 980, 390, 75), "返回菜单", new Color(.15f, .22f, .31f))) BackToMenu();
             }
             else DrawControls();
         }
