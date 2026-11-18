@@ -59,11 +59,13 @@ namespace SnakeClub.Core
         private readonly PveFixedCombatWorkspace combatWorkspace = new PveFixedCombatWorkspace(8);
         private readonly StrengthBodyCombat strengthCombat = new StrengthBodyCombat();
         private readonly StrengthInputs[] strengthInputs = new StrengthInputs[8];
+        private readonly List<HeadTieContact> strengthHeadTies = new List<HeadTieContact>();
         public bool StrengthPreview { get; }
         public int LastPlayerBiteTick { get; private set; } = -1;
         public int LastPlayerBiteCount { get; private set; }
         public bool LastPlayerWasBitten { get; private set; }
         public int LastPlayerBlockedTick { get; private set; } = -1;
+        public int LastPlayerHeadTieTick { get; private set; } = -1;
         private readonly int[] strengthBuffTicks = new int[8];
         private int nextStrengthPickupTick, strengthPickupExpires;
         public bool StrengthPickupVisible { get; private set; }
@@ -435,14 +437,19 @@ namespace SnakeClub.Core
             {
                 CollectStrengthPickup();
                 for (int i = 0; i < fighters.Length; i++) strengthInputs[i] = StrengthFor(fighters[i]);
-                var headGrowth = StrengthHeadCombat.Resolve(fighters, strengthInputs, deferGrowth: true);
+                var headGrowth = StrengthHeadCombat.Resolve(fighters, strengthInputs, deferGrowth: true, ties: strengthHeadTies);
                 var bites = strengthCombat.Resolve(Tick, fighters, strengthInputs);
                 for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) fighters[i].motion.Grow(headGrowth[i]);
+                var separatedHeads = StrengthHeadCombat.SeparateTies(fighters, strengthHeadTies, bites);
+                if (separatedHeads[0]) LastPlayerHeadTieTick = Tick;
                 foreach (var contact in strengthCombat.BlockedContacts)
                 {
                     bool bit = false;
                     foreach (var bite in bites) if (bite.attacker == contact.attacker) { bit = true; break; }
                     if (bit) continue;
+                    bool headSeparated = false;
+                    for (int i = 0; i < fighters.Length; i++) if (fighters[i].id == contact.attacker && separatedHeads[i]) { headSeparated = true; break; }
+                    if (headSeparated) continue;
                     if (contact.attacker == "you") LastPlayerBlockedTick = Tick;
                     foreach (var fighter in fighters)
                         if (fighter.alive && fighter.id == contact.attacker) { fighter.motion.SeparateFrom(contact.point, contact.tangent); break; }

@@ -704,6 +704,8 @@ namespace SnakeClub
                 Label(new Rect(240, 520, 600, 90), fixedPve.LastPlayerWasBitten ? "身体被吃掉 " + fixedPve.LastPlayerBiteCount + " 节" : "吃掉身体 " + fixedPve.LastPlayerBiteCount + " 节！", 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
             else if (fixedPve != null && fixedPve.StrengthPreview && fixedPve.LastPlayerBlockedTick >= 0 && state.tick - fixedPve.LastPlayerBlockedTick < 20)
                 Label(new Rect(240, 520, 600, 90), "强度不足 · 试试更弱的部位", 29, new Color(1f, .88f, .65f), TextAnchor.MiddleCenter, true);
+            else if (fixedPve != null && fixedPve.StrengthPreview && fixedPve.LastPlayerHeadTieTick >= 0 && state.tick - fixedPve.LastPlayerHeadTieTick < 20)
+                Label(new Rect(240, 520, 600, 90), "势均力敌 · 双方弹开", 29, new Color(1f, .88f, .65f), TextAnchor.MiddleCenter, true);
             if (StrengthIntroVisible())
             {
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
@@ -936,7 +938,8 @@ namespace SnakeClub
         private bool StrengthIntroVisible() => fixedPve != null && fixedPve.StrengthPreview && state != null &&
             state.phase == "running" && state.tick < 160 && !paused &&
             (fixedPve.LastPlayerBiteTick < 0 || state.tick - fixedPve.LastPlayerBiteTick >= 20) &&
-            (fixedPve.LastPlayerBlockedTick < 0 || state.tick - fixedPve.LastPlayerBlockedTick >= 20);
+            (fixedPve.LastPlayerBlockedTick < 0 || state.tick - fixedPve.LastPlayerBlockedTick >= 20) &&
+            (fixedPve.LastPlayerHeadTieTick < 0 || state.tick - fixedPve.LastPlayerHeadTieTick >= 20);
 
         private void CollectNameplate(ArenaState world, SnakeState snake)
         {

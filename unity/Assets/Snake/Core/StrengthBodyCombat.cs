@@ -3,11 +3,20 @@ using System.Collections.Generic;
 
 namespace SnakeClub.Core
 {
+    public readonly struct HeadTieContact
+    {
+        public readonly int first, second;
+        public readonly CapturePoint firstPosition, secondPosition;
+        public readonly long distanceSquared;
+        public HeadTieContact(int first, int second, CapturePoint firstPosition, CapturePoint secondPosition, long distanceSquared)
+        { this.first = first; this.second = second; this.firstPosition = firstPosition; this.secondPosition = secondPosition; this.distanceSquared = distanceSquared; }
+    }
+
     // Head-to-head is resolved before body bites from a shared snapshot.
     // Near-equal or mutually tied strength causes no elimination in the preview.
     public static class StrengthHeadCombat
     {
-        public static int[] Resolve(PveFixedFighter[] fighters, StrengthInputs[] inputs, bool deferGrowth = false)
+        public static int[] Resolve(PveFixedFighter[] fighters, StrengthInputs[] inputs, bool deferGrowth = false, List<HeadTieContact> ties = null)
         {
             if (fighters == null || inputs == null || fighters.Length != inputs.Length) throw new ArgumentException("Invalid head combat inputs");
             var values = new StrengthValues[fighters.Length];
@@ -18,6 +27,7 @@ namespace SnakeClub.Core
                 var power = inputs[i]; power.length = fighters[i].motion.Length;
                 if (!BodyStrength.TryCalculate(power, 0, out values[i])) throw new ArgumentException("Invalid strength input");
             }
+            ties?.Clear();
             var winner = new int[fighters.Length]; var advantage = new long[fighters.Length];
             for (int i = 0; i < winner.Length; i++) winner[i] = -1;
             for (int i = 0; i < fighters.Length; i++) for (int j = i + 1; j < fighters.Length; j++)
@@ -30,6 +40,11 @@ namespace SnakeClub.Core
                 long ba = (long)values[j].attack * 100 - (long)values[i].defense * 105;
                 if (ab > 0 && ab > ba) Claim(j, i, ab);
                 else if (ba > 0 && ba > ab) Claim(i, j, ba);
+                else if (ties != null)
+                {
+                    int first = string.CompareOrdinal(a.id, b.id) < 0 ? i : j, second = first == i ? j : i;
+                    ties.Add(new HeadTieContact(first, second, fighters[first].motion.Segments[0], fighters[second].motion.Segments[0], dx * dx + dy * dy));
+                }
             }
             void Claim(int victim, int attacker, long margin)
             {
@@ -48,6 +63,38 @@ namespace SnakeClub.Core
             }
             if (!deferGrowth) for (int i = 0; i < fighters.Length; i++) fighters[i].motion.Grow(growth[i]);
             return growth;
+        }
+        // Resolve ties only after head eliminations and body bites have been
+        // decided from the original snapshot. Disjoint pairs use stable order.
+        public static bool[] SeparateTies(PveFixedFighter[] fighters, List<HeadTieContact> ties, List<BodyBite> bites)
+        {
+            var used = new bool[fighters.Length];
+            ties.Sort((a, b) => {
+                int order = a.distanceSquared.CompareTo(b.distanceSquared);
+                if (order == 0) order = string.CompareOrdinal(fighters[a.first].id, fighters[b.first].id);
+                if (order == 0) order = string.CompareOrdinal(fighters[a.second].id, fighters[b.second].id);
+                return order;
+            });
+            foreach (var tie in ties)
+            {
+                var a = fighters[tie.first]; var b = fighters[tie.second];
+                if (!a.alive || !b.alive || used[tie.first] || used[tie.second]) continue;
+                bool involved = false;
+                foreach (var bite in bites)
+                    if (bite.attacker == a.id || bite.attacker == b.id || bite.defender == a.id || bite.defender == b.id) { involved = true; break; }
+                if (involved) continue;
+                int dx = tie.firstPosition.x - tie.secondPosition.x, dy = tie.firstPosition.y - tie.secondPosition.y;
+                int length = PveFixedMotion.Distance(dx, dy);
+                if (length == 0) { dx = 1; dy = 0; length = 1; }
+                int ox = (int)((long)dx * 760 / length), oy = (int)((long)dy * 760 / length);
+                int edge = PveFixedMotion.Edge;
+                int mx = Math.Max(-edge + Math.Abs(ox), Math.Min(edge - Math.Abs(ox), (tie.firstPosition.x + tie.secondPosition.x) / 2));
+                int my = Math.Max(-edge + Math.Abs(oy), Math.Min(edge - Math.Abs(oy), (tie.firstPosition.y + tie.secondPosition.y) / 2));
+                a.motion.PlaceSeparatedHead(mx + ox, my + oy, dx, dy);
+                b.motion.PlaceSeparatedHead(mx - ox, my - oy, -dx, -dy);
+                used[tie.first] = used[tie.second] = true;
+            }
+            return used;
         }
     }
 
