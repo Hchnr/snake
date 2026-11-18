@@ -47,6 +47,7 @@ namespace SnakeClub
         private int visualFrame = -1;
         private struct ExitPose { public Vector3 position, scale; }
         private readonly Dictionary<string, LineRenderer[]> characterTrails = new Dictionary<string, LineRenderer[]>();
+        private readonly Dictionary<string, Vector3[][]> characterTrailVertices = new Dictionary<string, Vector3[][]>();
         private readonly Dictionary<string, int> characterTrailRatios = new Dictionary<string, int>();
         private readonly Dictionary<string, LineRenderer> opponentMarkers = new Dictionary<string, LineRenderer>();
         private readonly Dictionary<string, LineRenderer> protectionMarkers = new Dictionary<string, LineRenderer>();
@@ -197,7 +198,7 @@ namespace SnakeClub
             var previous = transform.Find("Arena Runtime");
             if (previous != null) { previous.gameObject.SetActive(false); Destroy(previous.gameObject); }
             var runtime = new GameObject("Arena Runtime");
-            runtime.transform.SetParent(transform, false); runtimeRoot = runtime.transform; characters.Clear(); characterTrails.Clear(); opponentMarkers.Clear(); protectionMarkers.Clear();
+            runtime.transform.SetParent(transform, false); runtimeRoot = runtime.transform; characters.Clear(); characterTrails.Clear(); characterTrailVertices.Clear(); opponentMarkers.Clear(); protectionMarkers.Clear();
             RenderSettings.ambientLight = new Color(.44f, .48f, .61f);
             RenderSettings.fog = true;
             RenderSettings.fogColor = new Color(.025f, .045f, .09f);
@@ -939,14 +940,23 @@ namespace SnakeClub
                 foreach (var line in lines) line.widthCurve = widthCurve;
                 characterTrailRatios[id] = ratio;
             }
+            int vertexCount = positions.Count - firstSegment;
+            if (!characterTrailVertices.TryGetValue(id, out var vertices) || vertices[0].Length != vertexCount)
+                characterTrailVertices[id] = vertices = new[] { new Vector3[vertexCount], new Vector3[vertexCount] };
+            for (int i = 0; i < vertexCount; i++)
+            {
+                Vector3 point = positions[i + firstSegment];
+                vertices[0][i] = new Vector3(point.x, .23f, point.z);
+                vertices[1][i] = new Vector3(point.x, .25f, point.z);
+            }
             for (int layer = 0; layer < lines.Length; layer++)
             {
-                var line = lines[layer]; line.enabled = true; line.positionCount = positions.Count - firstSegment;
+                var line = lines[layer]; line.enabled = true; line.positionCount = vertexCount;
                 line.widthMultiplier = appearance.BodyWidth * (layer == 0 ? 1f : .3125f);
                 Color shade = layer == 0 ? Color.Lerp(color, Color.white, appearance.Glow * .30f) : Color.Lerp(color, Color.white, .78f);
                 float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(visualClock.Time * (boosting ? 7f : 4f));
                 line.startColor = line.endColor = new Color(shade.r * pulse, shade.g * pulse, shade.b * pulse, 1f);
-                for (int i = firstSegment; i < positions.Count; i++) line.SetPosition(i - firstSegment, new Vector3(positions[i].x, .23f + layer * .02f, positions[i].z));
+                line.SetPositions(vertices[layer]);
             }
             if (!ReducedEffects)
             {
