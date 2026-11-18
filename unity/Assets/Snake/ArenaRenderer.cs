@@ -627,10 +627,11 @@ namespace SnakeClub
             }
             if (starObject != null)
             {
-                starObject.SetActive(state.starVisible);
-                if (state.starVisible)
+                starObject.SetActive(state.starVisible || state.strengthPickupVisible);
+                if (state.starVisible || state.strengthPickupVisible)
                 {
-                    starObject.transform.position = new Vector3(state.starPosition.x, 1.5f + (ReducedEffects ? 0f : .2f * Mathf.Sin(visualClock.Time * 3)), state.starPosition.y);
+                    Point item = state.strengthPickupVisible ? state.strengthPickupPosition : state.starPosition;
+                    starObject.transform.position = new Vector3(item.x, 1.5f + (ReducedEffects ? 0f : .2f * Mathf.Sin(visualClock.Time * 3)), item.y);
                     starObject.transform.localScale = Vector3.one * (1.2f + (ReducedEffects ? 0f : .15f * Mathf.Sin(visualClock.Time * 4)));
                 }
             }

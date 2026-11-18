@@ -94,6 +94,7 @@ var cases = new (string name, Action run)[]
     ("experimental body strength is bounded and weakens toward the tail", BodyStrengthCases),
     ("experimental strength combat bites real body segments deterministically", StrengthBodyCombatCases),
     ("strength practice world uses new body and head combat", StrengthPracticeWorldCases),
+    ("strength pickup applies visible temporary power fairly and expires", StrengthPickupCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1111,6 +1112,10 @@ static void EventTargetIndicatorCases()
     world.starVisible = false; world.eventKind = "fruit"; world.eventRadius = 14; world.eventPosition = new Point(-7, 9);
     Check(EventTargetIndicator.TryTarget(world, "you", out target, out name) && name == "果潮" && target.y == 9, "fruit target missing");
     world.eventStatus = "ended"; Check(!EventTargetIndicator.TryTarget(world, "you", out _, out _), "ended event remained visible");
+    world.strengthPickupVisible = true; world.strengthPickupPosition = new Point(6, -8);
+    Check(EventTargetIndicator.TryTarget(world, "you", out target, out name) && name == "能量" && target.x == 6 && target.y == -8,
+        "strength pickup location was not used for its marker");
+    world.strengthPickupVisible = false;
     Check(!EventTargetIndicator.TryEdge(new Point(50, 50), 0, 0, 100, 100, out _), "on-screen target gained edge marker");
     Check(EventTargetIndicator.TryEdge(new Point(150, 100), 0, 0, 100, 100, out var edge) && Math.Abs(edge.x - 100) < .001 && Math.Abs(edge.y - 75) < .001, "diagonal marker lost direction");
     Check(EventTargetIndicator.TryEdge(new Point(50, -50), 0, 0, 100, 100, out edge) && edge.x == 50 && edge.y == 0, "vertical marker misplaced");
@@ -1593,6 +1598,80 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void StrengthPickupCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var world = new PveFixedWorld(45, true, null, strengthPreview: true);
+    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+    foreach (var actor in actors) actor.shieldTicks = 1000;
+    void Place(CapturePoint point)
+    {
+        typeof(PveFixedWorld).GetProperty("StrengthPickupPosition").SetValue(world, point);
+        typeof(PveFixedWorld).GetProperty("StrengthPickupVisible").SetValue(world, true);
+        typeof(PveFixedWorld).GetField("strengthPickupExpires", flags).SetValue(world, 1000);
+    }
+    Place(actors[0].motion.Segments[0]);
+    Check(world.RenderState().strengthPickupVisible, "real pickup was not projected");
+    world.Step(0, false);
+    Check(!world.StrengthPickupVisible && !world.RenderState().strengthPickupVisible && world.StrengthBuffTicks("you") == 120 &&
+        world.TryGetStrength("you", out var buffed, out _) && buffed.effectFactor == 1120, "pickup did not apply the displayed six-second effect");
+    Place(actors[0].motion.Segments[0]); world.Step(0, false);
+    Check(world.StrengthBuffTicks("you") == 120 && world.TryGetStrength("you", out buffed, out _) && buffed.effectFactor == 1120,
+        "repeated pickup stacked instead of refreshing");
+    for (int i = 0; i < 119; i++) world.Step(0, false);
+    Check(world.StrengthBuffTicks("you") == 1, "buff duration expired early");
+    world.Step(0, false);
+    Check(world.StrengthBuffTicks("you") == 0 && world.TryGetStrength("you", out var neutral, out _) && neutral.effectFactor == 1000,
+        "buff remained after its expiry");
+
+    PveFixedWorld BiteWorld(bool pickup)
+    {
+        var match = new PveFixedWorld(42, false, null, strengthPreview: true);
+        var combatants = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(match);
+        combatants[0] = new PveFixedFighter("you", new PveFixedMotion(-3600, 0, 0, 16));
+        combatants[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 21));
+        for (int i = 2; i < combatants.Length; i++) combatants[i].alive = false;
+        if (pickup)
+        {
+            typeof(PveFixedWorld).GetProperty("StrengthPickupPosition").SetValue(match, new CapturePoint(-3600, 0));
+            typeof(PveFixedWorld).GetProperty("StrengthPickupVisible").SetValue(match, true);
+            typeof(PveFixedWorld).GetField("strengthPickupExpires", flags).SetValue(match, 1000);
+        }
+        match.Step(0, false);
+        return match;
+    }
+    var unpoweredBite = BiteWorld(false); var poweredBite = BiteWorld(true);
+    Check(unpoweredBite.LastPlayerBlockedTick == 1 && poweredBite.LastPlayerBiteTick == 1 &&
+        poweredBite.StrengthBuffTicks("you") == 120, "pickup did not change the real body collision outcome");
+
+    var tied = new PveFixedWorld(46, true, null, strengthPreview: true);
+    var tiedActors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(tied);
+    tiedActors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    tiedActors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 16));
+    for (int i = 2; i < tiedActors.Length; i++) tiedActors[i].alive = false;
+    typeof(PveFixedWorld).GetProperty("StrengthPickupPosition").SetValue(tied, new CapturePoint(0, 0));
+    typeof(PveFixedWorld).GetProperty("StrengthPickupVisible").SetValue(tied, true);
+    typeof(PveFixedWorld).GetMethod("CollectStrengthPickup", flags).Invoke(tied, null);
+    Check(tied.StrengthBuffTicks("bot-1") == 120 && tied.StrengthBuffTicks("you") == 0,
+        "equidistant pickup did not use stable ID ordering");
+    var normal = new PveFixedWorld(45, true, null);
+    Check(!normal.RenderState().strengthPickupVisible && normal.StrengthBuffTicks("you") == 0, "pickup leaked into legacy rules");
+    var a = new PveFixedWorld(57, true, null, true); var b = new PveFixedWorld(57, true, null, true);
+    foreach (var fighter in a.Fighters) fighter.shieldTicks = 1000;
+    foreach (var fighter in b.Fighters) fighter.shieldTicks = 1000;
+    bool sawPickup = false;
+    for (int tick = 0; tick < 250; tick++)
+    {
+        a.Step((byte)(tick * 7), false); b.Step((byte)(tick * 7), false);
+        Check(a.StrengthPickupVisible == b.StrengthPickupVisible && a.StrengthPickupPosition.x == b.StrengthPickupPosition.x &&
+            a.StrengthPickupPosition.y == b.StrengthPickupPosition.y, "seeded pickup sequence diverged");
+        foreach (var fighter in a.Fighters)
+            Check(a.StrengthBuffTicks(fighter.id) == b.StrengthBuffTicks(fighter.id), "seeded pickup owner or duration diverged");
+        sawPickup |= a.StrengthPickupVisible;
+    }
+    Check(sawPickup, "scheduled pickup did not appear");
 }
 
 static void StrengthPracticeWorldCases()

@@ -641,6 +641,13 @@ namespace SnakeClub
                 Label(new Rect(300, 235, 500, 45), "造型素材不可用 · 备用显示", 19, new Color(.9f, .92f, .84f), TextAnchor.MiddleCenter);
             if (state != null) DrawMiniMap(state);
             string depthHint = depthMode ? DepthChallenge.ObjectiveHint(depthRoom, state, playerId) : "";
+            int strengthBuff = fixedPve != null && fixedPve.StrengthPreview ? fixedPve.StrengthBuffTicks(playerId) : 0;
+            if (fixedPve != null && fixedPve.StrengthPreview && (strengthBuff > 0 || state.strengthPickupVisible))
+            {
+                string powerHint = strengthBuff > 0 ? "能量强化 · 攻防 +12% · " + Mathf.CeilToInt(strengthBuff / 20f) + "秒" : "能量出现 · 拾取后攻防强化";
+                Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
+                Label(new Rect(285, 292, 470, 82), powerHint, 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
+            }
             if (!string.IsNullOrEmpty(depthHint))
             {
                 Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
@@ -804,9 +811,9 @@ namespace SnakeClub
                 GUI.DrawTexture(new Rect(x - size / 2, y - size / 2, size, size), rounded);
                 GUI.color = previous;
             }
-            if (world.starVisible)
+            if (world.starVisible || world.strengthPickupVisible)
             {
-                Point p = world.starPosition;
+                Point p = world.strengthPickupVisible ? world.strengthPickupPosition : world.starPosition;
                 float x = map.x + 15 + (p.x / world.halfSize + 1) * .5f * (map.width - 30);
                 float y = map.y + 15 + (1 - (p.y / world.halfSize + 1) * .5f) * (map.height - 30);
                 if (!string.IsNullOrEmpty(world.starHolder)) { x += 10; y -= 10; }
@@ -940,7 +947,8 @@ namespace SnakeClub
             if (!nameplates.TryPlace(snake.id, new Point(position.x, position.y), out var placed)) return;
             string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
             if (fixedPve != null && fixedPve.TryGetStrength(snake.id, out var power, out int tailDefense))
-                label = snake.id == playerId ? "你 · 攻" + power.attack : (snake.bot ? "AI" : "玩家") + " · 尾" + tailDefense;
+                label = (snake.id == playerId ? "你 · 攻" + power.attack : (snake.bot ? "AI" : "玩家") + " · 尾" + tailDefense) +
+                    (fixedPve.StrengthBuffTicks(snake.id) > 0 ? "+" : "");
             if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
             if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
             if (snake.shield > 0) label += " · 保护";
