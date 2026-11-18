@@ -82,7 +82,7 @@ namespace SnakeClub
         private int shownCaptureTick = -1;
         private float captureStarted = -10f;
         private float reboundStarted = -10f, previousRebound;
-        private LineRenderer strengthAttackRing, strengthDamageRing;
+        private LineRenderer strengthAttackRing, strengthDamageRing, strengthPickupPendingRing;
         private ArenaState strengthImpactSource;
         private int seenStrengthAttackTick = -1, seenStrengthDamageTick = -1;
         private float strengthAttackStarted = -10f, strengthDamageStarted = -10f;
@@ -357,6 +357,7 @@ namespace SnakeClub
             reboundRipple = MakeEffectRing("Rebound ripple", new Color(.55f, 1f, .91f, 1f));
             strengthAttackRing = MakeEffectRing("Strength attack impact", new Color(1f, .86f, .30f, 1f));
             strengthDamageRing = MakeEffectRing("Strength damage impact", new Color(1f, .32f, .25f, 1f));
+            strengthPickupPendingRing = MakeEffectRing("Strength pickup warning", new Color(1f, .78f, .30f, 1f));
         }
 
         private LineRenderer MakeEffectRing(string name, Color color)
@@ -685,6 +686,14 @@ namespace SnakeClub
                     Vector3 point = burstPosition + new Vector3(Mathf.Cos(angle) * progress * 3f, .5f + Mathf.Sin(progress * Mathf.PI) * 1.3f, Mathf.Sin(angle) * progress * 3f);
                     sparks.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * (.28f * (1f - progress))));
                 }
+            }
+            strengthPickupPendingRing.enabled = state.strengthPickupPending && !state.strengthPickupVisible;
+            if (strengthPickupPendingRing.enabled)
+            {
+                Point point = state.strengthPickupPosition;
+                float pulse = ReducedEffects ? 1f : .90f + .12f * Mathf.Sin(visualClock.Time * 5f);
+                PlaceRing(strengthPickupPendingRing, new Vector3(point.x, .32f, point.y), pulse);
+                strengthPickupPendingRing.widthMultiplier = .14f;
             }
             if (starObject != null)
             {

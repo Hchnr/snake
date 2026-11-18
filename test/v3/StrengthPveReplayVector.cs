@@ -56,7 +56,8 @@ namespace SnakeClub.Tests
                     world.Step(heading, boost);
                     world.AppendReplayDiagnostics(Add);
                     Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
-                    Add(world.StrengthPickupVisible ? 1 : 0); Add(world.StrengthPickupPosition.x); Add(world.StrengthPickupPosition.y);
+                    Add(world.StrengthPickupVisible ? 1 : 0); Add(world.StrengthPickupPending ? 1 : 0); Add(world.StrengthPickupPendingTicks);
+                    Add(world.StrengthPickupPosition.x); Add(world.StrengthPickupPosition.y);
                     Add(world.LastPlayerAttackTick); Add(world.LastPlayerAttackCount); Add(world.LastPlayerDamageTick); Add(world.LastPlayerDamageCount);
                     Add(world.LastPlayerBlockedTick); Add(world.LastPlayerHeadTieTick);
                     Add(world.LastPlayerAttackPoint.x); Add(world.LastPlayerAttackPoint.y);

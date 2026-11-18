@@ -1193,7 +1193,10 @@ static void EventTargetIndicatorCases()
     world.strengthPickupVisible = true; world.strengthPickupPosition = new Point(6, -8);
     Check(EventTargetIndicator.TryTarget(world, "you", out target, out name) && name == "能量" && target.x == 6 && target.y == -8,
         "strength pickup location was not used for its marker");
-    world.strengthPickupVisible = false;
+    world.strengthPickupVisible = false; world.strengthPickupPending = true;
+    Check(EventTargetIndicator.TryTarget(world, "you", out target, out name) && name == "能量预告" && target.x == 6 && target.y == -8,
+        "announced pickup location was not used for its marker");
+    world.strengthPickupPending = false;
     Check(!EventTargetIndicator.TryEdge(new Point(50, 50), 0, 0, 100, 100, out _), "on-screen target gained edge marker");
     Check(EventTargetIndicator.TryEdge(new Point(150, 100), 0, 0, 100, 100, out var edge) && Math.Abs(edge.x - 100) < .001 && Math.Abs(edge.y - 75) < .001, "diagonal marker lost direction");
     Check(EventTargetIndicator.TryEdge(new Point(50, -50), 0, 0, 100, 100, out edge) && edge.x == 50 && edge.y == 0, "vertical marker misplaced");
@@ -2011,7 +2014,7 @@ static void StrengthFairnessCases()
             else fighters[i].alive = false;
         typeof(PveFixedWorld).GetField("nextStrengthPickupTick", flags).SetValue(world, 0);
         typeof(PveFixedWorld).GetMethod("UpdateStrengthPickupBeforeMovement", flags).Invoke(world, null);
-        Check(world.StrengthPickupVisible, "forced pickup did not spawn");
+        Check(world.StrengthPickupPending && !world.StrengthPickupVisible, "forced pickup was not announced");
         int anchor = -1;
         for (int i = 0; i < positions.Length; i++)
         {
@@ -2214,8 +2217,46 @@ static void StrengthPickupCases()
     typeof(PveFixedWorld).GetMethod("CollectStrengthPickup", flags).Invoke(tied, null);
     Check(tied.StrengthBuffTicks("bot-1") == 120 && tied.StrengthBuffTicks("you") == 0,
         "equidistant pickup did not use stable ID ordering");
+    var notice = new PveFixedWorld(44, true, null, strengthPreview: true);
+    var noticeActors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(notice);
+    foreach (var actor in noticeActors) actor.shieldTicks = 1000;
+    var update = typeof(PveFixedWorld).GetMethod("UpdateStrengthPickupBeforeMovement", flags);
+    var collect = typeof(PveFixedWorld).GetMethod("CollectStrengthPickup", flags);
+    var tickField = typeof(PveFixedWorld).GetProperty("Tick");
+    typeof(PveFixedWorld).GetField("nextStrengthPickupTick", flags).SetValue(notice, 1);
+    tickField.SetValue(notice, 1); update.Invoke(notice, null);
+    var announced = notice.StrengthPickupPosition;
+    Check(notice.StrengthPickupPending && !notice.StrengthPickupVisible && notice.StrengthPickupPendingTicks == 40 &&
+        notice.RenderState().strengthPickupPending && notice.RenderState().strengthPickupPendingSeconds == 2,
+        "pickup announcement did not expose a two-second countdown");
+    typeof(PveFixedWorld).GetProperty("StrengthPickupPosition").SetValue(notice, noticeActors[0].motion.Segments[0]);
+    collect.Invoke(notice, null);
+    Check(notice.StrengthPickupPending && notice.StrengthBuffTicks("you") == 0, "announced pickup could be collected early");
+    typeof(PveFixedWorld).GetProperty("StrengthPickupPosition").SetValue(notice, announced);
+    tickField.SetValue(notice, 40); update.Invoke(notice, null);
+    Check(notice.StrengthPickupPending && !notice.StrengthPickupVisible && notice.StrengthPickupPendingTicks == 1 &&
+        notice.RenderState().strengthPickupPendingSeconds == 1, "announcement ended early");
+    tickField.SetValue(notice, 41); update.Invoke(notice, null);
+    Check(!notice.StrengthPickupPending && notice.StrengthPickupVisible && notice.StrengthPickupPosition.x == announced.x &&
+        notice.StrengthPickupPosition.y == announced.y, "pickup did not appear at the announced position");
+    tickField.SetValue(notice, 240); update.Invoke(notice, null);
+    Check(notice.StrengthPickupVisible, "active pickup expired before ten seconds");
+    tickField.SetValue(notice, 241); update.Invoke(notice, null);
+    int next = (int)typeof(PveFixedWorld).GetField("nextStrengthPickupTick", flags).GetValue(notice);
+    Check(!notice.StrengthPickupVisible && !notice.StrengthPickupPending && next >= 401 && next <= 481,
+        "expired pickup did not schedule the next announcement within its delay");
+    var pursuit = new PveFixedWorld(51, false, null, strengthPreview: true);
+    var pursuitActors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(pursuit);
+    pursuitActors[0] = new PveFixedFighter("you", new PveFixedMotion(60000, 0, 0, 16));
+    pursuitActors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 16));
+    for (int i = 2; i < pursuitActors.Length; i++) pursuitActors[i].alive = false;
+    ((List<PveFixedFruit>)pursuit.Fruit).Clear();
+    typeof(PveFixedWorld).GetProperty("StrengthPickupPosition").SetValue(pursuit, new CapturePoint(0, 15000));
+    typeof(PveFixedWorld).GetProperty("StrengthPickupPending").SetValue(pursuit, true);
+    byte direction = (byte)typeof(PveFixedWorld).GetMethod("BotHeading", flags).Invoke(pursuit, new object[] { 1 });
+    Check(PveFixedMotion.DirectionY(direction) > 8000, "AI did not respond to the visible pickup announcement");
     var normal = new PveFixedWorld(45, true, null);
-    Check(!normal.RenderState().strengthPickupVisible && normal.StrengthBuffTicks("you") == 0, "pickup leaked into legacy rules");
+    Check(!normal.RenderState().strengthPickupPending && !normal.RenderState().strengthPickupVisible && normal.StrengthBuffTicks("you") == 0, "pickup leaked into legacy rules");
     var a = new PveFixedWorld(57, true, null, true); var b = new PveFixedWorld(57, true, null, true);
     foreach (var fighter in a.Fighters) fighter.shieldTicks = 1000;
     foreach (var fighter in b.Fighters) fighter.shieldTicks = 1000;
@@ -2223,7 +2264,8 @@ static void StrengthPickupCases()
     for (int tick = 0; tick < 250; tick++)
     {
         a.Step((byte)(tick * 7), false); b.Step((byte)(tick * 7), false);
-        Check(a.StrengthPickupVisible == b.StrengthPickupVisible && a.StrengthPickupPosition.x == b.StrengthPickupPosition.x &&
+        Check(a.StrengthPickupPending == b.StrengthPickupPending && a.StrengthPickupPendingTicks == b.StrengthPickupPendingTicks &&
+            a.StrengthPickupVisible == b.StrengthPickupVisible && a.StrengthPickupPosition.x == b.StrengthPickupPosition.x &&
             a.StrengthPickupPosition.y == b.StrengthPickupPosition.y, "seeded pickup sequence diverged");
         foreach (var fighter in a.Fighters)
             Check(a.StrengthBuffTicks(fighter.id) == b.StrengthBuffTicks(fighter.id), "seeded pickup owner or duration diverged");

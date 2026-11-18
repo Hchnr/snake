@@ -59,6 +59,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
                 TestStrengthImpactVisual();
+                TestStrengthPickupWarningVisual();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");
@@ -71,7 +72,7 @@ namespace SnakeClub.Tests.Editor
                 Require(client.Profile.playerId == "test-player" && client.Seed == 123 && client.AdEnabled, "leaderboard response cleared account state or daily seed");
                 Apply("{\"ok\":true,\"runId\":\"run-zero\",\"date\":\"2026-11-16\",\"seed\":0,\"rules\":\"daily-2\"}");
                 Require(client.Seed == 0, "a valid zero seed was not accepted from run start");
-                var strengthReply = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"runId\":\"strength\",\"mode\":\"strength-eval\",\"rules\":\"strength-pve-dev-1\",\"seed\":73,\"strengthStartConfig\":{\"version\":\"strength-eval-setup-1\",\"firstRun\":true}}");
+                var strengthReply = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"runId\":\"strength\",\"mode\":\"strength-eval\",\"rules\":\"strength-pve-dev-2\",\"seed\":73,\"strengthStartConfig\":{\"version\":\"strength-eval-setup-1\",\"firstRun\":true}}");
                 Require(strengthReply.strengthStartConfig != null && strengthReply.strengthStartConfig.Supported && strengthReply.strengthStartConfig.firstRun,
                     "strength server snapshot did not deserialize");
                 var digestReply = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"stateDigest\":\"s1-0123456789abcdef\"}");
@@ -545,6 +546,32 @@ namespace SnakeClub.Tests.Editor
                 if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
                 PlayerPrefs.Save();
             }
+        }
+
+        private static void TestStrengthPickupWarningVisual()
+        {
+            var root = new GameObject("Strength pickup warning regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                var state = new ArenaState { phase = "running", strengthPickupPending = true,
+                    strengthPickupPendingSeconds = 2, strengthPickupPosition = new Point(4, -6) };
+                state.snakes.Add(new SnakeState { id = "you", segments = new System.Collections.Generic.List<Point> { new Point(0, 0), new Point(-1, 0), new Point(-2, 0) } });
+                var ring = (LineRenderer)typeof(ArenaRenderer).GetField("strengthPickupPendingRing", flags).GetValue(renderer);
+                var orb = (GameObject)typeof(ArenaRenderer).GetField("starObject", flags).GetValue(renderer);
+                renderer.ReducedEffects = true; renderer.Draw(state, "you");
+                Require(ring.enabled && !orb.activeSelf && Mathf.Abs(ring.GetPosition(0).x - 5f) < .001f &&
+                    Mathf.Abs(ring.GetPosition(0).z + 6f) < .001f, "warning did not appear at the announced location");
+                state.strengthPickupPending = false; state.strengthPickupVisible = true; renderer.Draw(state, "you");
+                Require(!ring.enabled && orb.activeSelf && Mathf.Abs(orb.transform.position.x - 4f) < .001f &&
+                    Mathf.Abs(orb.transform.position.z + 6f) < .001f, "active pickup did not replace the warning in place");
+                state.strengthPickupVisible = false; renderer.Draw(state, "you");
+                Require(!ring.enabled && !orb.activeSelf, "expired pickup remained visible");
+                Debug.Log("PASS Unity pickup warning and collectible use the same location");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
         private static void TestGameplayComparison()

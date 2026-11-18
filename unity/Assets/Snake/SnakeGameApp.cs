@@ -667,11 +667,13 @@ namespace SnakeClub
             string depthHint = depthMode ? DepthChallenge.ObjectiveHint(depthRoom, state, playerId) : "";
             int strengthBuff = fixedPve != null && fixedPve.StrengthPreview ? fixedPve.StrengthBuffTicks(playerId) : 0;
             int loopBuff = fixedPve != null && fixedPve.StrengthPreview ? fixedPve.StrengthLoopTicks(playerId) : 0;
-            if (fixedPve != null && fixedPve.StrengthPreview && (strengthBuff > 0 || loopBuff > 0 || state.strengthPickupVisible))
+            if (fixedPve != null && fixedPve.StrengthPreview && (strengthBuff > 0 || loopBuff > 0 || state.strengthPickupVisible || state.strengthPickupPending))
             {
                 string powerHint = strengthBuff > 0 ? "能量 +12% " + Mathf.CeilToInt(strengthBuff / 20f) + "秒" : "";
                 if (loopBuff > 0) powerHint += (powerHint.Length > 0 ? " · " : "") + "围猎 +10% " + Mathf.CeilToInt(loopBuff / 20f) + "秒";
-                if (powerHint.Length == 0) powerHint = "能量出现 · 拾取后攻防强化";
+                if (state.strengthPickupPending)
+                    powerHint += (powerHint.Length > 0 ? "\n" : "") + "能量 " + state.strengthPickupPendingSeconds + "秒后出现";
+                else if (state.strengthPickupVisible && powerHint.Length == 0) powerHint = "能量出现 · 拾取后攻防强化";
                 Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
                 Label(new Rect(285, 292, 470, 82), powerHint, 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
             }
@@ -854,9 +856,9 @@ namespace SnakeClub
                 GUI.DrawTexture(new Rect(x - size / 2, y - size / 2, size, size), rounded);
                 GUI.color = previous;
             }
-            if (world.starVisible || world.strengthPickupVisible)
+            if (world.starVisible || world.strengthPickupVisible || world.strengthPickupPending)
             {
-                Point p = world.strengthPickupVisible ? world.strengthPickupPosition : world.starPosition;
+                Point p = world.strengthPickupVisible || world.strengthPickupPending ? world.strengthPickupPosition : world.starPosition;
                 float x = map.x + 15 + (p.x / world.halfSize + 1) * .5f * (map.width - 30);
                 float y = map.y + 15 + (1 - (p.y / world.halfSize + 1) * .5f) * (map.height - 30);
                 if (!string.IsNullOrEmpty(world.starHolder)) { x += 10; y -= 10; }
