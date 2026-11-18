@@ -669,6 +669,13 @@ namespace SnakeClub.Tests.Editor
                 Call("SetTutorialHints", true);
                 Field("paused").SetValue(app, true); Require(!IntroVisible(), "strength tutorial remained visible while paused");
                 Field("paused").SetValue(app, false); Require(IntroVisible(), "strength tutorial did not return after resuming");
+                var projected = (ArenaState)Field("state").GetValue(app);
+                projected.captureOwner = (string)Field("playerId").GetValue(app);
+                projected.captureTick = projected.tick;
+                Require(!IntroVisible(), "strength tutorial overlapped the player's capture notice");
+                projected.captureTick = projected.tick - 12;
+                Require(IntroVisible(), "strength tutorial did not return after the capture notice expired");
+                projected.captureTick = -1;
                 Field("controlActions").SetValue(app, 1); Call("RecordResult");
                 Require(PlayerPrefs.GetInt(key, 0) == 0, "unfinished match completed the tutorial");
                 Call("StartMain"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
