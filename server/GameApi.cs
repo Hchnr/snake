@@ -307,9 +307,13 @@ sealed class GameApi
     {
         var run = FindRun(p, request.runId, request.token, "strength-eval", now);
         if (run == null) return Fail("强弱实验对局凭证无效或已过期");
-        if (run.rules != StrengthPveEvalRules || run.strengthStartConfig == null || !run.strengthStartConfig.Supported)
+        if (run.strengthStartConfig == null || !run.strengthStartConfig.Supported)
             return Fail("强弱实验规则或开局快照不受支持");
-        if (run.completed) return StrengthPveReceipt(run);
+        // Old completed experiments retain their receipt, but incomplete old
+        // recordings must never be replayed using changed rules.
+        if (run.completed && (run.rules == StrengthPveEvalRules || run.rules == PveFixedRecording.PreviousExperimentalStrengthRules))
+            return StrengthPveReceipt(run);
+        if (run.rules != StrengthPveEvalRules) return Fail("强弱实验规则或开局快照不受支持");
         if (string.IsNullOrEmpty(request.inputs) || request.inputs.Length > ((PveFixedRecording.MaxTicks * 2 + 2) / 3) * 4)
             return Fail("强弱实验回放长度无效");
         byte[] inputs;

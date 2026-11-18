@@ -16,8 +16,9 @@ namespace SnakeClub.Core
     public static class PveFixedRecording
     {
         public const string ExperimentalRules = "fixed-pve-experiment-1";
-        // Internal mutable dev marker, never a release or rewards ruleset.
-        public const string ExperimentalStrengthRules = "strength-pve-dev-1";
+        // Internal development markers, never release or rewards rulesets.
+        public const string PreviousExperimentalStrengthRules = "strength-pve-dev-1";
+        public const string ExperimentalStrengthRules = "strength-pve-dev-2";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
@@ -100,7 +101,9 @@ namespace SnakeClub.Core
         private readonly int[] strengthLoopTicks = new int[8], strengthLoopCooldown = new int[8];
         private readonly CaptureLoop[] strengthLoops = new CaptureLoop[8];
         private readonly int[] strengthLoopTargets = new int[8];
-        private int nextStrengthPickupTick, strengthPickupExpires;
+        private int nextStrengthPickupTick, strengthPickupExpires, strengthPickupAppearsAt;
+        public bool StrengthPickupPending { get; private set; }
+        public int StrengthPickupPendingTicks => StrengthPickupPending ? Math.Max(0, strengthPickupAppearsAt - Tick) : 0;
         public bool StrengthPickupVisible { get; private set; }
         public CapturePoint StrengthPickupPosition { get; private set; }
         private readonly int[] botTimer = new int[8];
@@ -243,7 +246,7 @@ namespace SnakeClub.Core
                         bestTarget = distance; vx = dx * 2; vy = dy * 2;
                     }
                 }
-                if (StrengthPickupVisible)
+                if (StrengthPickupVisible || StrengthPickupPending)
                 {
                     long dx = (long)StrengthPickupPosition.x - self.motion.X, dy = (long)StrengthPickupPosition.y - self.motion.Y;
                     if (dx * dx + dy * dy < 18000L * 18000L) { vx += dx * 2; vy += dy * 2; }
@@ -411,6 +414,8 @@ namespace SnakeClub.Core
             projection.phase = Finished ? "ended" : "running"; projection.winner = Winner;
             projection.eventKind = EventKind; projection.eventStatus = EventStatus; projection.eventTarget = EventTarget;
             projection.strengthPickupVisible = StrengthPreview && StrengthPickupVisible;
+            projection.strengthPickupPending = StrengthPreview && !Finished && StrengthPickupPending;
+            projection.strengthPickupPendingSeconds = (StrengthPickupPendingTicks + TickRate - 1) / TickRate;
             projection.strengthPickupPosition = ToPoint(StrengthPickupPosition);
             projection.eventPosition = ToPoint(eventCenter); projection.eventRadius = eventActive && eventType == 2 ? 14f : 0f;
             projection.eventRemaining = EventTicksRemaining / (float)TickRate;
@@ -580,7 +585,11 @@ namespace SnakeClub.Core
             for (int i = 0; i < strengthBuffTicks.Length; i++) if (strengthBuffTicks[i] > 0) strengthBuffTicks[i]--;
             if (StrengthPickupVisible && Tick >= strengthPickupExpires)
             { StrengthPickupVisible = false; nextStrengthPickupTick = Tick + 160 + Next(81); }
-            if (!StrengthPickupVisible && Tick >= nextStrengthPickupTick && fighters[0].alive)
+            if (StrengthPickupPending && Tick >= strengthPickupAppearsAt)
+            {
+                StrengthPickupPending = false; StrengthPickupVisible = true; strengthPickupExpires = Tick + 200;
+            }
+            if (!StrengthPickupVisible && !StrengthPickupPending && Tick >= nextStrengthPickupTick && fighters[0].alive)
             {
                 int living = 0;
                 for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) living++;
@@ -590,7 +599,9 @@ namespace SnakeClub.Core
                 byte angle = (byte)Next(256); int radius = 10000 + Next(6001);
                 StrengthPickupPosition = new CapturePoint(ClampEvent(fighters[anchor].motion.X + PveFixedMotion.DirectionX(angle) * radius / 10000),
                     ClampEvent(fighters[anchor].motion.Y + PveFixedMotion.DirectionY(angle) * radius / 10000));
-                StrengthPickupVisible = true; strengthPickupExpires = Tick + 200;
+                // Announce the actual location for two seconds before it can
+                // be collected. Bots and the player see the same location.
+                StrengthPickupPending = true; strengthPickupAppearsAt = Tick + 2 * TickRate;
             }
         }
 
@@ -619,7 +630,7 @@ namespace SnakeClub.Core
             add(eventTarget); add(starHolder); add(starTicks);
             add(eventCenter.x); add(eventCenter.y); add(star.x); add(star.y);
             add(eventActive ? 1 : 0); add(eventDone ? 1 : 0);
-            add(nextStrengthPickupTick); add(strengthPickupExpires);
+            add(nextStrengthPickupTick); add(strengthPickupExpires); add(strengthPickupAppearsAt); add(StrengthPickupPending ? 1 : 0);
             for (int i = 0; i < fighters.Length; i++)
             {
                 add(botTimer[i]); add(botDirection[i]); add(botBoost[i] ? 1 : 0);

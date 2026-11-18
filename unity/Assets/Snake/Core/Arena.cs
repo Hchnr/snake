@@ -64,7 +64,8 @@ namespace SnakeClub.Core
         public string winner = "";
         public int tick;
         // Offline strength-practice pickup; never affects legacy match rules.
-        public bool strengthPickupVisible;
+        public bool strengthPickupVisible, strengthPickupPending;
+        public int strengthPickupPendingSeconds;
         public Point strengthPickupPosition;
         public bool starVisible;
         public Point starPosition;
@@ -461,8 +462,8 @@ namespace SnakeClub.Core
                 if (snake == null) return false;
                 target = snake.segments[0]; label = snake.boss ? "首领" : "悬赏"; return true;
             }
-            if (world.strengthPickupVisible)
-            { target = world.strengthPickupPosition; label = "能量"; return true; }
+            if (world.strengthPickupVisible || world.strengthPickupPending)
+            { target = world.strengthPickupPosition; label = world.strengthPickupPending ? "能量预告" : "能量"; return true; }
             if (world.starVisible && world.starHolder != playerId)
             { target = world.starPosition; label = "星核"; return true; }
             if (world.eventStatus == "active" && world.eventKind == "fruit" && world.eventRadius > 0)
