@@ -60,6 +60,7 @@ namespace SnakeClub.Tests.Editor
                 TestProtectionWarningVisual();
                 TestStrengthImpactVisual();
                 TestStrengthPickupWarningVisual();
+                TestStrengthLevelVisual();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
                 if (apply == null) throw new Exception("Client response handler not found.");
@@ -570,6 +571,46 @@ namespace SnakeClub.Tests.Editor
                 state.strengthPickupVisible = false; renderer.Draw(state, "you");
                 Require(!ring.enabled && !orb.activeSelf, "expired pickup remained visible");
                 Debug.Log("PASS Unity pickup warning and collectible use the same location");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestStrengthLevelVisual()
+        {
+            var root = new GameObject("Strength level feedback regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>(); var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true;
+                PveFixedWorld World()
+                {
+                    var world = new PveFixedWorld(42, false, null, true);
+                    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+                    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+                    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(50000, 0, 0, 16));
+                    for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+                    var fruit = (System.Collections.Generic.List<PveFixedFruit>)world.Fruit; fruit.Clear();
+                    for (int i = 0; i < 5; i++) fruit.Add(new PveFixedFruit(new CapturePoint(300, 0), 0));
+                    return world;
+                }
+                var ring = (LineRenderer)typeof(ArenaRenderer).GetField("strengthLevelRing", flags).GetValue(renderer);
+                var match = World(); renderer.Draw(match.RenderState(), "you");
+                Require(!ring.enabled, "level effect appeared without an upgrade");
+                match.Step(0, false); renderer.Draw(match.RenderState(), "you");
+                Require(match.LastPlayerLevelUpTick == 1 && ring.enabled &&
+                    Mathf.Abs(ring.GetPosition(0).x - match.Fighters[0].motion.X / 1000f - 1.1f) < .01f,
+                    "level effect did not follow a real upgrade at the player");
+                renderer.ReducedEffects = true; renderer.Draw(match.RenderState(), "you");
+                Require(ring.enabled && ring.widthMultiplier > 0, "reduced effects hid the level cue");
+                var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
+                clock.Advance(1f, false); renderer.Draw(match.RenderState(), "you");
+                Require(!ring.enabled, "an expired level effect replayed");
+                renderer.MotionPaused = true;
+                var pausedMatch = World(); pausedMatch.Step(0, false); renderer.Draw(pausedMatch.RenderState(), "you");
+                renderer.MotionPaused = false; renderer.Draw(pausedMatch.RenderState(), "you");
+                Require(!ring.enabled, "an upgrade observed during suspension replayed");
+                Debug.Log("PASS Unity level effect follows real upgrades and suspension");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

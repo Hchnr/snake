@@ -82,10 +82,10 @@ namespace SnakeClub
         private int shownCaptureTick = -1;
         private float captureStarted = -10f;
         private float reboundStarted = -10f, previousRebound;
-        private LineRenderer strengthAttackRing, strengthDamageRing, strengthPickupPendingRing;
+        private LineRenderer strengthAttackRing, strengthDamageRing, strengthPickupPendingRing, strengthLevelRing;
         private ArenaState strengthImpactSource;
-        private int seenStrengthAttackTick = -1, seenStrengthDamageTick = -1;
-        private float strengthAttackStarted = -10f, strengthDamageStarted = -10f;
+        private int seenStrengthAttackTick = -1, seenStrengthDamageTick = -1, seenStrengthLevelTick = -1;
+        private float strengthAttackStarted = -10f, strengthDamageStarted = -10f, strengthLevelStarted = -10f;
         private Point strengthAttackPoint, strengthDamagePoint;
         private Vector3 reboundPosition;
         public int SelectedSkin { get; set; }
@@ -358,6 +358,7 @@ namespace SnakeClub
             strengthAttackRing = MakeEffectRing("Strength attack impact", new Color(1f, .86f, .30f, 1f));
             strengthDamageRing = MakeEffectRing("Strength damage impact", new Color(1f, .32f, .25f, 1f));
             strengthPickupPendingRing = MakeEffectRing("Strength pickup warning", new Color(1f, .78f, .30f, 1f));
+            strengthLevelRing = MakeEffectRing("Strength level up", new Color(.65f, 1f, .60f, 1f));
         }
 
         private LineRenderer MakeEffectRing(string name, Color color)
@@ -643,11 +644,14 @@ namespace SnakeClub
             }
             if (!ReferenceEquals(strengthImpactSource, state))
             {
-                strengthImpactSource = state; seenStrengthAttackTick = seenStrengthDamageTick = -1;
-                strengthAttackStarted = strengthDamageStarted = -10f;
+                strengthImpactSource = state; seenStrengthAttackTick = seenStrengthDamageTick = seenStrengthLevelTick = -1;
+                strengthAttackStarted = strengthDamageStarted = strengthLevelStarted = -10f;
             }
             if (StrengthBodyVisual && !MotionPaused)
             {
+                if (state.strengthLevelUpTick >= 0 && state.strengthLevelUpTick != seenStrengthLevelTick &&
+                    state.tick >= state.strengthLevelUpTick && state.tick - state.strengthLevelUpTick <= 3)
+                { seenStrengthLevelTick = state.strengthLevelUpTick; strengthLevelStarted = visualClock.Time; }
                 if (state.strengthAttackTick >= 0 && state.strengthAttackTick != seenStrengthAttackTick &&
                     state.tick >= state.strengthAttackTick && state.tick - state.strengthAttackTick <= 3)
                 {
@@ -664,8 +668,19 @@ namespace SnakeClub
             else if (StrengthBodyVisual && MotionPaused)
             {
                 // Do not replay a newly observed event after suspension.
+                if (state.strengthLevelUpTick >= 0) seenStrengthLevelTick = state.strengthLevelUpTick;
                 if (state.strengthAttackTick >= 0) seenStrengthAttackTick = state.strengthAttackTick;
                 if (state.strengthDamageTick >= 0) seenStrengthDamageTick = state.strengthDamageTick;
+            }
+            var levelPlayer = state.snakes.Find(item => item.id == playerId && item.alive && item.segments.Count > 0);
+            float levelAge = visualClock.Time - strengthLevelStarted;
+            strengthLevelRing.enabled = StrengthBodyVisual && state.phase == "running" && levelPlayer != null && levelAge >= 0f && levelAge < .8f;
+            if (strengthLevelRing.enabled)
+            {
+                Point head = levelPlayer.segments[0];
+                float progress = levelAge / .8f;
+                PlaceRing(strengthLevelRing, new Vector3(head.x, .34f, head.y), ReducedEffects ? 1.3f : Mathf.Lerp(1.1f, 2.1f, progress));
+                strengthLevelRing.widthMultiplier = ReducedEffects ? .16f : .20f * (1f - progress);
             }
             DrawStrengthImpact(strengthAttackRing, strengthAttackPoint, strengthAttackStarted);
             DrawStrengthImpact(strengthDamageRing, strengthDamagePoint, strengthDamageStarted);

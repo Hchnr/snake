@@ -712,6 +712,10 @@ namespace SnakeClub
                 float flash = reducedEffects ? 1f : 1f + .10f * Mathf.Sin(state.tick * .7f);
                 Label(new Rect(250, 430, 580, 110), killMessage, Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
             }
+            string levelNotice = !paused && state != null ? StrengthLevelNotice.Text(fixedPve, state.tick) : "";
+            bool showLevelNotice = !string.IsNullOrEmpty(levelNotice) && string.IsNullOrEmpty(killMessage);
+            if (showLevelNotice)
+                Label(new Rect(250, 430, 580, 110), levelNotice, 36, new Color(.78f, 1f, .64f), TextAnchor.MiddleCenter, true);
             bool captureVisible = false;
             if (state != null && state.captureTick >= 0 && state.tick >= state.captureTick && state.tick - state.captureTick < 12 &&
                 state.capturePolygon != null && state.capturePolygon.Count > 0)
@@ -769,6 +773,7 @@ namespace SnakeClub
                 edgeObstacles.Clear();
                 if (strengthHeadWarning) edgeObstacles.Add(new EdgeObstacle(250, 1635, 580, 74));
                 if (strengthBodyWarning) edgeObstacles.Add(new EdgeObstacle(230, 1525, 620, 70));
+                if (showLevelNotice) edgeObstacles.Add(new EdgeObstacle(250, 430, 580, 110));
                 foreach (var entry in nameplateEntries)
                     edgeObstacles.Add(new EdgeObstacle(entry.box.x, entry.box.y, entry.box.width, entry.box.height));
                 bool hasObjectiveEdge = DrawEventTargetEdge(state, out Rect objectiveEdge);
@@ -955,6 +960,8 @@ namespace SnakeClub
                 var player = world.snakes.Find(s => s.id == playerId);
                 if (player != null && player.strengthThreatSegments.Contains(true)) nameplates.Reserve(230, 1525, 620, 70);
             }
+            if (!paused && string.IsNullOrEmpty(killFeedback.Current(world)) && !string.IsNullOrEmpty(StrengthLevelNotice.Text(fixedPve, world.tick)))
+                nameplates.Reserve(250, 430, 580, 110);
             if (StrengthIntroVisible()) nameplates.Reserve(100, 550, 880, 100);
             else if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
             {
