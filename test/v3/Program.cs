@@ -1713,8 +1713,8 @@ static void StrengthWeakPointCases()
     Check(world.LastPlayerAttackTick == 1 && world.RenderState().snakes[1].strengthWeakSegments.All(value => !value),
         "a real bite did not temporarily hide the pair's cooling-down hints");
     var combat = (StrengthBodyCombat)typeof(PveFixedWorld).GetField("strengthCombat", flags).GetValue(world);
-    var cooldown = (Dictionary<string, long>)typeof(StrengthBodyCombat).GetField("nextHit", flags).GetValue(combat);
-    cooldown["you\0bot-1"] = world.Tick + 1;
+    var cooldown = (Dictionary<(string, string), long>)typeof(StrengthBodyCombat).GetField("nextHit", flags).GetValue(combat);
+    cooldown[("you", "bot-1")] = world.Tick + 1;
     Check(world.RenderState().snakes[1].strengthWeakSegments.Any(value => value), "hints did not return when the next tick becomes eligible");
     var legacy = new PveFixedWorld(42, false, null);
     Check(legacy.RenderState().snakes.All(snake => snake.strengthWeakSegments.Count == 0), "weak-point hints leaked into legacy rules");
@@ -2201,6 +2201,7 @@ static void StrengthBodyCombatCases()
         attacker.motion.Length == 19 && defender.motion.Length == 13 && attacker.alive && defender.alive,
         "strong head did not consume the actual contacted tail or grow by the removed amount");
     Check(combat.Resolve(1, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "pair cooldown did not prevent repeat bites");
+    Check(bites.Count == 1 && bites[0].removed == 3, "later steps mutated a previously returned public result");
     bites = combat.Resolve(8, new[] { attacker, defender }, new[] { Power(), Power() });
     Check(bites.Count == 1 && bites[0].removed == 1 && defender.motion.Length == 12, "bite did not recover after cooldown");
     attacker = Fighter("attacker", -4500); defender = Fighter("defender", 0);

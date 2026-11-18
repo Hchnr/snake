@@ -18,8 +18,16 @@ namespace SnakeClub.Core
     {
         public static int[] Resolve(PveFixedFighter[] fighters, StrengthInputs[] inputs, bool deferGrowth = false, List<HeadTieContact> ties = null)
         {
+            if (fighters == null) throw new ArgumentException("Invalid head combat inputs");
+            return ResolveBuffered(fighters, inputs, deferGrowth, ties, new StrengthValues[fighters.Length],
+                new int[fighters.Length], new long[fighters.Length], new int[fighters.Length]);
+        }
+        // Buffers belong to one world and are reused only after the caller has
+        // consumed the previous step's results.
+        internal static int[] ResolveBuffered(PveFixedFighter[] fighters, StrengthInputs[] inputs, bool deferGrowth,
+            List<HeadTieContact> ties, StrengthValues[] values, int[] winner, long[] advantage, int[] growth)
+        {
             if (fighters == null || inputs == null || fighters.Length != inputs.Length) throw new ArgumentException("Invalid head combat inputs");
-            var values = new StrengthValues[fighters.Length];
             for (int i = 0; i < fighters.Length; i++)
             {
                 if (fighters[i] == null) throw new ArgumentException("Invalid fighter");
@@ -28,8 +36,7 @@ namespace SnakeClub.Core
                 if (!BodyStrength.TryCalculate(power, 0, out values[i])) throw new ArgumentException("Invalid strength input");
             }
             ties?.Clear();
-            var winner = new int[fighters.Length]; var advantage = new long[fighters.Length];
-            for (int i = 0; i < winner.Length; i++) winner[i] = -1;
+            for (int i = 0; i < winner.Length; i++) { winner[i] = -1; advantage[i] = 0; growth[i] = 0; }
             for (int i = 0; i < fighters.Length; i++) for (int j = i + 1; j < fighters.Length; j++)
             {
                 var a = fighters[i]; var b = fighters[j];
@@ -55,7 +62,6 @@ namespace SnakeClub.Core
             }
             for (int i = 0; i < fighters.Length; i++) if (winner[i] >= 0)
             { fighters[i].alive = false; fighters[i].eliminatedBy = fighters[winner[i]].id; fighters[i].eliminationReason = "strength_head"; }
-            var growth = new int[fighters.Length];
             for (int i = 0; i < fighters.Length; i++) if (winner[i] >= 0 && fighters[winner[i]].alive)
             {
                 fighters[i].credited = true; fighters[winner[i]].kills++;
@@ -67,8 +73,11 @@ namespace SnakeClub.Core
         // Resolve ties only after head eliminations and body bites have been
         // decided from the original snapshot. Disjoint pairs use stable order.
         public static bool[] SeparateTies(PveFixedFighter[] fighters, List<HeadTieContact> ties, List<BodyBite> bites)
+            => SeparateTiesBuffered(fighters, ties, bites, new bool[fighters.Length]);
+        internal static bool[] SeparateTiesBuffered(PveFixedFighter[] fighters, List<HeadTieContact> ties, List<BodyBite> bites, bool[] used)
         {
-            var used = new bool[fighters.Length];
+            Array.Clear(used, 0, used.Length);
+            if (ties.Count == 0) return used;
             ties.Sort((a, b) => {
                 int order = a.distanceSquared.CompareTo(b.distanceSquared);
                 if (order == 0) order = string.CompareOrdinal(fighters[a.first].id, fighters[b.first].id);
@@ -121,7 +130,7 @@ namespace SnakeClub.Core
     {
         private const long BodyRadiusSquared = 1116L * 1116L, HeadRadiusSquared = 1440L * 1440L;
         private const int CooldownTicks = 8;
-        private readonly Dictionary<string, long> nextHit = new Dictionary<string, long>();
+        private readonly Dictionary<(string attacker, string defender), long> nextHit = new Dictionary<(string, string), long>();
         private long lastTick = -1;
         private readonly List<string> blockedAttackers = new List<string>();
         public IReadOnlyList<string> BlockedAttackers => blockedAttackers;
@@ -132,9 +141,14 @@ namespace SnakeClub.Core
             public int attacker, defender, segment, count, attack, defense;
             public long advantage;
         }
+        private StrengthInputs[] powersBuffer = Array.Empty<StrengthInputs>();
+        private bool[] usedAttackersBuffer = Array.Empty<bool>(), usedDefendersBuffer = Array.Empty<bool>();
+        private readonly List<Candidate> candidatesBuffer = new List<Candidate>();
+        private readonly List<Candidate> chosenBuffer = new List<Candidate>();
+        private readonly List<BodyBite> bitesBuffer = new List<BodyBite>();
         private static long DistanceSquared(CapturePoint a, CapturePoint b)
         { long x = (long)a.x - b.x, y = (long)a.y - b.y; return x * x + y * y; }
-        private static string Key(string attacker, string defender) => attacker + "\0" + defender;
+        private static (string attacker, string defender) Key(string attacker, string defender) => (attacker, defender);
         internal bool IsPairCoolingDown(long tick, string attacker, string defender)
             => nextHit.TryGetValue(Key(attacker, defender), out long allowed) && tick < allowed;
 
@@ -143,10 +157,19 @@ namespace SnakeClub.Core
         // tick; competing bites use advantage, then stable IDs, never list order.
         // The caller applies contact separation after all snapshot outcomes.
         public List<BodyBite> Resolve(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs)
+            => new List<BodyBite>(ResolveBuffered(tick, fighters, inputs));
+
+        // The result belongs to this match and remains valid until its next step.
+        internal List<BodyBite> ResolveBuffered(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs)
         {
             if (tick < 0 || tick <= lastTick || tick > long.MaxValue - CooldownTicks) throw new ArgumentOutOfRangeException(nameof(tick));
             if (fighters == null || inputs == null || fighters.Length != inputs.Length) throw new ArgumentException("Fighters and strengths must have matching lengths");
-            var powers = new StrengthInputs[fighters.Length];
+            if (powersBuffer.Length != fighters.Length)
+            {
+                powersBuffer = new StrengthInputs[fighters.Length];
+                usedAttackersBuffer = new bool[fighters.Length]; usedDefendersBuffer = new bool[fighters.Length];
+            }
+            var powers = powersBuffer;
             for (int i = 0; i < fighters.Length; i++)
             {
                 if (fighters[i] == null || fighters[i].id.IndexOf('\0') >= 0) throw new ArgumentException("Invalid fighter");
@@ -157,7 +180,7 @@ namespace SnakeClub.Core
             lastTick = tick;
             blockedAttackers.Clear();
             blockedContacts.Clear();
-            var candidates = new List<Candidate>();
+            var candidates = candidatesBuffer; candidates.Clear();
             for (int i = 0; i < fighters.Length; i++)
             {
                 var attacker = fighters[i]; if (!attacker.alive || attacker.shieldTicks > 0) continue;
@@ -202,21 +225,22 @@ namespace SnakeClub.Core
                         advantage = (long)attackingPower.attack * 100 - (long)defendingPower.defense * 105 });
                 }
             }
-            candidates.Sort((a, b) => {
+            if (candidates.Count > 1) candidates.Sort((a, b) => {
                 int order = b.advantage.CompareTo(a.advantage);
                 if (order == 0) order = string.CompareOrdinal(fighters[a.attacker].id, fighters[b.attacker].id);
                 if (order == 0) order = string.CompareOrdinal(fighters[a.defender].id, fighters[b.defender].id);
                 return order;
             });
-            var usedAttackers = new bool[fighters.Length]; var usedDefenders = new bool[fighters.Length];
-            var chosen = new List<Candidate>();
+            var usedAttackers = usedAttackersBuffer; var usedDefenders = usedDefendersBuffer;
+            Array.Clear(usedAttackers, 0, usedAttackers.Length); Array.Clear(usedDefenders, 0, usedDefenders.Length);
+            var chosen = chosenBuffer; chosen.Clear();
             foreach (var candidate in candidates)
             {
                 if (usedAttackers[candidate.attacker] || usedDefenders[candidate.defender]) continue;
                 usedAttackers[candidate.attacker] = usedDefenders[candidate.defender] = true;
                 chosen.Add(candidate);
             }
-            var bites = new List<BodyBite>(chosen.Count);
+            var bites = bitesBuffer; bites.Clear();
             foreach (var c in chosen)
             {
                 var attacker = fighters[c.attacker]; var defender = fighters[c.defender];

@@ -76,6 +76,10 @@ namespace SnakeClub.Core
         private readonly PveFixedCombatWorkspace combatWorkspace = new PveFixedCombatWorkspace(8);
         private readonly StrengthBodyCombat strengthCombat = new StrengthBodyCombat();
         private readonly StrengthInputs[] strengthInputs = new StrengthInputs[8];
+        private readonly StrengthValues[] strengthHeadValues = new StrengthValues[8];
+        private readonly int[] strengthHeadWinners = new int[8], strengthHeadGrowth = new int[8];
+        private readonly long[] strengthHeadAdvantages = new long[8];
+        private readonly bool[] strengthSeparatedHeads = new bool[8];
         private readonly List<HeadTieContact> strengthHeadTies = new List<HeadTieContact>();
         public bool StrengthPreview { get; }
         public int StrengthBasePower { get; }
@@ -582,11 +586,12 @@ namespace SnakeClub.Core
                 CollectStrengthPickup();
                 DetectStrengthLoops();
                 for (int i = 0; i < fighters.Length; i++) strengthInputs[i] = StrengthFor(fighters[i]);
-                var headGrowth = StrengthHeadCombat.Resolve(fighters, strengthInputs, deferGrowth: true, ties: strengthHeadTies);
-                var bites = strengthCombat.Resolve(Tick, fighters, strengthInputs);
+                var headGrowth = StrengthHeadCombat.ResolveBuffered(fighters, strengthInputs, true, strengthHeadTies,
+                    strengthHeadValues, strengthHeadWinners, strengthHeadAdvantages, strengthHeadGrowth);
+                var bites = strengthCombat.ResolveBuffered(Tick, fighters, strengthInputs);
                 for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) fighters[i].motion.Grow(headGrowth[i]);
                 ApplyStrengthLoops();
-                var separatedHeads = StrengthHeadCombat.SeparateTies(fighters, strengthHeadTies, bites);
+                var separatedHeads = StrengthHeadCombat.SeparateTiesBuffered(fighters, strengthHeadTies, bites, strengthSeparatedHeads);
                 if (separatedHeads[0]) LastPlayerHeadTieTick = Tick;
                 foreach (var contact in strengthCombat.BlockedContacts)
                 {
