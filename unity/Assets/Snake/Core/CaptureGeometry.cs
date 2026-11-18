@@ -47,23 +47,27 @@ namespace SnakeClub.Core
         {
             loop = null;
             if (segments == null || segments.Count <= FirstBodySegment + 1) return false;
-            long bestNumerator = 0, bestDenominator = 1;
+            long bestNumerator = 0, bestDenominator = 1, bestArea = 0;
+            int bestSegment = -1;
+            CapturePoint bestHit = default;
             for (int i = FirstBodySegment; i + 1 < segments.Count; i++)
             {
                 if (!Intersection(previousHead, segments[0], segments[i], segments[i + 1], out var hit, out long n, out long d)) continue;
-                var polygon = new List<CapturePoint> { hit };
-                for (int j = 0; j <= i; j++) polygon.Add(segments[j]);
-                long twiceArea = 0;
-                for (int j = 0; j < polygon.Count; j++)
-                {
-                    var a = polygon[j]; var b = polygon[(j + 1) % polygon.Count];
-                    twiceArea += (long)a.x * b.y - (long)b.x * a.y;
-                }
+                // The polygon is hit, followed by segments 0..i. Compute its
+                // area directly so rejected intersections allocate nothing.
+                long twiceArea = (long)hit.x * segments[0].y - (long)segments[0].x * hit.y;
+                for (int j = 0; j < i; j++)
+                    twiceArea += (long)segments[j].x * segments[j + 1].y - (long)segments[j + 1].x * segments[j].y;
+                twiceArea += (long)segments[i].x * hit.y - (long)hit.x * segments[i].y;
                 twiceArea = Math.Abs(twiceArea);
-                if (twiceArea < MinimumDoubleArea || (loop != null && n * bestDenominator >= bestNumerator * d)) continue;
-                loop = new CaptureLoop(polygon, twiceArea); bestNumerator = n; bestDenominator = d;
+                if (twiceArea < MinimumDoubleArea || (bestSegment >= 0 && n * bestDenominator >= bestNumerator * d)) continue;
+                bestSegment = i; bestHit = hit; bestArea = twiceArea; bestNumerator = n; bestDenominator = d;
             }
-            return loop != null;
+            if (bestSegment < 0) return false;
+            var polygon = new List<CapturePoint>(bestSegment + 2) { bestHit };
+            for (int j = 0; j <= bestSegment; j++) polygon.Add(segments[j]);
+            loop = new CaptureLoop(polygon, bestArea);
+            return true;
         }
 
         // Even-odd scanline intersections match Contains for concave and
