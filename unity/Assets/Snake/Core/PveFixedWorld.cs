@@ -836,6 +836,20 @@ namespace SnakeClub.Core
         }
     }
 
+    // Explain only the actual minimum-length boost restriction in the
+    // strength prototype; touch intent by itself is not proof of movement.
+    public static class StrengthBoostNotice
+    {
+        public static string Text(PveFixedWorld world, ArenaState state, string playerId, bool requested, bool suspended)
+        {
+            if (world == null || !world.StrengthPreview || state == null || state.phase != "running" ||
+                suspended || !requested || string.IsNullOrEmpty(playerId)) return "";
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive || player.boosting || player.segments.Count != PveFixedMotion.MinimumLength) return "";
+            return "身体太短无法加速 · 吃果实恢复";
+        }
+    }
+
     // The most recent resolved contact takes precedence; simultaneous attacks
     // and losses are both shown regardless of the order of combat outcomes.
     public static class StrengthContactNotice

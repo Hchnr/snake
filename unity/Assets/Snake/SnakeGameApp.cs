@@ -763,6 +763,12 @@ namespace SnakeClub
                 Panel(new Rect(230, 1525, 620, 70), new Color(.12f, .055f, .045f, .90f));
                 Label(new Rect(245, 1530, 590, 60), "红叉处身体有危险 · 留意对手", 23, new Color(1f, .83f, .72f), TextAnchor.MiddleCenter, true);
             }
+            string strengthBoostHint = StrengthBoostNotice.Text(fixedPve, state, playerId, pointerBoost, SimulationSuspended);
+            if (!string.IsNullOrEmpty(strengthBoostHint))
+            {
+                Panel(new Rect(220, 1715, 640, 70), new Color(.10f, .075f, .035f, .91f));
+                Label(new Rect(235, 1720, 610, 60), strengthBoostHint, 23, new Color(1f, .90f, .69f), TextAnchor.MiddleCenter, true);
+            }
             string boostHint = depthMode && !paused ? DepthChallenge.ReboundBoostHint(me) : "";
             if (!string.IsNullOrEmpty(boostHint))
             {
@@ -775,6 +781,7 @@ namespace SnakeClub
                 edgeObstacles.Clear();
                 if (strengthHeadWarning) edgeObstacles.Add(new EdgeObstacle(250, 1635, 580, 74));
                 if (strengthBodyWarning) edgeObstacles.Add(new EdgeObstacle(230, 1525, 620, 70));
+                if (!string.IsNullOrEmpty(strengthBoostHint)) edgeObstacles.Add(new EdgeObstacle(220, 1715, 640, 70));
                 if (showLevelNotice) edgeObstacles.Add(new EdgeObstacle(250, 430, 580, 110));
                 foreach (var entry in nameplateEntries)
                     edgeObstacles.Add(new EdgeObstacle(entry.box.x, entry.box.y, entry.box.width, entry.box.height));
@@ -964,6 +971,8 @@ namespace SnakeClub
                 var player = world.snakes.Find(s => s.id == playerId);
                 if (player != null && player.strengthThreatSegments.Contains(true)) nameplates.Reserve(230, 1525, 620, 70);
             }
+            if (!string.IsNullOrEmpty(StrengthBoostNotice.Text(fixedPve, world, playerId, pointerBoost, SimulationSuspended)))
+                nameplates.Reserve(220, 1715, 640, 70);
             if (!paused && string.IsNullOrEmpty(killFeedback.Current(world)) && !string.IsNullOrEmpty(StrengthLevelNotice.Text(fixedPve, world.tick)))
                 nameplates.Reserve(250, 430, 580, 110);
             if (StrengthIntroVisible()) nameplates.Reserve(100, 550, 880, 100);
