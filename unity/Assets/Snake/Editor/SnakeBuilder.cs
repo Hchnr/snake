@@ -21,24 +21,32 @@ namespace SnakeClub.Editor
             };
         }
 
-        // Optional internal-only Wenda head/body layers; other reference
-        // characters and normal builds do not depend on this local sample.
+        // These pairs are local internal references, not shipped in normal builds.
         public static void StageOptionalReferenceLayers(string staged)
         {
-            const string source = "Assets/Editor/ReferenceSkins/wenda_layers";
-            bool hasBody = File.Exists(source + "/body.png"), hasHead = File.Exists(source + "/head.png");
-            if (!hasBody && !hasHead) return;
-            if (!hasBody || !hasHead) throw new InvalidOperationException("Wenda reference requires both local layers.");
-            if (string.IsNullOrEmpty(AssetDatabase.CreateFolder(staged, "wenda_layers")))
-                throw new InvalidOperationException("Could not create reference layer staging folder.");
-            foreach (string name in new[] { "body", "head" })
-                if (!AssetDatabase.CopyAsset(source + "/" + name + ".png", staged + "/wenda_layers/" + name + ".png"))
-                    throw new InvalidOperationException("Could not stage Wenda reference layer: " + name);
-            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
-            foreach (string name in new[] { "body", "head" })
+            var stagedLayers = new System.Collections.Generic.List<string>();
+            foreach (string character in new[] { "wenda", "raddy" })
             {
-                var importer = AssetImporter.GetAtPath(staged + "/wenda_layers/" + name + ".png") as TextureImporter;
-                if (importer == null) throw new InvalidOperationException("Could not configure Wenda reference layer: " + name);
+                string folder = character + "_layers", source = "Assets/Editor/ReferenceSkins/" + folder;
+                bool hasBody = File.Exists(source + "/body.png"), hasHead = File.Exists(source + "/head.png");
+                if (!hasBody && !hasHead) continue;
+                if (!hasBody || !hasHead) throw new InvalidOperationException(character + " reference requires both local layers.");
+                if (string.IsNullOrEmpty(AssetDatabase.CreateFolder(staged, folder)))
+                    throw new InvalidOperationException("Could not create reference layer staging folder: " + folder);
+                foreach (string name in new[] { "body", "head" })
+                {
+                    string target = staged + "/" + folder + "/" + name + ".png";
+                    if (!AssetDatabase.CopyAsset(source + "/" + name + ".png", target))
+                        throw new InvalidOperationException("Could not stage reference layer: " + target);
+                    stagedLayers.Add(target);
+                }
+            }
+            if (stagedLayers.Count == 0) return;
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            foreach (string target in stagedLayers)
+            {
+                var importer = AssetImporter.GetAtPath(target) as TextureImporter;
+                if (importer == null) throw new InvalidOperationException("Could not configure reference layer: " + target);
                 importer.npotScale = TextureImporterNPOTScale.None; importer.mipmapEnabled = false;
                 importer.alphaIsTransparency = true; importer.maxTextureSize = 1024; importer.SaveAndReimport();
             }

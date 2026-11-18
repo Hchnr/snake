@@ -17,6 +17,9 @@ with tempfile.TemporaryDirectory(prefix='snake-unity-regression-') as directory:
     excluded = ['ByteGame', 'ByteGame.meta', '.DS_Store']
     if os.environ.get('SNAKE_TEST_EXCLUDE_REFERENCES') == '1':
         excluded.extend(['ReferenceSkins', 'ReferenceSkins.meta'])
+    for name in ('wenda', 'raddy'):
+        if os.environ.get('SNAKE_TEST_EXCLUDE_' + name.upper() + '_LAYERS') == '1':
+            excluded.extend([name + '_layers', name + '_layers.meta'])
     for name in ('Assets', 'Packages', 'ProjectSettings'):
         shutil.copytree(root / 'unity' / name, project / name, ignore=shutil.ignore_patterns(*excluded))
     shutil.copy2(root / 'test/v3/SnakeClientRegression.cs', project / 'Assets/Snake/Editor/SnakeClientRegression.cs')

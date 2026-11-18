@@ -567,19 +567,22 @@ namespace SnakeClub
                     // Re-evaluate every frame because online player identity can change.
                     character.sortingOrder = snake.id == playerId ? 20 : 10;
                     Sprite layerBody = null, layerHead = null;
-                    bool layered = SkinVisual.TryWendaLayers(visualSkin, out layerBody, out layerHead);
+                    bool layered = SkinVisual.TryReferenceLayers(visualSkin, out layerBody, out layerHead, out float neckY);
                     character.sprite = layered ? layerBody : characterSprite; character.color = Color.white; character.enabled = true;
                     referenceHeads.TryGetValue(snake.id, out var referenceHead);
                     if (layered && referenceHead == null)
                     {
-                        var pivot = new GameObject("Wenda reference head pivot"); pivot.transform.SetParent(character.transform, false);
+                        var pivot = new GameObject("Reference head pivot"); pivot.transform.SetParent(character.transform, false);
                         pivot.transform.localPosition = new Vector3(0, -.32f, 0);
-                        var headLayer = new GameObject("Wenda reference head"); headLayer.transform.SetParent(pivot.transform, false);
+                        var headLayer = new GameObject("Reference head"); headLayer.transform.SetParent(pivot.transform, false);
                         headLayer.transform.localPosition = new Vector3(0, .32f, 0);
                         referenceHeads[snake.id] = referenceHead = headLayer.AddComponent<SpriteRenderer>();
                     }
                     if (referenceHead != null)
-                    { referenceHead.sprite = layered ? layerHead : null; referenceHead.enabled = layered; referenceHead.sortingOrder = character.sortingOrder + 1; }
+                    {
+                        referenceHead.sprite = layered ? layerHead : null; referenceHead.enabled = layered; referenceHead.sortingOrder = character.sortingOrder + 1;
+                        if (layered) { referenceHead.transform.parent.localPosition = new Vector3(0, neckY, 0); referenceHead.transform.localPosition = new Vector3(0, -neckY, 0); }
+                    }
                     if (!characterMotions.TryGetValue(snake.id, out var motion))
                         characterMotions[snake.id] = motion = new CharacterMotion();
                     motion.Update(state.tick, snake.angle, snake.boosting, Time.deltaTime, ReducedEffects,
