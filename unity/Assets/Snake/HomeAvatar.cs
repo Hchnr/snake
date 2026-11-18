@@ -80,10 +80,10 @@ namespace SnakeClub
             reference.transform.rotation = portrait.transform.rotation;
             referenceCharacter = reference.AddComponent<SpriteRenderer>();
             referenceCharacter.enabled = false;
-            var pivot = new GameObject("Wenda reference head pivot");
+            var pivot = new GameObject("Reference head pivot");
             pivot.layer = 31; pivot.transform.SetParent(reference.transform, false);
             pivot.transform.localPosition = new Vector3(0, -.32f, 0); referenceHeadPivot = pivot.transform;
-            var headLayer = new GameObject("Wenda reference head");
+            var headLayer = new GameObject("Reference head");
             headLayer.layer = 31; headLayer.transform.SetParent(pivot.transform, false);
             headLayer.transform.localPosition = new Vector3(0, .32f, 0);
             referenceHead = headLayer.AddComponent<SpriteRenderer>(); referenceHead.sortingOrder = 1; referenceHead.enabled = false;
@@ -249,7 +249,10 @@ namespace SnakeClub
             if (referenceCharacter != null)
             {
                 Sprite layerBody = null, layerHead = null;
-                bool layered = reference != null && SkinVisual.TryWendaLayers(skin, out layerBody, out layerHead);
+                float neckY = 0;
+                bool layered = reference != null && SkinVisual.TryReferenceLayers(skin, out layerBody, out layerHead, out neckY);
+                if (layered && referenceHeadPivot != null && referenceHead != null)
+                { referenceHeadPivot.localPosition = new Vector3(0, neckY, 0); referenceHead.transform.localPosition = new Vector3(0, -neckY, 0); }
                 referenceCharacter.sprite = layered ? layerBody : reference;
                 referenceCharacter.enabled = reference != null;
                 if (referenceHead != null) { referenceHead.sprite = layered ? layerHead : null; referenceHead.enabled = layered; }

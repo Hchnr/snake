@@ -59,7 +59,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
                 TestStrengthImpactVisual();
-                TestWendaReferenceLayers();
+                TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
                 TestStrengthLevelVisual();
                 var client = owner.AddComponent<GameApiClient>();
@@ -469,62 +469,80 @@ namespace SnakeClub.Tests.Editor
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
-        private static void TestWendaReferenceLayers()
+        private static void TestReferenceLayers()
         {
-            const int wenda = SkinCatalog.OwnedSkinCount;
-            bool local = File.Exists("Assets/Editor/ReferenceSkins/wenda_layers/body.png") && File.Exists("Assets/Editor/ReferenceSkins/wenda_layers/head.png");
-            bool loaded = SkinVisual.TryWendaLayers(wenda, out var body, out var head);
-            Require(!SkinVisual.TryWendaLayers(0, out _, out _), "original character incorrectly used reference layers");
-            if (!local) { Require(!loaded, "missing Wenda layers did not fall back"); Debug.Log("PASS Unity missing reference layers fall back"); return; }
-            Require(loaded && body != null && head != null && body != head && body.rect.size == head.rect.size, "reference layers did not align");
+            int[] ids = { SkinCatalog.OwnedSkinCount, SkinCatalog.OwnedSkinCount + 1 };
+            string[] names = { "wenda", "raddy" };
+            var bodies = new Sprite[2]; var headSprites = new Sprite[2]; var necks = new float[2]; var available = new bool[2];
+            Require(!SkinVisual.TryReferenceLayers(0, out _, out _, out _), "original character used reference layers");
+            for (int i = 0; i < ids.Length; i++)
+            {
+                string path = "Assets/Editor/ReferenceSkins/" + names[i] + "_layers/";
+                bool local = File.Exists(path + "body.png") && File.Exists(path + "head.png");
+                available[i] = SkinVisual.TryReferenceLayers(ids[i], out bodies[i], out headSprites[i], out necks[i]);
+                Require(available[i] == local, "reference layers did not load or fall back: " + names[i]);
+                if (local) Require(bodies[i] != null && headSprites[i] != null && bodies[i] != headSprites[i] &&
+                    bodies[i].rect.size == headSprites[i].rect.size, "reference layers did not align: " + names[i]);
+            }
             const string staging = "Assets/Resources/ReferenceSkins";
-            if (!AssetDatabase.IsValidFolder(staging))
+            if ((available[0] || available[1]) && !AssetDatabase.IsValidFolder(staging))
             {
                 try
                 {
-                    Require(!string.IsNullOrEmpty(AssetDatabase.CreateFolder("Assets/Resources", "ReferenceSkins")), "could not create temporary reference staging");
+                    Require(!string.IsNullOrEmpty(AssetDatabase.CreateFolder("Assets/Resources", "ReferenceSkins")), "could not create reference staging");
                     SnakeClub.Editor.SnakeBuilder.StageOptionalReferenceLayers(staging);
-                    var stagedHead = Resources.Load<Texture2D>("ReferenceSkins/wenda_layers/head");
-                    var stagedBody = Resources.Load<Texture2D>("ReferenceSkins/wenda_layers/body");
-                    var importer = AssetImporter.GetAtPath(staging + "/wenda_layers/head.png") as TextureImporter;
-                    Require(stagedHead != null && stagedBody != null && stagedHead.width == stagedBody.width && stagedHead.height == stagedBody.height &&
-                        importer != null && !importer.mipmapEnabled && importer.maxTextureSize == 1024 && importer.npotScale == TextureImporterNPOTScale.None,
-                        "opted-in reference layers were not staged with bounded matching dimensions");
+                    for (int i = 0; i < ids.Length; i++) if (available[i])
+                    {
+                        string path = "ReferenceSkins/" + names[i] + "_layers/";
+                        var stagedHead = Resources.Load<Texture2D>(path + "head"); var stagedBody = Resources.Load<Texture2D>(path + "body");
+                        var importer = AssetImporter.GetAtPath("Assets/Resources/" + path + "head.png") as TextureImporter;
+                        Require(stagedHead != null && stagedBody != null && stagedHead.width == stagedBody.width && stagedHead.height == stagedBody.height &&
+                            importer != null && !importer.mipmapEnabled && importer.maxTextureSize == 1024 && importer.npotScale == TextureImporterNPOTScale.None,
+                            "reference layers not staged with bounded matching dimensions: " + names[i]);
+                    }
                 }
                 finally { if (AssetDatabase.IsValidFolder(staging)) AssetDatabase.DeleteAsset(staging); }
             }
-            var root = new GameObject("Wenda layered reference regression");
+            var root = new GameObject("Layered reference regression");
             try
             {
                 var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-                var avatar = root.AddComponent<HomeAvatar>();
-                typeof(HomeAvatar).GetMethod("Initialize", flags).Invoke(avatar, null); avatar.Skin = wenda;
+                var avatar = root.AddComponent<HomeAvatar>(); typeof(HomeAvatar).GetMethod("Initialize", flags).Invoke(avatar, null);
                 var avatarBody = (SpriteRenderer)typeof(HomeAvatar).GetField("referenceCharacter", flags).GetValue(avatar);
                 var avatarHead = (SpriteRenderer)typeof(HomeAvatar).GetField("referenceHead", flags).GetValue(avatar);
-                Require(avatarBody.sprite == body && avatarHead.sprite == head && avatarHead.enabled, "home did not use both reference layers");
-                avatar.Skin = 0; Require(!avatarHead.enabled && avatarBody.sprite != body, "reference head leaked to another skin");
                 var renderer = root.AddComponent<ArenaRenderer>(); typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
-                renderer.SelectedSkin = wenda; renderer.StrengthBodyVisual = true;
+                renderer.StrengthBodyVisual = true;
                 var state = new ArenaState { phase = "running" }; var me = new SnakeState { id = "you", alive = true };
-                me.segments.Add(new Point(0, 0)); state.snakes.Add(me); renderer.Draw(state, "you");
+                me.segments.Add(new Point(0, 0)); state.snakes.Add(me);
                 var sprites = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
                 var heads = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("referenceHeads", flags).GetValue(renderer);
-                Require(sprites["you"].sprite == body && heads["you"].sprite == head && heads["you"].enabled &&
-                    heads["you"].sortingOrder > sprites["you"].sortingOrder, "arena did not layer Wenda above its body");
                 var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
-                clock.Advance(.5f, false); renderer.Draw(state, "you");
-                var animated = heads["you"].transform.parent.localRotation;
-                Require(animated != Quaternion.identity, "reference head did not move independently");
-                renderer.MotionPaused = true; clock.Advance(1f, true); renderer.Draw(state, "you");
-                Require(heads["you"].transform.parent.localRotation == animated, "reference head did not freeze while paused");
-                renderer.MotionPaused = false; renderer.ReducedEffects = true; renderer.Draw(state, "you");
-                Require(heads["you"].transform.parent.localRotation == Quaternion.identity, "reduced effects did not stop independent head motion");
-                renderer.SelectedSkin = 0; renderer.Draw(state, "you");
-                Require(!heads["you"].enabled && heads["you"].sprite == null, "reference layer leaked after switching skin");
-                renderer.ReducedEffects = false; renderer.SelectedSkin = wenda; renderer.Draw(state, "you");
-                me.alive = false; renderer.Draw(state, "you");
-                Require(heads["you"].enabled && heads["you"].color.a == sprites["you"].color.a, "reference head did not follow the elimination transition");
-                Debug.Log("PASS Unity Wenda optional layers match in home and arena");
+                for (int i = 0; i < ids.Length; i++) if (available[i])
+                {
+                    avatar.Skin = ids[i]; renderer.SelectedSkin = ids[i]; renderer.Draw(state, "you");
+                    Require(avatarBody.sprite == bodies[i] && avatarHead.sprite == headSprites[i] && avatarHead.enabled &&
+                        Mathf.Abs(avatarHead.transform.parent.localPosition.y - necks[i]) < .001f, "home reference layers or pivot incorrect: " + names[i]);
+                    Require(sprites["you"].sprite == bodies[i] && heads["you"].sprite == headSprites[i] && heads["you"].enabled &&
+                        heads["you"].sortingOrder > sprites["you"].sortingOrder && Mathf.Abs(heads["you"].transform.parent.localPosition.y - necks[i]) < .001f,
+                        "arena reference layers or pivot incorrect: " + names[i]);
+                    clock.Advance(.5f, false); renderer.Draw(state, "you"); var animated = heads["you"].transform.parent.localRotation;
+                    Require(animated != Quaternion.identity, "reference head did not move independently");
+                    renderer.MotionPaused = true; clock.Advance(1f, true); renderer.Draw(state, "you");
+                    Require(heads["you"].transform.parent.localRotation == animated, "reference head did not freeze while paused");
+                    renderer.MotionPaused = false; renderer.ReducedEffects = true; renderer.Draw(state, "you");
+                    Require(heads["you"].transform.parent.localRotation == Quaternion.identity, "reduced effects did not stop head motion");
+                    renderer.ReducedEffects = false;
+                }
+                if (available[0] && available[1]) Require(bodies[0] != bodies[1] && headSprites[0] != headSprites[1] && necks[0] != necks[1], "reference identities shared layers or pivot");
+                if (available[0] || available[1])
+                {
+                    avatar.Skin = 0; renderer.SelectedSkin = 0; renderer.Draw(state, "you");
+                    Require(!avatarHead.enabled && !heads["you"].enabled && heads["you"].sprite == null, "reference head leaked to another skin");
+                    int chosen = available[1] ? 1 : 0; renderer.SelectedSkin = ids[chosen]; renderer.Draw(state, "you");
+                    me.alive = false; renderer.Draw(state, "you");
+                    Require(heads["you"].enabled && heads["you"].color.a == sprites["you"].color.a, "reference head missed elimination transition");
+                }
+                Debug.Log("PASS Unity reference layers, identity switching and fallback");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
