@@ -109,10 +109,18 @@ namespace SnakeClub
 
         private void StartMain()
         {
+            if (!PlatformAllowsGameplay()) return;
             if (api.Config.ComparisonPreview) { frontPage = "comparison"; return; }
             if (api.Config.FixedPvePreview || api.Config.FixedPveServerPreview || api.Config.StrengthPveServerPreview) { RequestPve(); return; }
             if (!TutorialReady) RequestPve();
             else RequestDaily();
+        }
+
+        private bool PlatformAllowsGameplay()
+        {
+            if (api.PlatformGameReady) return true;
+            frontNotice = api.PlatformGameStatus;
+            return false;
         }
 
         private void LoadPreferences()
@@ -167,7 +175,7 @@ namespace SnakeClub
 
         private void RequestPve()
         {
-            if (busy) return;
+            if (busy || !PlatformAllowsGameplay()) return;
             depthMode = false;
             if (api.Config.StrengthPveServerPreview)
             {
@@ -210,7 +218,7 @@ namespace SnakeClub
 
         private void RequestDaily()
         {
-            if (busy) return;
+            if (busy || !PlatformAllowsGameplay()) return;
             depthMode = false;
             activeFriendScore = !string.IsNullOrEmpty(friendDate) && friendDate == api.Date && DailyMatch.SupportsFriendChallenge(friendRules) ? friendScore : -1;
             activeFriendDate = friendDate; activeFriendRules = friendRules;
@@ -223,7 +231,7 @@ namespace SnakeClub
 
         private void StartDepth()
         {
-            if (busy) return;
+            if (busy || !PlatformAllowsGameplay()) return;
             int completed = DepthChallenge.CompletedMatches(CurrentProfile);
             if (!DepthChallenge.IsUnlocked(CurrentProfile)) { frontNotice = "完成 3 场对局后开启深潜（" + completed + "/3）"; return; }
             depthMode = true; depthRoom = 1; depthShield = depthRebound = depthGrowth = 0;
@@ -232,7 +240,7 @@ namespace SnakeClub
 
         private void RequestDepthRoom()
         {
-            if (busy) return;
+            if (busy || !PlatformAllowsGameplay()) return;
             depthWon = false;
             // Depth uses different rules and cannot be settled as an ordinary PvE match.
             BeginPve(null);

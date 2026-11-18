@@ -175,6 +175,10 @@ namespace SnakeClub.Tests.Editor
                 Require(FindText("Primary label").text.Contains("先完成"), "fresh account did not show the practice requirement");
                 screen.SetState(fresh, null, "", false, true, true, 0, 0, false, false, friendChallenge: true, tutorialReady: true);
                 Require(FindText("Primary label").text.Contains("接受好友挑战"), "practice completion did not update the challenge entry");
+                screen.SetState(fresh, null, "", false, false, true, 0, 0, false, false, platformReady: false, platformStatus: "微信初始化失败，请重新打开游戏");
+                Require(!FindButton("Start hunt").interactable && FindText("Primary hint").text.Contains("微信初始化失败"), "platform failure did not disable and explain the start action");
+                screen.SetState(fresh, null, "", false, false, true, 0, 0, false, false);
+                Require(FindButton("Start hunt").interactable, "platform readiness did not restore the start action");
                 Require(FindText("Result outcome").text == "撞上对手轨迹，被淘汰" && FindText("Result details").text == "成绩已验证 · 金币 +35",
                     "result outcome and reward status were not presented independently");
                 screen.SetResult("围猎结束", "最长 16 · 淘汰 0", "本局已出局", "离线练习 · 不计账号奖励", false, false, 0);

@@ -16,7 +16,7 @@ class WeChatIsolatedBuildTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         scripts = self.root / 'scripts'; scripts.mkdir()
-        for name in ('build-wechat-isolated.py', 'WeChatIsolatedBuild.cs'):
+        for name in ('build-wechat-isolated.py', 'WeChatIsolatedBuild.cs', 'unity_defines.py'):
             shutil.copy2(ROOT / 'scripts' / name, scripts / name)
         unity = self.root / 'unity'
         for folder in ('Assets/Resources', 'Assets/Snake/Editor', 'Assets/Editor/ReferenceSkins', 'Packages', 'ProjectSettings'):
@@ -27,6 +27,7 @@ class WeChatIsolatedBuildTests(unittest.TestCase):
             'rewardedAdUnitId': 'private-ad-id', 'allowDevLogin': True, 'allowReferenceSkinPreview': True, 'experimentalStrengthPveServer': True,
         }))
         (unity / 'ProjectSettings/ProjectVersion.txt').write_text('m_EditorVersion: 6000.0.85f2\n')
+        (unity / 'ProjectSettings/ProjectSettings.asset').write_text('  scriptingDefineSymbols: {}\n  scriptingBackend: {}\n')
         self.sdk = self.root / 'sdk'; self.sdk.mkdir()
         (self.sdk / 'package.json').write_text('{"name":"com.qq.weixin.minigame","version":"fixture"}')
         subprocess.run(['git', 'init', '-q', str(self.sdk)], check=True)
@@ -47,6 +48,7 @@ pathlib.Path(os.environ['SNAKE_TEST_CAPTURE']).write_text(json.dumps({
     'hasSdk': (project / 'Packages/com.qq.weixin.minigame/package.json').is_file(),
     'hasIgnored': (project / 'Packages/com.qq.weixin.minigame/ignored.txt').exists(),
     'hasRefs': (project / 'Assets/Editor/ReferenceSkins').exists(),
+    'settings': (project / 'ProjectSettings/ProjectSettings.asset').read_text(),
     'headless': '-batchmode' in sys.argv and '-nographics' in sys.argv,
     'appid': os.environ['SNAKE_WECHAT_APPID'], 'cdn': os.environ['SNAKE_WECHAT_CDN']
 }))
@@ -78,6 +80,7 @@ pathlib.Path(os.environ['SNAKE_WECHAT_STAMP']).write_text('complete')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         captured = json.loads(self.capture.read_text()); config = captured['config']
         self.assertTrue(captured['headless'] and captured['hasSdk'])
+        self.assertIn('WebGL: SNAKE_WECHAT_WXSDK', captured['settings'])
         self.assertFalse(captured['hasRefs'] or captured['hasIgnored'] or config['allowDevLogin'] or config['allowReferenceSkinPreview'])
         self.assertEqual(config['apiUrl'], ''); self.assertEqual(config['serverUrl'], '')
         self.assertEqual(config['rewardedAdUnitId'], '')
@@ -85,6 +88,7 @@ pathlib.Path(os.environ['SNAKE_WECHAT_STAMP']).write_text('complete')
         self.assertFalse(config['experimentalStrengthPveServer'] or config['experimentalFixedPveServer'])
         self.assertTrue(json.loads((self.output / 'snake-build-metadata.json').read_text())['diagnostic'])
         self.assertEqual(json.loads((self.root / 'unity/Assets/Resources/GameConfig.json').read_text())['apiUrl'], 'https://example.com')
+        self.assertIn('scriptingDefineSymbols: {}', (self.root / 'unity/ProjectSettings/ProjectSettings.asset').read_text())
 
     def test_refuses_placeholders_unless_explicit_and_never_overwrites(self):
         self.assertNotEqual(self.run_build().returncode, 0)
