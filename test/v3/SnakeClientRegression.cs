@@ -188,6 +188,9 @@ namespace SnakeClub.Tests.Editor
                     "skin unlock incorrectly implied strength practice awards account progression");
                 Require(FindText("Result outcome").text == "撞上对手轨迹，被淘汰" && FindText("Result details").text == "成绩已验证 · 金币 +35",
                     "result outcome and reward status were not presented independently");
+                screen.SetResult("吞食结束", "当前长度 16 · 淘汰 0\n最长 20", "本局已出局", "试玩不计账号奖励", false, false, 0,
+                    "吃到 4 节 · 被吃 2 节");
+                Require(FindText("Result highlight").text == "吃到 4 节 · 被吃 2 节", "strength bite summary was not shown");
                 screen.SetResult("围猎结束", "最长 16 · 淘汰 0", "本局已出局", "离线练习 · 不计账号奖励", false, false, 0);
                 Require(FindText("Result details").text.Contains("不计账号奖励") && !FindButton("Result share").gameObject.activeSelf,
                     "practice results retained verified rewards or sharing");

@@ -1907,6 +1907,8 @@ static void StrengthRecordingCases()
                 Check(a.motion.Segments[j].x == b.motion.Segments[j].x && a.motion.Segments[j].y == b.motion.Segments[j].y,
                     "strength recording changed a body segment");
         }
+        Check(live.PlayerSegmentsEaten == replay.PlayerSegmentsEaten && live.PlayerSegmentsLostToBites == replay.PlayerSegmentsLostToBites,
+            "strength replay changed actual bite totals");
         Check(SnakeClub.Tests.StrengthPveReplayVector.Terminal(live) == SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay),
             "terminal fingerprint changed after strength replay");
         string digest = StrengthStateDigest.Compute(live);
@@ -1945,6 +1947,8 @@ static void StrengthNoticeCases()
     world.Step(0, false);
     Check(world.LastPlayerAttackTick == 1 && world.LastPlayerDamageTick == 1 && world.LastPlayerAttackCount > 0 && world.LastPlayerDamageCount > 0,
         "real mutual body collision did not record both directions");
+    Check(world.PlayerSegmentsEaten == world.LastPlayerAttackCount && world.PlayerSegmentsLostToBites == world.LastPlayerDamageCount &&
+        StrengthMatchSummary.Text(world) == "", "live mutual bite totals were incorrect or prematurely presented");
     var projection = world.RenderState();
     Check(projection.strengthAttackTick == world.LastPlayerAttackTick && projection.strengthDamageTick == world.LastPlayerDamageTick &&
         Math.Abs(projection.strengthAttackPoint.x * 1000 - world.LastPlayerAttackPoint.x) < .01 &&
@@ -1974,6 +1978,16 @@ static void StrengthNoticeCases()
     record.Invoke(reversed, new object[] { new BodyBite("you", "bot-1", 1, 1, 100, 50) });
     notice = StrengthContactNotice.Text(reversed, 1, out warning);
     Check(!warning && notice.Contains("吃掉身体 1 节"), "older damage hid a newer successful bite");
+    Check(reversed.PlayerSegmentsEaten == 4 && reversed.PlayerSegmentsLostToBites == 2, "body-bite totals did not accumulate actual segments");
+    typeof(PveFixedWorld).GetProperty("Finished").SetValue(reversed, true);
+    Check(StrengthMatchSummary.Text(reversed) == "吃到 4 节 · 被吃 2 节", "finished summary did not report actual totals");
+    Check(StrengthMatchSummary.Text(null) == "" && StrengthMatchSummary.Text(new PveFixedWorld(1, false, null)) == "", "summary leaked into other modes");
+    var boostOnly = new PveFixedWorld(99, false, null, strengthPreview: true);
+    foreach (var fighter in boostOnly.Fighters) fighter.shieldTicks = 1000;
+    ((List<PveFixedFruit>)boostOnly.Fruit).Clear();
+    for (int i = 0; i < 60; i++) boostOnly.Step(0, true);
+    Check(boostOnly.Fighters[0].motion.Length < 16 && boostOnly.PlayerSegmentsLostToBites == 0 && boostOnly.PlayerSegmentsEaten == 0,
+        "boost consumption was counted as body damage");
 }
 
 static void StrengthFairnessCases()

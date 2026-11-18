@@ -365,7 +365,8 @@ namespace SnakeClub
                         bool share = daily != null && activeRun != null && api.Connected && verifiedDaily &&
                             activeRun.date == api.Date && DailyMatch.SupportsFriendChallenge(activeRun.rules) && !string.IsNullOrEmpty(verifiedShareToken);
                         int adCoins = !string.IsNullOrEmpty(lastRewardId) && GamePlatform.HasRewardedAds(api) ? lastRewardCoins : 0;
-                        string highlight = matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
+                        string highlight = fixedPve != null && fixedPve.StrengthPreview ? StrengthMatchSummary.Text(fixedPve) :
+                            matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
                         string outcome = fixedPve != null && fixedPve.StrengthPreview ? StrengthMatchOutcome.Explain(state, playerId) : MatchOutcome.Explain(state, playerId);
                         homeScreen.SetResult(title, stats, outcome, resultNote, busy, share, adCoins, highlight, resultWon);
                     }
@@ -825,6 +826,8 @@ namespace SnakeClub
             Label(new Rect(170, 665, 740, 100), result, 58, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(170, 790, 740, 75), daily != null && !comparison ? "挑战得分 " + daily.Score : me == null ? "" : "长度 " + me.segments.Count + "     淘汰 " + me.kills, 34, new Color(.64f, .80f, .83f), TextAnchor.MiddleCenter);
             if (!string.IsNullOrEmpty(resultNote)) Label(new Rect(170, 850, 740, 85), resultNote, 22, new Color(.72f, .82f, .87f), TextAnchor.MiddleCenter);
+            string strengthSummary = StrengthMatchSummary.Text(fixedPve);
+            if (!string.IsNullOrEmpty(strengthSummary)) Label(new Rect(170, 910, 740, 40), strengthSummary, 24, new Color(1f, .88f, .56f), TextAnchor.MiddleCenter);
             if (Button(new Rect(230, 950, 620, 105), "再来一局", new Color(.10f, .60f, .49f)))
             {
                 if (online) { Send(new Request { type = "restart" }); status = ""; }
