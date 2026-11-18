@@ -20,20 +20,27 @@ namespace SnakeClub.Core
         public const string ExperimentalStrengthRules = "strength-pve-dev-1";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
-            => TryReplayInternal(seed, firstRun, profile, inputs, false, out result);
+            => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
 
         // Diagnostic only: this mutable prototype is not a versioned ruleset
         // and must not be used to verify accounts, rankings, or rewards.
         public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result)
-            => TryReplayInternal(seed, firstRun, null, inputs, true, out result);
+            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result);
 
-        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, out PveFixedWorld result)
+        public static bool TryReplayStrength(int seed, StrengthEvalStartConfig snapshot, byte[] inputs, out PveFixedWorld result)
+        {
+            result = null;
+            if (snapshot == null || !snapshot.Supported) return false;
+            return TryReplayInternal(seed, snapshot.firstRun, null, inputs, true, snapshot, out result);
+        }
+
+        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result)
         {
             result = null;
             int limit = (firstRun ? 60 : 90) * PveFixedWorld.TickRate;
             if (inputs == null || inputs.Length == 0 || inputs.Length % 2 != 0 || inputs.Length > limit * 2) return false;
             for (int i = 1; i < inputs.Length; i += 2) if (inputs[i] > 1) return false;
-            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength);
+            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot);
             for (int i = 0; i < inputs.Length; i += 2)
             {
                 if (world.Finished) return false;
@@ -71,6 +78,8 @@ namespace SnakeClub.Core
         private readonly StrengthInputs[] strengthInputs = new StrengthInputs[8];
         private readonly List<HeadTieContact> strengthHeadTies = new List<HeadTieContact>();
         public bool StrengthPreview { get; }
+        public int StrengthBasePower { get; }
+        public int StrengthHardness { get; }
         public int LastPlayerBiteTick { get; private set; } = -1;
         public int LastPlayerBiteCount { get; private set; }
         public bool LastPlayerWasBitten { get; private set; }
@@ -102,15 +111,18 @@ namespace SnakeClub.Core
         public int Tick { get; private set; }
         public bool Finished { get; private set; }
         public string Winner { get; private set; } = "";
-        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false)
+        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null)
         {
+            if (strengthSnapshot != null && (!strengthPreview || !strengthSnapshot.Supported || strengthSnapshot.firstRun != firstRun))
+                throw new ArgumentException("Invalid strength snapshot", nameof(strengthSnapshot));
             StrengthPreview = strengthPreview;
+            StrengthBasePower = strengthSnapshot != null ? strengthSnapshot.EffectivePower : 100;
+            StrengthHardness = strengthSnapshot != null ? strengthSnapshot.EffectiveHardness : 0;
             random = unchecked((uint)seed); if (random == 0) random = 0x6d2b79f5;
             maxTicks = (firstRun ? 60 : 90) * TickRate;
             uint selection = unchecked((uint)seed); eventType = (int)((selection ^ (selection >> 16)) % 3);
-            // The experimental strength practice uses equal neutral movement
-            // attributes. Account talents and skins need a separately reviewed
-            // growth model before they can affect this ruleset.
+            // Movement remains neutral; only the isolated server snapshot can
+            // supply candidate player strength. Talents and skins do not apply.
             playerBonuses = StrengthPreview ? new PveFixedBonuses() : PveFixedBonuses.From(profile);
             for (int i = 0; i < Arena.FruitCount; i++) fruit.Add(NewFruit());
             for (int i = 0; i < fighters.Length; i++)
@@ -393,7 +405,8 @@ namespace SnakeClub.Core
         private static Point ToPoint(CapturePoint point) => new Point(point.x / 1000f, point.y / 1000f);
 
         private StrengthInputs StrengthFor(PveFixedFighter fighter) => new StrengthInputs {
-            basePower = 100, length = fighter.motion.Length, hardness = 0, matchLevel = StrengthLevel(fighter.id),
+            basePower = fighter.id == "you" ? StrengthBasePower : 100, length = fighter.motion.Length,
+            hardness = fighter.id == "you" ? StrengthHardness : 0, matchLevel = StrengthLevel(fighter.id),
             speed = fighter.motion.Boosting ? 495 : fighter.motion.ReboundTicks > 0 ? 345 : 300,
             baseSpeed = 300, boosting = fighter.motion.Boosting,
             randomFactor = StrengthBuffTicks(fighter.id) > 0 ? 1120 : 1000,

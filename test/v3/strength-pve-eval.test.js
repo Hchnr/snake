@@ -28,6 +28,8 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     const base = { playerId, mode: 'strength-eval', date, rules: 'strength-pve-dev-1', seed: 73,
       startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000, completed: false, strengthStartConfig: snapshot };
     const valid = { ...base, id: 'valid' };
+    const growth = { ...base, id: 'growth', strengthStartConfig: { version: 'strength-eval-setup-2', firstRun: true, accountLevel: 8, basePower: 103, hardness: 14 } };
+    const tamperedGrowth = { ...growth, id: 'tampered-growth', strengthStartConfig: { ...growth.strengthStartConfig, basePower: 120 } };
     const fast = { ...base, id: 'fast', startedAt: Date.now() + 120000 };
     const unknown = { ...base, id: 'unknown', rules: 'strength-pve-dev-unknown' };
     const missing = { ...base, id: 'missing', strengthStartConfig: null };
@@ -37,7 +39,7 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     const fixture = path.join(temp, 'data.json');
     fs.writeFileSync(fixture, JSON.stringify({ players: { [playerId]: { playerId, dailyKey: date, coins: 73, experience: 29,
       tutorialComplete: true, completedMatches: 4 }, 'other-player': { playerId: 'other-player', dailyKey: date } },
-      runs: { valid, fast, unknown, missing, 'bad-snapshot': badSnapshot, expired, 'old-receipt': oldReceipt } }));
+      runs: { valid, growth, 'tampered-growth': tamperedGrowth, fast, unknown, missing, 'bad-snapshot': badSnapshot, expired, 'old-receipt': oldReceipt } }));
     const port = await new Promise((resolve, reject) => {
       const socket = net.createServer(); socket.once('error', reject);
       socket.listen(0, '127.0.0.1', () => { const value = socket.address().port; socket.close(() => resolve(value)); });
@@ -73,7 +75,7 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
       { ok: true, verified: true, experimental: true, rules: base.rules, ticks: 100, winner: 'you', kills: 1, length: 20, rewards: 0 });
     const other = sign(`other-player:${Math.floor(Date.now() / 1000) + 3600}`);
     assert.equal((await request('internal/strength-pve/verify', payload(valid), other)).status, 400);
-    for (const run of [fast, unknown, missing, badSnapshot, expired])
+    for (const run of [fast, unknown, missing, badSnapshot, tamperedGrowth, expired])
       assert.equal((await request('internal/strength-pve/verify', payload(run))).status, 400);
     assert.equal((await request('internal/strength-pve/verify', payload(valid, '!invalid!'))).status, 400);
     assert.equal((await request('internal/strength-pve/verify', payload(valid, 'AA=='))).status, 400);
@@ -89,12 +91,21 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     assert.deepEqual(verified.data, { ok: true, verified: true, experimental: true, rules: base.rules, ticks: replay.ticks,
       winner: replay.winner, kills: replay.kills, length: replay.length, rewards: 0 });
     assert.deepEqual((await request('internal/strength-pve/verify', payload(valid, 'broken'))).data, verified.data);
+    const growthReplay = JSON.parse(execFileSync('dotnet', [coreDll, 'strength-growth-replay', String(base.seed), '700', '1'], { encoding: 'utf8' }));
+    const growthVerified = await request('internal/strength-pve/verify', payload(growth, growthReplay.inputs));
+    assert.deepEqual(growthVerified.data, { ok: true, verified: true, experimental: true, rules: base.rules, ticks: growthReplay.ticks,
+      winner: growthReplay.winner, kills: growthReplay.kills, length: growthReplay.length, rewards: 0 });
     const profile = (await request('bootstrap')).data.profile;
     assert.equal(profile.coins, 73); assert.equal(profile.experience, 29); assert.equal(profile.completedMatches, 4);
     const created = await request('internal/strength-pve/start', {});
     assert.equal(created.status, 200); assert.equal(created.data.mode, 'strength-eval');
     assert.equal(created.data.rules, 'strength-pve-dev-1');
-    assert.deepEqual(created.data.strengthStartConfig, { supported: true, version: 'strength-eval-setup-1', firstRun: false });
+    assert.equal(created.data.strengthStartConfig.version, 'strength-eval-setup-2');
+    assert.equal(created.data.strengthStartConfig.firstRun, false);
+    assert.equal(created.data.strengthStartConfig.accountLevel, 1);
+    assert.equal(created.data.strengthStartConfig.basePower, 100);
+    assert.equal(created.data.strengthStartConfig.hardness, 0);
+    assert.equal(created.data.strengthStartConfig.supported, true);
     assert.equal((await request('match/finish', { runId: created.data.runId, token: created.data.token, seconds: 3, actions: 1 })).status, 400);
     const fixed = await request('internal/fixed-pve/start', {});
     assert.equal(fixed.status, 200);

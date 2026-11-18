@@ -556,13 +556,13 @@ namespace SnakeClub.Tests.Editor
                 Require(offlineStrength != null && offlineStrength.StrengthPreview && Field("activeRun").GetValue(app) == null &&
                     ((string)Field("resultNote").GetValue(app)).Contains("离线试玩"), "unavailable strength verifier did not fall back to offline strength practice");
                 Call("BackToMenu");
-                var strengthSnapshot = new StrengthEvalStartConfig { version = StrengthEvalStartConfig.CurrentVersion, firstRun = true };
+                var strengthSnapshot = StrengthEvalStartConfig.Capture(new PlayerProgress { experience = 700, tutorialComplete = false });
                 var strengthRun = new ApiReply { ok = true, runId = "strength-run", token = "token", seed = 73,
                     mode = "strength-eval", rules = PveFixedRecording.ExperimentalStrengthRules, strengthStartConfig = strengthSnapshot };
                 Call("BeginFixedPveWithRun", strengthRun);
                 var actualStrength = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                var expectedStrength = new PveFixedWorld(strengthRun.seed, strengthSnapshot.firstRun, null, strengthPreview: true);
-                Require(actualStrength.StrengthPreview && actualStrength.Fighters[0].motion.X == expectedStrength.Fighters[0].motion.X &&
+                var expectedStrength = new PveFixedWorld(strengthRun.seed, strengthSnapshot.firstRun, null, strengthPreview: true, strengthSnapshot: strengthSnapshot);
+                Require(actualStrength.StrengthPreview && actualStrength.StrengthBasePower == 103 && actualStrength.StrengthHardness == 14 && actualStrength.Fighters[0].motion.X == expectedStrength.Fighters[0].motion.X &&
                     actualStrength.Fighters[0].motion.Y == expectedStrength.Fighters[0].motion.Y && actualStrength.Fighters[0].shieldTicks == expectedStrength.Fighters[0].shieldTicks &&
                     (string)Field("activePlayerId").GetValue(app) == "local-eval", "strength verifier did not use the server seed and snapshot");
                 Call("BackToMenu");

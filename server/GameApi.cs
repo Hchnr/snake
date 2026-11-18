@@ -315,7 +315,7 @@ sealed class GameApi
         byte[] inputs;
         try { inputs = Convert.FromBase64String(request.inputs); }
         catch (FormatException) { return Fail("强弱实验回放格式无效"); }
-        if (!PveFixedRecording.TryReplayStrength(run.seed, run.strengthStartConfig.firstRun, inputs, out var world))
+        if (!PveFixedRecording.TryReplayStrength(run.seed, run.strengthStartConfig, inputs, out var world))
             return Fail("强弱实验回放不完整或无效");
         if (now.ToUnixTimeMilliseconds() - run.startedAt + 2000 < world.Tick * 50L)
             return Fail("强弱实验对局时长无效");

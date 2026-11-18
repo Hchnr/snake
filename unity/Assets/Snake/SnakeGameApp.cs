@@ -219,7 +219,7 @@ namespace SnakeClub
             firstRun = run == null ? !practiceProfile.tutorialComplete : strengthRun ? run.strengthStartConfig.firstRun : run.startConfig.firstRun;
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                strengthRun || (run == null && api.Config.StrengthRulesPreview));
+                strengthRun || (run == null && api.Config.StrengthRulesPreview), strengthRun ? run.strengthStartConfig : null);
             state = fixedPve.RenderState();
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
@@ -343,7 +343,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview, api.Config.StrengthPveServerPreview);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
@@ -645,7 +645,7 @@ namespace SnakeClub
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
             else if (fixedPve != null && fixedPve.TryGetStrengthLevelProgress(playerId, out int matchLevel, out int matchXp, out int nextXp))
-                Label(new Rect(88, 135, 410, 52), "试玩 · 升级 " + (nextXp > 0 ? matchXp + "/" + nextXp : "已满级"), 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
+                Label(new Rect(88, 135, 410, 52), activeRun != null && activeRun.mode == "strength-eval" ? "底力 " + fixedPve.StrengthBasePower + " · 硬度 " + (fixedPve.StrengthHardness / 10f).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "% · 升级 " + (nextXp > 0 ? matchXp + "/" + nextXp : "满级") : "试玩 · 升级 " + (nextXp > 0 ? matchXp + "/" + nextXp : "已满级"), 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             else Label(new Rect(88, 135, 410, 52), comparisonVariant >= 0 && api.Config.ComparisonPreview ? "试玩 · 不计奖励或排行" : depthMode ? "练习 · " + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             bool urgent = RoundTimerPresentation.IsUrgent(state);
             int timerSize = urgent ? (reducedEffects ? 44 : Mathf.RoundToInt(42 + 2 * Mathf.Sin(state.remaining * Mathf.PI * 2))) : 40;
