@@ -51,6 +51,7 @@ namespace SnakeClub.Tests.Editor
                 TestPendingStorageProtection();
                 TestFixedPvePreviewFlow();
                 TestStrengthPracticeFirstRun();
+                TestDefaultStrengthMain();
                 TestGameplayComparison();
                 TestPracticeTutorialAccess();
                 TestDepthPracticeIsolation();
@@ -178,6 +179,11 @@ namespace SnakeClub.Tests.Editor
                 Require(FindText("Primary label").text.Contains("先完成"), "fresh account did not show the practice requirement");
                 screen.SetState(fresh, null, "", false, true, true, 0, 0, false, false, friendChallenge: true, tutorialReady: true);
                 Require(FindText("Primary label").text.Contains("接受好友挑战"), "practice completion did not update the challenge entry");
+                screen.SetState(fresh, null, "", false, true, true, 0, 0, false, false, friendChallenge: true, strengthPvePreview: true);
+                Require(FindText("Primary label").text.Contains("吞食") && FindText("Primary hint").text.Contains("不计奖励"),
+                    "strength entry did not explain its practice status");
+                Require(FindText("Cave progress").text.Contains("旧版账号对局"),
+                    "skin unlock incorrectly implied strength practice awards account progression");
                 Require(FindText("Result outcome").text == "撞上对手轨迹，被淘汰" && FindText("Result details").text == "成绩已验证 · 金币 +35",
                     "result outcome and reward status were not presented independently");
                 screen.SetResult("围猎结束", "最长 16 · 淘汰 0", "本局已出局", "离线练习 · 不计账号奖励", false, false, 0);
@@ -484,6 +490,54 @@ namespace SnakeClub.Tests.Editor
                 Call("StartMain");
                 Require((bool)Field("firstRun").GetValue(app), "strength tutorial changed the separate fixed PvE tutorial");
                 Debug.Log("PASS Unity strength practice remembers only completed active tutorials");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
+                PlayerPrefs.Save();
+            }
+        }
+
+        private static void TestDefaultStrengthMain()
+        {
+            const string key = "snake.v033.strengthPracticeTutorial";
+            bool hadKey = PlayerPrefs.HasKey(key); int original = PlayerPrefs.GetInt(key, 0);
+            var root = new GameObject("Default strength main regression");
+            try
+            {
+                PlayerPrefs.DeleteKey(key);
+                var app = root.AddComponent<SnakeGameApp>();
+                var api = root.AddComponent<GameApiClient>();
+                api.Configure(new GameConfiguration { apiUrl = "https://example.invalid", serverUrl = "", allowDevLogin = false });
+                var renderer = root.AddComponent<ArenaRenderer>(); var connection = root.AddComponent<RoomConnection>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, renderer); Field("connection").SetValue(app, connection);
+                var account = new PlayerProgress { playerId = "account", coins = 123, experience = 200, tutorialComplete = true };
+                typeof(GameApiClient).GetProperty("Profile").SetValue(api, account);
+                typeof(GameApiClient).GetField("session", flags).SetValue(api, "session");
+                typeof(GameApiClient).GetField("reachable", flags).SetValue(api, true);
+                string pending = PlayerPrefs.GetString("snake.v3.pending", "");
+                Call("LoadPreferences"); Call("StartMain");
+                var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(world != null && world.StrengthPreview && Field("activeRun").GetValue(app) == null &&
+                    (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
+                Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "account tutorial changed local first run");
+                world.Fighters[0].alive = false; world.Step(0, false); Field("controlActions").SetValue(app, 1); Call("RecordResult");
+                Require(account.coins == 123 && account.experience == 200 && account.completedMatches == 0 &&
+                    PlayerPrefs.GetString("snake.v3.pending", "") == pending && PlayerPrefs.GetInt(key, 0) == 1,
+                    "default practice changed account or failed to retain local tutorial");
+                Require(((string)Field("resultNote").GetValue(app)).Contains("不计账号奖励"), "practice reward status was unclear");
+                Field("busy").SetValue(app, true); Call("RetryMatch");
+                Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
+                Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(world.StrengthPreview && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                    world.RenderState().remaining == 90, "retry did not remain in local strength practice");
+                Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
+                Debug.Log("PASS Unity default entry and retry use isolated strength rules");
             }
             finally
             {

@@ -176,7 +176,7 @@ namespace SnakeClub
             Set(primaryText, busy ? "正在准备…" : strengthPvePreview ? "开始吞食" : friendChallenge ? (tutorialReady ? "接受好友挑战" : "先完成新手练习") : "开始围猎");
             Set(primaryHint, strengthServerPreview ? "本机成长实验 · 不计奖励和排行" : strengthPvePreview ? "强弱吞食试玩 · 不计奖励和排行" : fixedPvePreview ? "整数规则试玩 · 不计奖励和排行" : !connected ? "离线练习 · 不计排行榜" : !tutorialReady ? (friendChallenge ? "新手练习后可应战好友" : "新手练习 · 学会围猎") : friendChallenge ? friendDate + " · " + friendRules + " · 好友 " + friendScore + " 分" : "今日挑战 · 同图 60 秒");
             Set(caveText, connected && !profile.ownedSkins.Contains(1) && profile.completedMatches < 2 ?
-                "完成 2 场，免费解锁曜焰  " + profile.completedMatches + "/2" :
+                (strengthPvePreview ? "完成 2 场旧版账号对局，免费解锁曜焰  " : "完成 2 场，免费解锁曜焰  ") + profile.completedMatches + "/2" :
                 profile.expedition != null && !profile.expedition.claimed ? "梦游探洞进行中，回来可领取奖励" : "派灵蛇去梦游探洞，离线也有收获");
             Set(notice, SkinVisual.Texture(equipped) == null ? "当前造型素材不可用，已切换备用显示" : message ?? "");
             Set(soundText, sound ? "音效：开" : "音效：关");
@@ -218,7 +218,7 @@ namespace SnakeClub
                 Color cardColor = i == selectedPreview ? new Color(.17f, .63f, .57f, .96f) : new Color(.035f, .14f, .21f, .94f);
                 if (card.color != cardColor) card.color = cardColor;
                 Set(skinStates[i], SkinCatalog.Get(i).ReferencePreview ? "造型预览" : profile.ownedSkins.Contains(i) ? "已拥有" :
-                    i == 1 ? (connected ? "完成 2 场免费领取" : "联网完成 2 场领取") : SkinCatalog.Get(i).Price + " 金币");
+                    i == 1 ? (strengthPvePreview ? (connected ? "旧版完成 2 场领取" : "联网完成旧版 2 场领取") : connected ? "完成 2 场免费领取" : "联网完成 2 场领取") : SkinCatalog.Get(i).Price + " 金币");
             }
             int pages = referencesEnabled ? (SkinCatalog.All.Length + 5) / 6 : 1;
             if (skinPageIndex >= pages) skinPageIndex = pages - 1;
