@@ -2049,6 +2049,21 @@ static void StrengthLevelCases()
     Check(fruitWorld.TryGetStrengthLevelProgress("you", out int level, out int progress, out int required) &&
         level == 1 && progress == 0 && required == 7 && fruitWorld.TryGetStrength("you", out var strength, out _) && strength.baseStrength == 110,
         "five collected fruit did not grant the first level and its real strength");
+    var projectedLevel = fruitWorld.RenderState();
+    Check(fruitWorld.LastPlayerLevelUpTick == 1 && fruitWorld.LastPlayerLevelUp == 1 &&
+        projectedLevel.strengthLevelUpTick == 1 && projectedLevel.strengthLevelUp == 1 &&
+        StrengthLevelNotice.Text(fruitWorld, 1).Contains("1 级") && StrengthLevelNotice.Text(fruitWorld, 21) == "" &&
+        StrengthLevelNotice.Text(fruitWorld, 0) == "" && StrengthLevelNotice.NewSince(fruitWorld, 0, 1) &&
+        !StrengthLevelNotice.NewSince(fruitWorld, 1, 1) && !StrengthLevelNotice.NewSince(fruitWorld, -1, 1),
+        "level feedback was missing, repeated or out of time");
+    var award = typeof(PveFixedWorld).GetMethod("AwardStrengthExperience", flags);
+    award.Invoke(fruitWorld, new object[] { "you", int.MaxValue });
+    Check(fruitWorld.StrengthLevel("you") == 20 && fruitWorld.LastPlayerLevelUp == 20,
+        "large level award overflowed or lost the actual final level");
+    int lastLevelTick = fruitWorld.LastPlayerLevelUpTick;
+    award.Invoke(fruitWorld, new object[] { "you", 1 });
+    Check(fruitWorld.LastPlayerLevelUpTick == lastLevelTick && fruitWorld.LastPlayerLevelUp == 20,
+        "max-level experience produced a false level-up");
     var biteWorld = Match(-11700, 16, 0, 16); biteWorld.Step(0, false);
     Check(biteWorld.LastPlayerBiteCount == 3 && biteWorld.StrengthLevel("you") == 1 &&
         biteWorld.TryGetStrengthLevelProgress("you", out level, out progress, out required) && progress == 1,
@@ -2074,7 +2089,8 @@ static void StrengthLevelCases()
     var botFruit = (List<PveFixedFruit>)bots.Fruit;
     for (int i = 0; i < 5; i++) botFruit.Add(new PveFixedFruit(new CapturePoint(0, 0), 0));
     bots.Step(0, false);
-    Check(bots.StrengthLevel("bot-1") == 1, "AI fruit did not use the same level threshold");
+    Check(bots.StrengthLevel("bot-1") == 1 && bots.LastPlayerLevelUpTick == -1 && StrengthLevelNotice.Text(bots, bots.Tick) == "",
+        "AI level was wrong or incorrectly signalled a player upgrade");
 }
 
 static void StrengthLoopCases()

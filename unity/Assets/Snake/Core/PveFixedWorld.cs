@@ -96,6 +96,8 @@ namespace SnakeClub.Core
         public CapturePoint LastPlayerDamagePoint { get; private set; }
         public int LastPlayerBlockedTick { get; private set; } = -1;
         public int LastPlayerHeadTieTick { get; private set; } = -1;
+        public int LastPlayerLevelUpTick { get; private set; } = -1;
+        public int LastPlayerLevelUp { get; private set; }
         private readonly int[] strengthBuffTicks = new int[8];
         private readonly int[] strengthExperience = new int[8];
         private readonly int[] strengthLoopTicks = new int[8], strengthLoopCooldown = new int[8];
@@ -469,6 +471,8 @@ namespace SnakeClub.Core
                 }
             }
             for (int i = 0; i < fruit.Count; i++) { projection.fruits[i].position = ToPoint(fruit[i].position); projection.fruits[i].color = fruit[i].color; }
+            projection.strengthLevelUpTick = StrengthPreview ? LastPlayerLevelUpTick : -1;
+            projection.strengthLevelUp = LastPlayerLevelUp;
             projection.strengthAttackTick = StrengthPreview ? LastPlayerAttackTick : -1;
             projection.strengthDamageTick = StrengthPreview ? LastPlayerDamageTick : -1;
             projection.strengthAttackPoint = ToPoint(LastPlayerAttackPoint);
@@ -524,8 +528,11 @@ namespace SnakeClub.Core
         private void AwardStrengthExperience(string id, int amount)
         {
             int index = StrengthIndex(id);
-            if (index >= 0 && amount > 0)
-                strengthExperience[index] = Math.Min(StrengthLevelThreshold(20), strengthExperience[index] + amount);
+            if (index < 0 || amount <= 0) return;
+            int before = StrengthLevel(id);
+            strengthExperience[index] = (int)Math.Min(StrengthLevelThreshold(20), (long)strengthExperience[index] + amount);
+            int after = StrengthLevel(id);
+            if (id == "you" && after > before) { LastPlayerLevelUpTick = Tick; LastPlayerLevelUp = after; }
         }
 
         public int StrengthLoopTicks(string id)

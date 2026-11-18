@@ -87,6 +87,7 @@ namespace SnakeClub.Core
         public string captureOwner = "";
         public List<Point> capturePolygon = new List<Point>();
         // Local strength-practice presentation only; not a network event.
+        internal int strengthLevelUpTick = -1, strengthLevelUp;
         internal int strengthAttackTick = -1, strengthDamageTick = -1;
         internal Point strengthAttackPoint, strengthDamagePoint;
     }
@@ -240,6 +241,22 @@ namespace SnakeClub.Core
                 return "金点较弱 · 靠近可尝试吞食\n红叉处身体有危险";
             }
             return tick < 200 ? "围住对手可获得短时强化" : "时间到按当前长度排名 · 同长比淘汰";
+        }
+    }
+
+    // A short, presentation-only message for an actual local level change.
+    public static class StrengthLevelNotice
+    {
+        public static string Text(PveFixedWorld world, int tick)
+        {
+            if (world == null || !world.StrengthPreview || world.Finished || world.LastPlayerLevelUpTick < 0 ||
+                tick < world.LastPlayerLevelUpTick || tick - world.LastPlayerLevelUpTick >= 20) return "";
+            return "局内升级 · " + world.LastPlayerLevelUp + " 级";
+        }
+        public static bool NewSince(PveFixedWorld world, int previousTick, int currentTick)
+        {
+            return world != null && world.StrengthPreview && previousTick >= 0 && currentTick > previousTick &&
+                world.LastPlayerLevelUpTick > previousTick && world.LastPlayerLevelUpTick <= currentTick;
         }
     }
 
