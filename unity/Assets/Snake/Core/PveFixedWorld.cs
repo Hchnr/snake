@@ -104,6 +104,8 @@ namespace SnakeClub.Core
         public int LastPlayerLevelUp { get; private set; }
         private readonly int[] strengthBuffTicks = new int[8];
         private readonly int[] strengthExperience = new int[8];
+        // Presentation-only event timestamps; never affect simulation decisions.
+        private readonly int[] strengthAttackTicks = new int[8], strengthDamageTicks = new int[8];
         private readonly int[] strengthLoopTicks = new int[8], strengthLoopCooldown = new int[8];
         private readonly CaptureLoop[] strengthLoops = new CaptureLoop[8];
         private readonly int[] strengthLoopTargets = new int[8];
@@ -130,6 +132,7 @@ namespace SnakeClub.Core
         {
             if (strengthSnapshot != null && (!strengthPreview || !strengthSnapshot.Supported || strengthSnapshot.firstRun != firstRun))
                 throw new ArgumentException("Invalid strength snapshot", nameof(strengthSnapshot));
+            for (int i = 0; i < fighters.Length; i++) strengthAttackTicks[i] = strengthDamageTicks[i] = -1;
             StrengthPreview = strengthPreview;
             StrengthBasePower = strengthSnapshot != null ? strengthSnapshot.EffectivePower : 100;
             StrengthHardness = strengthSnapshot != null ? strengthSnapshot.EffectiveHardness : 0;
@@ -436,6 +439,8 @@ namespace SnakeClub.Core
             for (int i = 0; i < fighters.Length; i++)
             {
                 var source = fighters[i]; var target = projection.snakes[i];
+                target.strengthAttackTick = StrengthPreview ? strengthAttackTicks[i] : -1;
+                target.strengthDamageTick = StrengthPreview ? strengthDamageTicks[i] : -1;
                 target.alive = source.alive; target.shield = source.shieldTicks / (float)TickRate;
                 target.kills = source.kills; target.starPoints = source.eventPoints;
                 target.eliminatedBy = source.eliminatedBy; target.eliminationReason = source.eliminationReason;
@@ -697,6 +702,11 @@ namespace SnakeClub.Core
 
         private void RecordStrengthBite(BodyBite bite)
         {
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                if (fighters[i].id == bite.attacker) strengthAttackTicks[i] = Tick;
+                if (fighters[i].id == bite.defender) strengthDamageTicks[i] = Tick;
+            }
             AwardStrengthExperience(bite.attacker, bite.removed * 2);
             if (bite.attacker == "you")
             { LastPlayerAttackTick = Tick; LastPlayerAttackCount = bite.removed; LastPlayerAttackPoint = bite.point; PlayerSegmentsEaten += bite.removed; }

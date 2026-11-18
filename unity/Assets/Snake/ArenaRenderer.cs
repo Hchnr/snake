@@ -38,6 +38,8 @@ namespace SnakeClub
         private readonly Dictionary<string, SpriteRenderer> characters = new Dictionary<string, SpriteRenderer>();
         private readonly Dictionary<string, SpriteRenderer> referenceHeads = new Dictionary<string, SpriteRenderer>();
         private readonly Dictionary<string, CharacterMotion> characterMotions = new Dictionary<string, CharacterMotion>();
+        private readonly Dictionary<string, StrengthReactionCursor> strengthReactions = new Dictionary<string, StrengthReactionCursor>();
+        private ArenaState reactionSource;
         private readonly EliminationTransition eliminations = new EliminationTransition();
         private readonly Dictionary<string, ExitPose> exitPoses = new Dictionary<string, ExitPose>();
         private int presentationTick = -1;
@@ -102,7 +104,7 @@ namespace SnakeClub
             {
                 if (view == null || view.enabled == value) return;
                 view.enabled = value;
-                if (!value) { cameraReady = false; eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); presentationTick = -1; }
+                if (!value) { cameraReady = false; eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); strengthReactions.Clear(); reactionSource = null; presentationTick = -1; }
             }
         }
 
@@ -389,6 +391,8 @@ namespace SnakeClub
                 visualFrame = Time.frameCount;
                 visualClock.Advance(Time.deltaTime, MotionPaused);
             }
+            if (!ReferenceEquals(reactionSource, state) || state.tick < presentationTick)
+            { strengthReactions.Clear(); reactionSource = state; }
             if (state.tick < presentationTick) { eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); }
             presentationTick = state.tick;
             foreach (var list in bodies) list.Clear();
@@ -588,9 +592,14 @@ namespace SnakeClub
                     motion.Update(state.tick, snake.angle, snake.boosting, Time.deltaTime, ReducedEffects,
                         !MotionPaused && state.phase == "running");
                     float characterScale = 1.35f * motion.Scale;
-                    bool react = StrengthBodyVisual && state.phase == "running" && snake.id == playerId && ReferenceEquals(strengthImpactSource, state);
-                    var reaction = react ? StrengthReaction.Sample(visualClock.Time - strengthAttackStarted, visualClock.Time - strengthDamageStarted, ReducedEffects)
-                        : new StrengthReactionPose(1, 1, 0);
+                    var reaction = new StrengthReactionPose(1, 1, 0);
+                    if (StrengthBodyVisual && state.phase == "running")
+                    {
+                        if (!strengthReactions.TryGetValue(snake.id, out var reactionCursor))
+                            strengthReactions[snake.id] = reactionCursor = new StrengthReactionCursor();
+                        reaction = reactionCursor.Observe(state.tick, snake.strengthAttackTick, snake.strengthDamageTick,
+                            visualClock.Time, MotionPaused, ReducedEffects);
+                    }
                     float bob = ReducedEffects ? 0 : .06f * Mathf.Sin(visualClock.Time * 4f + snake.color);
                     // Preserve the collision anchor while the full sprite reacts.
                     character.transform.position = center + view.transform.up * (2f * characterScale * reaction.ScaleY + bob);

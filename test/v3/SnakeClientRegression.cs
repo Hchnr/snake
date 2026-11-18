@@ -448,6 +448,9 @@ namespace SnakeClub.Tests.Editor
                 var playerSprite = sprites["you"];
                 Require(playerSprite.transform.localScale.x > playerSprite.transform.localScale.y && playerSprite.color.g < 1,
                     "mutual bite did not show the actual player's damage reaction");
+                var opponentSprite = sprites["bot-1"];
+                Require(opponentSprite.transform.localScale.x > opponentSprite.transform.localScale.y && opponentSprite.color.g < 1,
+                    "mutual bite did not show the opponent's actual damage reaction");
                 renderer.MotionPaused = true; var pausedScale = playerSprite.transform.localScale;
                 clock.Advance(1f, true); renderer.Draw(match.RenderState(), "you");
                 Require(playerSprite.transform.localScale == pausedScale, "paused damage pose did not freeze");
@@ -455,6 +458,8 @@ namespace SnakeClub.Tests.Editor
                 renderer.ReducedEffects = true; renderer.Draw(match.RenderState(), "you");
                 Require(Mathf.Abs(playerSprite.transform.localScale.x - playerSprite.transform.localScale.y) < .001f && playerSprite.color == Color.white,
                     "reduced effects retained the sprite reaction");
+                Require(Mathf.Abs(opponentSprite.transform.localScale.x - opponentSprite.transform.localScale.y) < .001f && opponentSprite.color == Color.white,
+                    "reduced effects retained the opponent reaction");
                 Require(attack.enabled && damage.enabled && attack.widthMultiplier > 0, "reduced effects hid the impact");
                 clock.Advance(1f, false); renderer.Draw(match.RenderState(), "you");
                 Require(!attack.enabled && !damage.enabled, "an expired event replayed on a later frame");

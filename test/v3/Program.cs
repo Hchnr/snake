@@ -909,6 +909,14 @@ static void CharacterMotionCases()
     Check(biteReaction.ScaleY > 1 && biteReaction.ScaleX < 1 && biteReaction.DamageTint == 0, "actual bite lacked a distinct pose");
     Check(hurtReaction.ScaleY < 1 && hurtReaction.ScaleX > 1 && hurtReaction.DamageTint > 0, "damage lacked a distinct pose");
     Check(mutualReaction.ScaleY == hurtReaction.ScaleY && mutualReaction.DamageTint == hurtReaction.DamageTint, "simultaneous damage did not take priority");
+    var cursor = new StrengthReactionCursor();
+    cursor.Observe(1, 1, -1, 0, false, false);
+    Check(cursor.Observe(2, 1, -1, .175f, false, false).ScaleY > 1, "actual bite did not animate");
+    var pausedCursor = new StrengthReactionCursor();
+    pausedCursor.Observe(2, 2, -1, 1, true, false);
+    Check(pausedCursor.Observe(2, 2, -1, 1.1f, false, false).ScaleY == 1, "paused event replayed on resume");
+    var staleCursor = new StrengthReactionCursor();
+    Check(staleCursor.Observe(10, 1, -1, 1, false, false).ScaleY == 1, "stale event animated");
     var reducedReaction = StrengthReaction.Sample(.175f, .225f, true);
     Check(reducedReaction.ScaleX == 1 && reducedReaction.ScaleY == 1 && reducedReaction.DamageTint == 0 &&
         StrengthReaction.Sample(float.NaN, float.PositiveInfinity, false).ScaleY == 1 &&
@@ -2078,6 +2086,9 @@ static void StrengthNoticeCases()
         Math.Abs(projection.strengthDamagePoint.x * 1000 - world.LastPlayerDamagePoint.x) < .01 &&
         Math.Abs(projection.strengthDamagePoint.y * 1000 - world.LastPlayerDamagePoint.y) < .01,
         "real bite positions were not projected to presentation state");
+    Check(projection.snakes[0].strengthAttackTick == 1 && projection.snakes[0].strengthDamageTick == 1 &&
+        projection.snakes[1].strengthAttackTick == 1 && projection.snakes[1].strengthDamageTick == 1,
+        "actual mutual bites did not reach both character presentations");
     string notice = StrengthContactNotice.Text(world, 1, out bool warning);
     Check(warning && notice.Contains("互相吞食") && notice.Contains("吃 " + world.LastPlayerAttackCount) &&
         notice.Contains("失 " + world.LastPlayerDamageCount), "mutual bite omitted an actual outcome");
