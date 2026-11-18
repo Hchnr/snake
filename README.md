@@ -67,6 +67,9 @@ python3 scripts/test-fullscreen-touch-webgl.py
 # 后台用模拟触摸完成强弱试玩，并将实际输入分别在 WebGL 与 .NET 重放
 python3 scripts/test-strength-touch-replay-webgl.py
 
+# 后台运行强弱试玩到本机实验服务器的无奖励回放验证
+python3 scripts/test-strength-pve-client-e2e.py
+
 # 使用图形后端在临时 Unity 工程中验证运行时动画与 UI 命中
 npm run test:unity:play
 ```
@@ -76,6 +79,8 @@ WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定
 全屏触摸脚本使用隔离构建和静音无头浏览器，临时延长角色保护以完成输入测试；它不是抖音真机或锁屏恢复验收。
 
 每日挑战接口测试按实际局时等待，可能需要约 1 分钟；测试数据放在临时目录，不使用本机游戏存档。Unity 回归检查需要已安装并启用许可证的 Editor；可用 `UNITY_EDITOR` 指定可执行文件。
+
+强弱服务端验证只在非生产环境显式设置 `SNAKE_STRENGTH_EVAL=1` 时启用，并检查回环地址；不要将实验端口经反向代理暴露。独立客户端实验开关也仅允许本机 HTTP 且不在抖音包启用。服务器签发种子、保存首局状态并拒绝无效或过快的回放，结果不发奖励、不进排行；当前规则标识仍是可变的开发标记，不是正式版本或防作弊保证。
 
 本地开发服务默认监听 `127.0.0.1:2567`。当前客户端的 API 配置使用 `2568`，以便和旧版房间服务并行运行。单机练习不需要启动它；正式账号进度、排行和探洞需要服务：
 

@@ -3,6 +3,22 @@ using System.Collections;
 using System.Reflection;
 using SnakeClub.Core;
 
+if (args.Length == 3 && args[0] == "strength-replay")
+{
+    int seed = int.Parse(args[1]); bool first = args[2] == "1";
+    var world = new PveFixedWorld(seed, first, null, strengthPreview: true);
+    var inputs = new List<byte>();
+    while (!world.Finished)
+    {
+        byte heading = (byte)(world.Tick / 53 * 37 + seed);
+        bool boost = world.Tick % 120 >= 95;
+        inputs.Add(heading); inputs.Add(boost ? (byte)1 : (byte)0); world.Step(heading, boost);
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new { ticks = world.Tick, winner = world.Winner, kills = world.Fighters[0].kills,
+        length = world.Fighters[0].motion.Length, inputs = Convert.ToBase64String(inputs.ToArray()) }));
+    return;
+}
+
 if (args.Length == 4 && args[0] == "strength-replay-terminal")
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
