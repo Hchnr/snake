@@ -1295,6 +1295,7 @@ static void CaptureNoticeCases()
     world.snakes.Add(new SnakeState { id = "you" });
     var bot = new SnakeState { id = "bot", bot = true }; world.snakes.Add(bot);
     Check(CaptureNotice.Text(world, "you", false) == "轨迹闭合！", "empty own loop gave a capture notice");
+    Check(CaptureNotice.Text(world, "you", false, true) == "围住对手 · 攻防提升！", "strength loop did not explain its effect");
     world.captureCount = 2;
     Check(CaptureNotice.Text(world, "you", false).Contains("2"), "own capture count missing");
     world.captureOwner = "bot";
@@ -1303,7 +1304,7 @@ static void CaptureNoticeCases()
     world.captureCount = 0; Check(CaptureNotice.Text(world, "you", true) == "", "empty opponent loop announced a capture");
     world.captureCount = 1; world.captureOwner = "missing"; Check(CaptureNotice.Text(world, "you", true) == "", "unknown owner announced");
     world.captureOwner = "you"; world.tick = 99; Check(CaptureNotice.Text(world, "you", true) == "", "future capture announced");
-    world.tick = 112; Check(CaptureNotice.Text(world, "you", true) == "", "expired capture announced");
+    world.tick = 112; Check(CaptureNotice.Text(world, "you", true) == "" && CaptureNotice.Text(world, "you", true, true) == "", "expired capture announced");
     world.tick = 100; world.phase = "ended"; Check(CaptureNotice.Text(world, "you", true) == "", "ended match announced capture");
 }
 

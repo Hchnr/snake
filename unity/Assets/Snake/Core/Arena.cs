@@ -449,7 +449,7 @@ namespace SnakeClub.Core
             float strength = Math.Max(0, Math.Min(1, (head - 100) / 100f));
             float taper = Math.Max(.5f, Math.Min(1f, tail / (float)head));
             float glow = Math.Max(0, Math.Min(1, (effect - 1000) / 250f));
-            return new StrengthAppearanceValues(.8f + .55f * strength, 1f + .18f * strength, taper, glow);
+            return new StrengthAppearanceValues(Math.Min(1.35f, .8f + .55f * strength), Math.Min(1.18f, 1f + .18f * strength), taper, glow);
         }
     }
 
@@ -850,12 +850,12 @@ namespace SnakeClub.Core
     // affects scores, rewards, collisions or replay verification.
     public static class CaptureNotice
     {
-        public static string Text(ArenaState state, string playerId, bool opponentVisible)
+        public static string Text(ArenaState state, string playerId, bool opponentVisible, bool strengthPreview = false)
         {
             if (state == null || state.phase != "running" || state.captureTick < 0 ||
                 state.tick < state.captureTick || state.tick - state.captureTick >= 12 || string.IsNullOrEmpty(state.captureOwner)) return "";
             if (state.captureOwner == playerId)
-                return state.captureCount > 0 ? "收圈捕获 " + state.captureCount + " 个对手！" : "轨迹闭合！";
+                return strengthPreview ? "围住对手 · 攻防提升！" : state.captureCount > 0 ? "收圈捕获 " + state.captureCount + " 个对手！" : "轨迹闭合！";
             if (!opponentVisible || state.captureCount <= 0) return "";
             var owner = state.snakes.Find(s => s.id == state.captureOwner);
             return owner == null ? "" : (owner.bot ? "AI" : "玩家") + " 收圈捕获 " + state.captureCount + " 个对手";
