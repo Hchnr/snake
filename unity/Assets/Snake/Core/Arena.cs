@@ -119,6 +119,28 @@ namespace SnakeClub.Core
         }
     }
 
+    // Strength practice ranks surviving snakes by current length and then
+    // eliminations at the time limit. Explain that result without inferring
+    // that every survivor tied for first place.
+    public static class StrengthMatchOutcome
+    {
+        public static string Explain(ArenaState state, string playerId)
+        {
+            if (state == null || state.phase != "ended" || string.IsNullOrEmpty(playerId)) return "";
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null) return "";
+            if (!player.alive || state.remaining > 0) return MatchOutcome.Explain(state, playerId);
+            int length = player.segments.Count;
+            if (state.winner == playerId) return "时间到 · 当前长度 " + length + "，你位居第一";
+            if (string.IsNullOrEmpty(state.winner)) return "时间到 · 第一名并列";
+            var winner = state.snakes.Find(s => s.id == state.winner && s.alive);
+            if (winner == null) return "时间到 · 你成功存活";
+            int winningLength = winner.segments.Count;
+            return length == winningLength ? "时间到 · 长度相同，对手淘汰更多" :
+                "时间到 · 你的长度 " + length + "，第一名 " + winningLength;
+        }
+    }
+
     public static class LocalPveRound
     {
         public static bool EndIfPlayerEliminated(Arena arena, string playerId)
@@ -204,9 +226,10 @@ namespace SnakeClub.Core
     {
         public static string Select(int tick)
         {
-            if (tick < 0 || tick >= 200) return "";
+            if (tick < 0 || tick >= 260) return "";
             if (tick < 60) return "强度足够才能吃身体 · 较弱会弹开";
-            return tick < 140 ? "金点较弱 · 靠近可尝试吞食" : "围住对手可获得短时强化";
+            if (tick < 140) return "金点较弱 · 靠近可尝试吞食";
+            return tick < 200 ? "围住对手可获得短时强化" : "时间到按当前长度排名 · 同长比淘汰";
         }
     }
 

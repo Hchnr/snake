@@ -810,6 +810,22 @@ static void ResultMotionCases()
     var player = new SnakeState { id = "you", alive = true }; world.snakes.Add(player);
     Check(!MatchOutcome.IsVictory(world, "you"), "ongoing match was called a victory");
     world.phase = "ended"; Check(MatchOutcome.IsVictory(world, "you"), "actual winner not recognized");
+    world.remaining = 0;
+    for (int i = 0; i < 10; i++) player.segments.Add(new Point());
+    Check(StrengthMatchOutcome.Explain(world, "you").Contains("位居第一"), "timed strength victory was not explained");
+    var winner = new SnakeState { id = "other", alive = true }; world.snakes.Add(winner);
+    for (int i = 0; i < 12; i++) winner.segments.Add(new Point());
+    world.winner = "other";
+    Check(StrengthMatchOutcome.Explain(world, "you").Contains("你的长度 10，第一名 12"), "survival without victory lacked the actual lengths");
+    winner.segments.RemoveRange(10, 2); winner.kills = 2;
+    Check(StrengthMatchOutcome.Explain(world, "you").Contains("对手淘汰更多"), "equal-length tiebreak was not explained");
+    world.winner = "";
+    Check(StrengthMatchOutcome.Explain(world, "you").Contains("第一名并列"), "tied lead was not explained");
+    world.remaining = 10; world.winner = "you";
+    Check(StrengthMatchOutcome.Explain(world, "you") == "你赢得了本局", "early victory was described as a timeout");
+    world.remaining = 0; player.alive = false; player.eliminationReason = "strength_head";
+    Check(StrengthMatchOutcome.Explain(world, "you").Contains("强度较弱"), "elimination reason was lost");
+    player.eliminationReason = ""; world.winner = "you";
     player.alive = false; Check(!MatchOutcome.IsVictory(world, "you"), "eliminated player was called a winner");
     player.alive = true; world.winner = "other";
     Check(!MatchOutcome.IsVictory(world, "you") && !MatchOutcome.IsVictory(world, ""), "wrong player was called a winner");
@@ -1717,7 +1733,7 @@ static void StrengthBotHeadCases()
 static void StrengthWeakPointCases()
 {
     Check(StrengthTutorialHints.Select(0).Contains("强度") && StrengthTutorialHints.Select(0).Contains("弹开") && StrengthTutorialHints.Select(80).Contains("金点") &&
-        StrengthTutorialHints.Select(140).Contains("围住") && StrengthTutorialHints.Select(200) == "",
+        StrengthTutorialHints.Select(140).Contains("围住") && StrengthTutorialHints.Select(200).Contains("当前长度") && StrengthTutorialHints.Select(260) == "",
         "strength tutorial did not explain weak points after protection or complete on time");
     var flags = BindingFlags.Instance | BindingFlags.NonPublic;
     var world = new PveFixedWorld(42, false, null, strengthPreview: true);

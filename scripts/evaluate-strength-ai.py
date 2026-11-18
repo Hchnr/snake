@@ -12,17 +12,20 @@ args = parser.parse_args()
 sources = escape(str(args.core_dir.resolve() / '*.cs'))
 project = f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup><ItemGroup><Compile Include="Program.cs"/><Compile Include="{sources}"/></ItemGroup></Project>'''
 program = '''using SnakeClub.Core;
-for (int pattern = 0; pattern < 2; pattern++)
+using System.Reflection;
+for (int pattern = 0; pattern < 3; pattern++)
 {
     long ticks = 0, attacks = 0, damage = 0, deaths = 0, wins = 0, kills = 0, attackMatches = 0;
     for (int seed = 1; seed <= 50; seed++)
     {
         var world = new PveFixedWorld(seed, false, null, true); bool attacked = false;
+        var choose = (Func<int, byte>)Delegate.CreateDelegate(typeof(Func<int, byte>), world, typeof(PveFixedWorld).GetMethod("BotHeading", BindingFlags.Instance | BindingFlags.NonPublic)!);
+        var boosts = (bool[])typeof(PveFixedWorld).GetField("botBoost", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(world)!;
         while (!world.Finished)
         {
             int tick = world.Tick;
-            byte heading = pattern == 0 ? (byte)(tick / 80 * 31 + seed) : (byte)(tick / 53 * 37 + seed);
-            bool boost = pattern == 0 ? tick % 120 >= 100 : tick % 120 >= 95;
+            byte heading = pattern == 0 ? (byte)(tick / 80 * 31 + seed) : pattern == 1 ? (byte)(tick / 53 * 37 + seed) : choose(0);
+            bool boost = pattern == 0 ? tick % 120 >= 100 : pattern == 1 ? tick % 120 >= 95 : boosts[0];
             world.Step(heading, boost); ticks++;
             if (world.LastPlayerAttackTick == world.Tick) { attacks += world.LastPlayerAttackCount; attacked = true; }
             if (world.LastPlayerDamageTick == world.Tick) damage += world.LastPlayerDamageCount;
