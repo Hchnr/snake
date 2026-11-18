@@ -59,7 +59,16 @@ namespace SnakeClub.Core
         { this.attacker = attacker; this.defender = defender; this.segment = segment; this.removed = removed; this.attack = attack; this.defense = defense; }
     }
 
-    // Independent experimental body combat, not wired into an existing ruleset.
+    public readonly struct BlockedBodyContact
+    {
+        public readonly string attacker, defender;
+        public readonly CapturePoint point, tangent;
+        public readonly long distanceSquared;
+        public BlockedBodyContact(string attacker, string defender, CapturePoint point, CapturePoint tangent, long distanceSquared)
+        { this.attacker = attacker; this.defender = defender; this.point = point; this.tangent = tangent; this.distanceSquared = distanceSquared; }
+    }
+
+    // Independent experimental body combat for the isolated preview.
     // A context belongs to one match; ticks are monotonic and cooldowns are per pair.
     public sealed class StrengthBodyCombat
     {
@@ -69,6 +78,8 @@ namespace SnakeClub.Core
         private long lastTick = -1;
         private readonly List<string> blockedAttackers = new List<string>();
         public IReadOnlyList<string> BlockedAttackers => blockedAttackers;
+        private readonly List<BlockedBodyContact> blockedContacts = new List<BlockedBodyContact>();
+        public IReadOnlyList<BlockedBodyContact> BlockedContacts => blockedContacts;
         private sealed class Candidate
         {
             public int attacker, defender, segment, count, attack, defense;
@@ -81,7 +92,7 @@ namespace SnakeClub.Core
         // All contacts and powers are decided from the state at the start of
         // this call. Each attacker and each defender has at most one bite per
         // tick; competing bites use advantage, then stable IDs, never list order.
-        // Head-on outcomes, separation, AI, feedback and rewards are future work.
+        // The caller applies contact separation after all snapshot outcomes.
         public List<BodyBite> Resolve(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs)
         {
             if (tick < 0 || tick <= lastTick || tick > long.MaxValue - CooldownTicks) throw new ArgumentOutOfRangeException(nameof(tick));
@@ -96,6 +107,7 @@ namespace SnakeClub.Core
             }
             lastTick = tick;
             blockedAttackers.Clear();
+            blockedContacts.Clear();
             var candidates = new List<Candidate>();
             for (int i = 0; i < fighters.Length; i++)
             {
@@ -118,6 +130,15 @@ namespace SnakeClub.Core
                     if (!BodyStrength.CanEat(attackingPower.attack, defendingPower.defense))
                     {
                         if (!blockedAttackers.Contains(attacker.id)) blockedAttackers.Add(attacker.id);
+                        var before = defender.motion.Segments[segment - 1];
+                        var after = defender.motion.Segments[Math.Min(segment + 1, defender.motion.Length - 1)];
+                        var contact = new BlockedBodyContact(attacker.id, defender.id, defender.motion.Segments[segment],
+                            new CapturePoint(after.x - before.x, after.y - before.y), nearest);
+                        int existing = blockedContacts.FindIndex(c => c.attacker == attacker.id);
+                        if (existing < 0) blockedContacts.Add(contact);
+                        else if (nearest < blockedContacts[existing].distanceSquared ||
+                            (nearest == blockedContacts[existing].distanceSquared && string.CompareOrdinal(defender.id, blockedContacts[existing].defender) < 0))
+                            blockedContacts[existing] = contact;
                         continue;
                     }
                     int count = 0, max = Math.Min(3, defender.motion.Length - PveFixedMotion.MinimumLength);

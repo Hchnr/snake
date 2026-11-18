@@ -100,6 +100,43 @@ namespace SnakeClub.Core
             }
             return removed;
         }
+        // Push the head away from a rejected body contact. Keep the remaining
+        // segments connected and choose a deterministic heading for exact overlap.
+        internal void SeparateFrom(CapturePoint point, CapturePoint tangent)
+        {
+            int awayX = X - point.x, awayY = Y - point.y;
+            int dx = -tangent.y, dy = tangent.x;
+            if (dx == 0 && dy == 0) { dx = awayX; dy = awayY; }
+            if (dx == 0 && dy == 0) { dx = -Sin(Angle + 16384); dy = -Sin(Angle); }
+            long side = (long)dx * awayX + (long)dy * awayY;
+            if (side == 0) side = -(long)dx * Sin(Angle + 16384) - (long)dy * Sin(Angle);
+            if (side < 0) { dx = -dx; dy = -dy; }
+            int distance = Distance(dx, dy);
+            const int separation = 1350;
+            int offsetX = (int)((long)dx * separation / distance), offsetY = (int)((long)dy * separation / distance);
+            int x = Clamp(point.x + offsetX, -Edge, Edge), y = Clamp(point.y + offsetY, -Edge, Edge);
+            int otherX = Clamp(point.x - offsetX, -Edge, Edge), otherY = Clamp(point.y - offsetY, -Edge, Edge);
+            long currentDistance = (long)(x - point.x) * (x - point.x) + (long)(y - point.y) * (y - point.y);
+            long otherDistance = (long)(otherX - point.x) * (otherX - point.x) + (long)(otherY - point.y) * (otherY - point.y);
+            if (currentDistance < 1116L * 1116L && otherDistance > currentDistance)
+            { x = otherX; y = otherY; dx = -dx; dy = -dy; }
+            X = x; Y = y;
+            segments[0] = new CapturePoint(X, Y);
+            for (int i = 1; i < segments.Count; i++)
+            {
+                var a = segments[i - 1]; var b = segments[i];
+                int sx = a.x - b.x, sy = a.y - b.y, length = Distance(sx, sy);
+                if (length > Spacing) segments[i] = new CapturePoint(a.x - (int)((long)sx * Spacing / length),
+                    a.y - (int)((long)sy * Spacing / length));
+            }
+            long best = long.MinValue; int heading = 0;
+            for (int i = 0; i < 256; i++)
+            {
+                long dot = (long)dx * DirectionX((byte)i) + (long)dy * DirectionY((byte)i);
+                if (dot > best) { best = dot; heading = i; }
+            }
+            Angle = heading * 256;
+        }
         // Detects geometry only: cooldowns, immunity and victim resolution
         // belong to the future match rules, not to this movement primitive.
         public bool TryCapture(out CaptureLoop loop) => CaptureGeometry.TryLoop(PreviousHead, segments, out loop);

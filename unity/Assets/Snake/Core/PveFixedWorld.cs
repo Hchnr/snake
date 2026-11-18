@@ -438,7 +438,15 @@ namespace SnakeClub.Core
                 var headGrowth = StrengthHeadCombat.Resolve(fighters, strengthInputs, deferGrowth: true);
                 var bites = strengthCombat.Resolve(Tick, fighters, strengthInputs);
                 for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) fighters[i].motion.Grow(headGrowth[i]);
-                foreach (var blocked in strengthCombat.BlockedAttackers) if (blocked == "you") LastPlayerBlockedTick = Tick;
+                foreach (var contact in strengthCombat.BlockedContacts)
+                {
+                    bool bit = false;
+                    foreach (var bite in bites) if (bite.attacker == contact.attacker) { bit = true; break; }
+                    if (bit) continue;
+                    if (contact.attacker == "you") LastPlayerBlockedTick = Tick;
+                    foreach (var fighter in fighters)
+                        if (fighter.alive && fighter.id == contact.attacker) { fighter.motion.SeparateFrom(contact.point, contact.tangent); break; }
+                }
                 foreach (var bite in bites)
                     if (bite.attacker == "you" || bite.defender == "you")
                     { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
