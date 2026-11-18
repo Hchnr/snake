@@ -941,8 +941,13 @@ namespace SnakeClub
                 characterTrailRatios[id] = ratio;
             }
             int vertexCount = positions.Count - firstSegment;
-            if (!characterTrailVertices.TryGetValue(id, out var vertices) || vertices[0].Length != vertexCount)
-                characterTrailVertices[id] = vertices = new[] { new Vector3[vertexCount], new Vector3[vertexCount] };
+            if (!characterTrailVertices.TryGetValue(id, out var vertices) || vertices[0].Length < vertexCount)
+            {
+                int capacity = Mathf.Max(Arena.MaximumLength, vertexCount);
+                if (vertices != null && vertices[0].Length <= int.MaxValue / 2)
+                    capacity = Mathf.Max(capacity, vertices[0].Length * 2);
+                characterTrailVertices[id] = vertices = new[] { new Vector3[capacity], new Vector3[capacity] };
+            }
             for (int i = 0; i < vertexCount; i++)
             {
                 Vector3 point = positions[i + firstSegment];
