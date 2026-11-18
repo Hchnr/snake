@@ -121,10 +121,13 @@ async function main() {
   await waitFor(() => hasSince(index, 'SNAKE_TOUCH_PAUSED 1'), 'pause tap');
   await delay(200); const pauseIndex = events.length; await delay(300);
   if (events.slice(pauseIndex).some(e => e.includes('SNAKE_TOUCH_TICK'))) throw Error('simulation advanced while paused');
-  index = events.length; await tap(80, 160);
-  await waitFor(() => hasSince(index, 'SNAKE_TOUCH_PAUSED 0'), 'resume tap');
+  if (process.env.SNAKE_TOUCH_PAUSE_SCREENSHOT) {
+    const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(process.env.SNAKE_TOUCH_PAUSE_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
+  }
+  index = events.length; await tap(270, 525);
   await waitFor(() => hasSince(index, 'SNAKE_TOUCH_TICK'), 'simulation resumes');
-  console.log('PASS tap pauses, freezes and resumes');
+  console.log('PASS tap pauses, freezes and resumes from the guide');
 }
 main().then(() => { ws.close(); chrome.kill('SIGTERM'); }).catch(async error => {
   console.error(error.message); process.exitCode = 1;
