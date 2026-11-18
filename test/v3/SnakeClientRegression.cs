@@ -459,9 +459,9 @@ namespace SnakeClub.Tests.Editor
 
         private static void TestStrengthPracticeFirstRun()
         {
-            const string key = "snake.v033.strengthPracticeTutorial";
-            bool hadKey = PlayerPrefs.HasKey(key);
-            int original = PlayerPrefs.GetInt(key, 0);
+            const string key = "snake.v033.strengthPracticeTutorial", hintKey = "snake.v031.tutorialHints";
+            bool hadKey = PlayerPrefs.HasKey(key), hadHintKey = PlayerPrefs.HasKey(hintKey);
+            int original = PlayerPrefs.GetInt(key, 0), originalHint = PlayerPrefs.GetInt(hintKey, 1);
             var root = new GameObject("Strength practice progression regression");
             try
             {
@@ -481,6 +481,14 @@ namespace SnakeClub.Tests.Editor
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
                 var practice = (PlayerProgress)Field("practiceProfile").GetValue(app);
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "first strength match was not a tutorial");
+                bool IntroVisible() => (bool)type.GetMethod("StrengthIntroVisible", flags).Invoke(app, null);
+                Field("tutorialHints").SetValue(app, true);
+                Require(IntroVisible(), "first strength match did not show the enabled tutorial");
+                Call("SetTutorialHints", false); Call("LoadPreferences");
+                Require(!(bool)Field("tutorialHints").GetValue(app) && !IntroVisible(), "strength tutorial ignored the saved disabled preference");
+                Call("SetTutorialHints", true);
+                Field("paused").SetValue(app, true); Require(!IntroVisible(), "strength tutorial remained visible while paused");
+                Field("paused").SetValue(app, false); Require(IntroVisible(), "strength tutorial did not return after resuming");
                 Field("controlActions").SetValue(app, 1); Call("RecordResult");
                 Require(PlayerPrefs.GetInt(key, 0) == 0, "unfinished match completed the tutorial");
                 Call("StartMain"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
@@ -498,6 +506,8 @@ namespace SnakeClub.Tests.Editor
                 world = (PveFixedWorld)Field("fixedPve").GetValue(app);
                 Require(!(bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 90,
                     "later strength match did not use normal duration after reload");
+                Field("tutorialHints").SetValue(app, true);
+                Require(!IntroVisible(), "strength tutorial repeated after the first completed practice");
                 api.Configure(new GameConfiguration { experimentalFixedPve = true, apiUrl = "", serverUrl = "", allowDevLogin = false });
                 Call("StartMain");
                 Require((bool)Field("firstRun").GetValue(app), "strength tutorial changed the separate fixed PvE tutorial");
@@ -507,6 +517,7 @@ namespace SnakeClub.Tests.Editor
             {
                 UnityEngine.Object.DestroyImmediate(root);
                 if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
+                if (hadHintKey) PlayerPrefs.SetInt(hintKey, originalHint); else PlayerPrefs.DeleteKey(hintKey);
                 PlayerPrefs.Save();
             }
         }
