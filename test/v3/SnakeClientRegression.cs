@@ -544,9 +544,18 @@ namespace SnakeClub.Tests.Editor
                 Require(ReferenceEquals(cached, buffers["you"]), "unchanged trail allocated new vertex buffers");
                 var ownSegments = projected.snakes.Find(s => s.id == "you").segments;
                 ownSegments.Add(new Point(-30, 4)); renderer.Draw(projected, "you"); CheckTrail(1);
+                Require(ReferenceEquals(cached, buffers["you"]), "growth within capacity allocated new trail buffers");
                 ownSegments.RemoveRange(ownSegments.Count - 4, 4); renderer.Draw(projected, "you"); CheckTrail(1);
+                Require(ReferenceEquals(cached, buffers["you"]), "body loss allocated new trail buffers");
                 renderer.StrengthBodyVisual = false; renderer.Draw(projected, "you"); CheckTrail(2);
+                Require(ReferenceEquals(cached, buffers["you"]), "mode change allocated new trail buffers");
                 renderer.StrengthBodyVisual = true;
+                while (ownSegments.Count <= Arena.MaximumLength + 1) ownSegments.Add(new Point(-ownSegments.Count, 2));
+                renderer.Draw(projected, "you"); CheckTrail(1);
+                Require(!ReferenceEquals(cached, buffers["you"]) && buffers["you"][0].Length >= ownSegments.Count - 1,
+                    "oversize trail did not grow its buffers");
+                cached = buffers["you"]; ownSegments.RemoveRange(20, ownSegments.Count - 20); renderer.Draw(projected, "you"); CheckTrail(1);
+                Require(ReferenceEquals(cached, buffers["you"]), "shrinking an oversize trail allocated new buffers");
                 var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
                 clock.Advance(.7f, false); renderer.Draw(world.RenderState(), "you");
                 var characters = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
