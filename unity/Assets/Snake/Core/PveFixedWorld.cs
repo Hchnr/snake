@@ -67,6 +67,7 @@ namespace SnakeClub.Core
         public int LastPlayerBlockedTick { get; private set; } = -1;
         public int LastPlayerHeadTieTick { get; private set; } = -1;
         private readonly int[] strengthBuffTicks = new int[8];
+        private readonly int[] strengthExperience = new int[8];
         private readonly int[] strengthLoopTicks = new int[8], strengthLoopCooldown = new int[8];
         private readonly CaptureLoop[] strengthLoops = new CaptureLoop[8];
         private readonly int[] strengthLoopTargets = new int[8];
@@ -363,7 +364,7 @@ namespace SnakeClub.Core
         private static Point ToPoint(CapturePoint point) => new Point(point.x / 1000f, point.y / 1000f);
 
         private StrengthInputs StrengthFor(PveFixedFighter fighter) => new StrengthInputs {
-            basePower = 100, length = fighter.motion.Length, hardness = 0, matchLevel = 0,
+            basePower = 100, length = fighter.motion.Length, hardness = 0, matchLevel = StrengthLevel(fighter.id),
             speed = fighter.motion.Boosting ? 495 : fighter.motion.ReboundTicks > 0 ? 345 : 300,
             baseSpeed = 300, boosting = fighter.motion.Boosting,
             randomFactor = StrengthBuffTicks(fighter.id) > 0 ? 1120 : 1000,
@@ -376,6 +377,37 @@ namespace SnakeClub.Core
             for (int i = 0; i < fighters.Length; i++)
                 if (fighters[i].id == id && fighters[i].alive) return strengthBuffTicks[i];
             return 0;
+        }
+
+        private static int StrengthLevelThreshold(int level) => level * level + 4 * level;
+        private int StrengthIndex(string id)
+        {
+            if (!StrengthPreview || string.IsNullOrEmpty(id)) return -1;
+            for (int i = 0; i < fighters.Length; i++) if (fighters[i].id == id && fighters[i].alive) return i;
+            return -1;
+        }
+        public int StrengthLevel(string id)
+        {
+            int index = StrengthIndex(id); if (index < 0) return 0;
+            int level = 0;
+            while (level < 20 && strengthExperience[index] >= StrengthLevelThreshold(level + 1)) level++;
+            return level;
+        }
+        public bool TryGetStrengthLevelProgress(string id, out int level, out int current, out int required)
+        {
+            level = current = required = 0;
+            int index = StrengthIndex(id); if (index < 0) return false;
+            level = StrengthLevel(id);
+            if (level == 20) return true;
+            current = strengthExperience[index] - StrengthLevelThreshold(level);
+            required = StrengthLevelThreshold(level + 1) - StrengthLevelThreshold(level);
+            return true;
+        }
+        private void AwardStrengthExperience(string id, int amount)
+        {
+            int index = StrengthIndex(id);
+            if (index >= 0 && amount > 0)
+                strengthExperience[index] = Math.Min(StrengthLevelThreshold(20), strengthExperience[index] + amount);
         }
 
         public int StrengthLoopTicks(string id)
@@ -513,8 +545,14 @@ namespace SnakeClub.Core
                         if (fighter.alive && fighter.id == contact.attacker) { fighter.motion.SeparateFrom(contact.point, contact.tangent); break; }
                 }
                 foreach (var bite in bites)
+                {
+                    AwardStrengthExperience(bite.attacker, bite.removed * 2);
                     if (bite.attacker == "you" || bite.defender == "you")
                     { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
+                }
+                for (int i = 0; i < fighters.Length; i++)
+                    if (previouslyAlive[i] && !fighters[i].alive && fighters[i].credited)
+                        AwardStrengthExperience(fighters[i].eliminatedBy, 5);
             }
             else PveFixedCombat.Resolve(fighters, combatWorkspace);
             if (!StrengthPreview && combatWorkspace.captureOwner.Length != 0)
@@ -534,7 +572,9 @@ namespace SnakeClub.Core
                     var fighter = fighters[j]; if (!fighter.alive) continue;
                     int radius = 1250 * (10000 + (j == 0 ? playerBonuses.pickup : 0)) / 10000;
                     if (DistanceSquared(fighter.motion.X - fruit[i].position.x, fighter.motion.Y - fruit[i].position.y) > (long)radius * radius) continue;
-                    fighter.motion.Grow(1); fruit[i] = NewFruit(); break;
+                    fighter.motion.Grow(1);
+                    if (StrengthPreview) AwardStrengthExperience(fighter.id, 1);
+                    fruit[i] = NewFruit(); break;
                 }
             UpdateEvent();
             int living = 0, best = -1; bool tied = false;
