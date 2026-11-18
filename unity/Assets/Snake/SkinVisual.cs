@@ -12,7 +12,7 @@ namespace SnakeClub
         private static readonly Dictionary<int, Texture2D> Textures = new Dictionary<int, Texture2D>();
         private static readonly Dictionary<int, Sprite> Sprites = new Dictionary<int, Sprite>();
 
-        public static bool ReferenceAvailable => Texture(SkinCatalog.OwnedSkinCount) != null;
+        public static bool ReferenceAvailable => Texture(SkinCatalog.FirstReferenceIndex) != null;
 
         public static Texture2D Texture(int index)
         {

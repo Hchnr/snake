@@ -21,7 +21,7 @@ namespace SnakeClub
             new Color(1f, .66f, .26f), new Color(.98f, .32f, .47f),
             new Color(.35f, .92f, .70f), new Color(.62f, .57f, 1f)
         };
-        private static readonly int[] SkinPalette = { 0, 3, 4, 5, 8, 9, 3, 8, 3, 7, 2, 6, 3, 3, 7, 5, 3, 4, 7, 3, 3, 2, 2, 2 };
+        private static readonly int[] SkinPalette = { 0, 3, 4, 5, 8, 9, 3, 8, 3, 7, 2, 6, 3, 3, 7, 5, 3, 4, 7, 3, 3, 2, 2, 2, 5 };
         private readonly List<Matrix4x4>[] bodies = new List<Matrix4x4>[Palette.Length];
         private readonly List<Matrix4x4>[] links = new List<Matrix4x4>[Palette.Length];
         private readonly List<Matrix4x4>[] horns = new List<Matrix4x4>[Palette.Length];
@@ -850,13 +850,13 @@ namespace SnakeClub
             int visualSkin = playerVisual >= 0 ? playerVisual : SelectedSkin;
             if (snake.id != playerId)
             {
-                bool referenceMode = playerVisual >= SkinCatalog.OwnedSkinCount;
-                int first = referenceMode ? SkinCatalog.OwnedSkinCount : 0;
-                int count = referenceMode ? SkinCatalog.All.Length - first : SkinCatalog.OwnedSkinCount;
+                bool referenceMode = SkinCatalog.IsReference(playerVisual);
+                int count = referenceMode ? SkinCatalog.ReferenceCount : SkinCatalog.OwnedSkinCount;
+                int playerChoice = referenceMode ? playerVisual - SkinCatalog.FirstReferenceIndex : SkinCatalog.DisplayPosition(playerVisual);
+                playerChoice = Mathf.Clamp(playerChoice, 0, count - 1);
                 int choice = Mathf.Abs(snake.color % (count - 1));
-                int playerChoice = Mathf.Clamp(playerVisual - first, 0, count - 1);
                 if (choice >= playerChoice) choice++;
-                visualSkin = first + choice;
+                visualSkin = referenceMode ? SkinCatalog.FirstReferenceIndex + choice : SkinCatalog.DisplayIndex(choice);
                 if (playerVisual >= 0) visualSkin = SkinVisual.ResolveIndex(visualSkin);
             }
             return visualSkin;

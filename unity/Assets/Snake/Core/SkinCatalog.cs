@@ -20,7 +20,9 @@ namespace SnakeClub.Core
 
     public static class SkinCatalog
     {
-        public const int OwnedSkinCount = 4;
+        public const int OwnedSkinCount = 5;
+        public const int FirstReferenceIndex = 4;
+        public const int ReferenceCount = 20;
         public static readonly SkinDefinition[] All = {
             new SkinDefinition("lanlight", "岚光", "转向速度 +1%", 0),
             new SkinDefinition("ember", "曜焰", "加速消耗 -1%", 500),
@@ -45,8 +47,18 @@ namespace SnakeClub.Core
             new SkinDefinition("reference-tunner", "Tunner", "角色造型预览", 0, true),
             new SkinDefinition("reference-mr-fun-computer", "Mr. Fun Computer", "角色造型预览", 0, true),
             new SkinDefinition("reference-jevin", "Jevin", "角色造型预览", 0, true),
-            new SkinDefinition("reference-black", "Black", "角色造型预览", 0, true)
+            new SkinDefinition("reference-black", "Black", "角色造型预览", 0, true),
+            new SkinDefinition("tidal", "沧澜", "纯外观角色", 1800)
         };
+
+        // Persistent IDs are array indexes. New owned skins are appended after
+        // historical reference IDs; display order is independent of storage.
+        public static bool IsOwnedSkin(int index) => index >= 0 && index < All.Length && !All[index].ReferencePreview;
+        public static bool IsReference(int index) => index >= 0 && index < All.Length && All[index].ReferencePreview;
+        public static int DisplayPosition(int index) => index < FirstReferenceIndex ? index :
+            IsReference(index) ? index + OwnedSkinCount - FirstReferenceIndex : index - ReferenceCount;
+        public static int DisplayIndex(int position) => position < FirstReferenceIndex ? position :
+            position < OwnedSkinCount ? position + ReferenceCount : position - (OwnedSkinCount - FirstReferenceIndex);
 
         public static SkinDefinition Get(int index) => All[Math.Max(0, Math.Min(All.Length - 1, index))];
         // Visual resolution never changes the persistent equipped/owned ID.

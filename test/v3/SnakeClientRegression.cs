@@ -126,7 +126,7 @@ namespace SnakeClub.Tests.Editor
                 Require(floor != null && floor.width == 1024 && floor.height == 1024, "arena floor did not import at its bounded size");
                 Debug.Log("PASS Unity imports the repeatable arena floor texture");
 
-                foreach (string characterPath in new[] { "Assets/Resources/Characters/lanlight.png", "Assets/Resources/Characters/ember.png" })
+                foreach (string characterPath in new[] { "Assets/Resources/Characters/lanlight.png", "Assets/Resources/Characters/ember.png", "Assets/Resources/Characters/tidal.png" })
                 {
                     var characterImporter = AssetImporter.GetAtPath(characterPath) as TextureImporter;
                     Require(characterImporter != null && characterImporter.npotScale == TextureImporterNPOTScale.None &&
@@ -149,6 +149,12 @@ namespace SnakeClub.Tests.Editor
                     foreach (var button in owner.GetComponentsInChildren<Button>(true)) if (button.name == name) return button;
                     throw new Exception("UI button not found: " + name);
                 }
+                screen.SetState(new PlayerProgress(), null, "", false, false, true, 0, 24, false, false);
+                Require(FindButton("Skin card 24").gameObject.activeSelf && !FindButton("Skin card 4").gameObject.activeSelf,
+                    "new owned skin was hidden or an internal reference was exposed");
+                FindButton("Skin card 24").onClick.Invoke();
+                Require(selected == 24, "new character card did not select its stable ID");
+                screen.SetState(new PlayerProgress(), null, "", false, false, true, 0, 4, true, false);
                 FindButton("Skin card 4").onClick.Invoke();
                 FindButton("Equip skin").onClick.Invoke();
                 Require(selected == 4 && equipped == 4, "skin selection or local preview action is not wired");
@@ -485,7 +491,7 @@ namespace SnakeClub.Tests.Editor
 
         private static void TestReferenceLayers()
         {
-            int[] ids = { SkinCatalog.OwnedSkinCount, SkinCatalog.OwnedSkinCount + 1 };
+            int[] ids = { SkinCatalog.FirstReferenceIndex, SkinCatalog.FirstReferenceIndex + 1 };
             string[] names = { "wenda", "raddy" };
             var bodies = new Sprite[2]; var headSprites = new Sprite[2]; var necks = new float[2]; var available = new bool[2];
             Require(!SkinVisual.TryReferenceLayers(0, out _, out _, out _), "original character used reference layers");
@@ -536,6 +542,11 @@ namespace SnakeClub.Tests.Editor
                 var sprites = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
                 var heads = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("referenceHeads", flags).GetValue(renderer);
                 var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
+                var tidal = SkinVisual.Sprite(24);
+                Require(tidal != null && SkinCatalog.Get(24).Id == "tidal", "original tidal sprite failed to load");
+                avatar.Skin = 24; renderer.SelectedSkin = 24; renderer.Draw(state, "you");
+                Require(avatarBody.enabled && avatarBody.sprite == tidal && sprites["you"].sprite == tidal,
+                    "new original character did not appear in both home and arena");
                 for (int i = 0; i < ids.Length; i++) if (available[i])
                 {
                     avatar.Skin = ids[i]; renderer.SelectedSkin = ids[i]; renderer.Draw(state, "you");

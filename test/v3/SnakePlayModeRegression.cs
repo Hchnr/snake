@@ -111,7 +111,7 @@ namespace SnakeClub.Tests.Editor
                     animationDeadline = EditorApplication.timeSinceStartup + 2.5;
                     int availableCount = SkinVisual.ReferenceAvailable ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount;
                     for (int i = 0; i < availableCount; i++)
-                        if (SkinVisual.Sprite(i) == null) throw new InvalidOperationException("Character sprite missing: " + SkinCatalog.Get(i).Id);
+                        if (SkinVisual.Sprite(SkinCatalog.DisplayIndex(i)) == null) throw new InvalidOperationException("Character sprite missing: " + SkinCatalog.Get(SkinCatalog.DisplayIndex(i)).Id);
                     phase++; deadline = EditorApplication.timeSinceStartup + .5; return;
                 }
                 if (phase == 1)

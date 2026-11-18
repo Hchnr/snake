@@ -185,7 +185,7 @@ sealed class GameApi
 
     private IResult BuySkin(PlayerProgress p, int index)
     {
-        if (index <= 0 || index >= SkinCatalog.OwnedSkinCount) return Fail("皮肤不存在");
+        if (index <= 0 || !SkinCatalog.IsOwnedSkin(index)) return Fail("皮肤不存在");
         if (p.ownedSkins.Contains(index)) return Results.Json(new { ok = true, profile = p });
         if (p.coins < Progression.SkinPrices[index]) return Fail("金币不足");
         p.coins -= Progression.SkinPrices[index]; p.ownedSkins.Add(index);
@@ -423,7 +423,7 @@ sealed class GameApi
         bool trial = request.kind == "trial";
         if (trial)
         {
-            if (request.index <= 0 || request.index >= SkinCatalog.OwnedSkinCount || p.ownedSkins.Contains(request.index) || p.dailyTrialUsed) return Fail("今天暂不可试穿该皮肤");
+            if (request.index <= 0 || !SkinCatalog.IsOwnedSkin(request.index) || p.ownedSkins.Contains(request.index) || p.dailyTrialUsed) return Fail("今天暂不可试穿该皮肤");
         }
         else
         {

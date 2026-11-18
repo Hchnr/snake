@@ -72,6 +72,7 @@ before(async () => {
   const missingId = idFor('v3-missing-rules');
   const receiptId = idFor('v3-receipt');
   const pursuitId = idFor('v3-pursuit');
+  const tidalId = idFor('v3-tidal');
   const legacy = { id: 'legacy-run', playerId: legacyId, mode: 'daily', date: chinaDay(), rules: 'daily-1', seed: 1,
     startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000 };
   const current = { id: 'capture-run', playerId: newId, mode: 'daily', date: chinaDay(), rules: 'daily-3', seed: 1,
@@ -81,6 +82,7 @@ before(async () => {
   fs.writeFileSync(dataFile, JSON.stringify({
     players: {
       [pursuitId]: { playerId: pursuitId, displayName: '追逐测试', dailyKey: chinaDay() },
+      [tidalId]: { playerId: tidalId, displayName: '角色测试', coins: 2200, ownedSkins: [0], selectedSkin: 0, dailyKey: chinaDay() },
       [receiptId]: { playerId: receiptId, displayName: '回执测试', tutorialComplete: true, coins: 73, experience: 29, dailyKey: chinaDay() },
       [caveOvercapId]: { playerId: caveOvercapId, displayName: '旧探洞', dailyKey: chinaDay(), experience: 29, dailyExpeditionXp: 99, expedition: { id: 'overcap-cave', cave: 0, durationMinutes: 120, startedAt: Date.now() - 9 * 3600000, bonusPercent: 0 } },
       [caveId]: { playerId: caveId, displayName: '洞穴测试', dailyKey: chinaDay(), expedition: { id: 'expedition-fixture', cave: 2, durationMinutes: 480, startedAt: Date.now() - 12 * 3600000, bonusPercent: 7 } },
@@ -141,6 +143,20 @@ test('authentication, skin inventory and talent points use server authority', as
   assert.equal((await request('skin/buy', { token: alice.session, body: { index: 4 } })).status, 400);
   assert.equal((await request('skin/equip', { token: alice.session, body: { index: 1 } })).status, 400);
   assert.equal((await request('talent/allocate', { token: alice.session, body: { index: 0 } })).status, 400);
+});
+
+test('appended original skin retains reference IDs and persists ownership', async () => {
+  const user = await login('v3-tidal');
+  assert.equal((await request('skin/buy', { token: user.session, body: { index: 4 } })).status, 400);
+  const bought = await request('skin/buy', { token: user.session, body: { index: 24 } });
+  assert.equal(bought.status, 200); assert.equal(bought.data.profile.coins, 400);
+  assert.deepEqual(bought.data.profile.ownedSkins, [0, 24]);
+  const repeated = await request('skin/buy', { token: user.session, body: { index: 24 } });
+  assert.equal(repeated.data.profile.coins, 400);
+  const equipped = await request('skin/equip', { token: user.session, body: { index: 24 } });
+  assert.equal(equipped.data.profile.selectedSkin, 24);
+  const profile = (await request('bootstrap', { token: user.session })).data.profile;
+  assert.equal(profile.selectedSkin, 24); assert.deepEqual(profile.ownedSkins, [0, 24]);
 });
 
 test('old signed daily replay remains valid without entering the new leaderboard', async () => {

@@ -51,8 +51,7 @@ namespace SnakeClub
         private bool TutorialReady => CurrentProfile.tutorialComplete || (api != null && api.Connected &&
             !string.IsNullOrEmpty(practicedAccount) && api.Profile.playerId == practicedAccount);
         private bool ReferencePreviewEnabled => api != null && api.Config.allowReferenceSkinPreview && SkinVisual.ReferenceAvailable;
-        private int EffectiveSkin => ReferencePreviewEnabled && localVisualSkin >= SkinCatalog.OwnedSkinCount
-            && localVisualSkin < SkinCatalog.All.Length ? localVisualSkin : CurrentProfile.selectedSkin;
+        private int EffectiveSkin => ReferencePreviewEnabled && SkinCatalog.IsReference(localVisualSkin) ? localVisualSkin : CurrentProfile.selectedSkin;
 
         private void SetupHomeScreen()
         {
@@ -107,7 +106,7 @@ namespace SnakeClub
 
         private void TrialPreviewSkin()
         {
-            if (previewSkin < 1 || previewSkin >= SkinCatalog.OwnedSkinCount) return;
+            if (previewSkin < 1 || !SkinCatalog.IsOwnedSkin(previewSkin)) return;
             int selected = previewSkin;
             StartRewarded("trial", "", selected, reply => { if (reply.ok) frontNotice = "试穿已领取，将在下场普通对局使用"; });
         }
@@ -156,7 +155,7 @@ namespace SnakeClub
             {
                 connecting = false;
                 frontNotice = reply.ok ? "进度已同步" : "离线练习 · 进度和排行暂不同步";
-                localVisualSkin = ReferencePreviewEnabled ? PlayerPrefs.GetInt("snake.v031.previewSkin", SkinCatalog.OwnedSkinCount) : -1;
+                localVisualSkin = ReferencePreviewEnabled ? PlayerPrefs.GetInt("snake.v031.previewSkin", SkinCatalog.FirstReferenceIndex) : -1;
                 previewSkin = EffectiveSkin;
                 arenaRenderer.SelectedSkin = previewSkin;
                 if (reply.ok)
@@ -504,7 +503,7 @@ namespace SnakeClub
                     if (activeRun != null && activeRun.runId == entry.runId)
                     {
                         string rewards = "金币 +" + (reply.coins + reply.questCoins) + "  经验 +" + (reply.experience + reply.questExperience) + (reply.questExperience > 0 ? "（含日常）" : "");
-                        if (reply.unlockedSkin > 0 && reply.unlockedSkin < SkinCatalog.OwnedSkinCount) rewards += "\n解锁皮肤：" + SkinCatalog.Get(reply.unlockedSkin).Name;
+                        if (reply.unlockedSkin > 0 && SkinCatalog.IsOwnedSkin(reply.unlockedSkin)) rewards += "\n解锁皮肤：" + SkinCatalog.Get(reply.unlockedSkin).Name;
                         verifiedDaily = challenge && reply.ok && reply.verified;
                         verifiedShareToken = verifiedDaily ? reply.shareToken : "";
                         verifiedShareScore = reply.score;
@@ -625,10 +624,11 @@ namespace SnakeClub
             if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(185, 280, 710, 600), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
             Label(new Rect(180, 815, 720, 70), Progression.SkinNames[previewSkin] + "  ·  " + Progression.SkinDescriptions[previewSkin], 32, Color.white, TextAnchor.MiddleCenter, true);
             int count = api.Config.allowReferenceSkinPreview ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount;
-            for (int i = 0; i < count; i++)
+            for (int slot = 0; slot < count; slot++)
             {
+                int i = SkinCatalog.DisplayIndex(slot);
                 int index = i;
-                Rect card = new Rect(90 + i % 2 * 465, 905 + i / 2 * 225, 435, 205);
+                Rect card = new Rect(90 + slot % 2 * 465, 905 + slot / 2 * 225, 435, 205);
                 Panel(card, i == previewSkin ? new Color(.10f, .31f, .33f, .96f) : new Color(.035f, .10f, .16f, .93f));
                 Label(new Rect(card.x + 25, card.y + 8, 385, 48), Progression.SkinNames[i], 31, Color.white, TextAnchor.MiddleCenter, true);
                 Label(new Rect(card.x + 25, card.y + 58, 385, 43), Progression.SkinDescriptions[i], 22, new Color(.66f, .89f, .84f), TextAnchor.MiddleCenter);
@@ -652,7 +652,7 @@ namespace SnakeClub
             }
             if (p.trialSkin > 0)
                 Label(new Rect(120, 1600, 840, 70), "下场普通对局试穿 " + Progression.SkinNames[p.trialSkin], 26, new Color(.65f, .95f, .84f), TextAnchor.MiddleCenter);
-            else if (previewSkin < SkinCatalog.OwnedSkinCount && p.tutorialComplete && !p.dailyTrialUsed && !p.ownedSkins.Contains(previewSkin) && GamePlatform.HasRewardedAds(api))
+            else if (SkinCatalog.IsOwnedSkin(previewSkin) && p.tutorialComplete && !p.dailyTrialUsed && !p.ownedSkins.Contains(previewSkin) && GamePlatform.HasRewardedAds(api))
             {
                 int selected = previewSkin;
                 if (SmallButton(new Rect(210, 1590, 660, 95), "看 1 次广告，试穿 1 局", new Color(.25f, .40f, .55f), 25))

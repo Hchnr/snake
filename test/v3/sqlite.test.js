@@ -57,7 +57,7 @@ async function request(endpoint, route, token, body) {
 before(async () => {
   temp = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-sqlite-test-'));
   legacy = path.join(temp, 'legacy.json'); database = path.join(temp, 'game.sqlite');
-  const playerId = idFor('sqlite-player'), otherId = idFor('sqlite-other'), receiptId = idFor('sqlite-receipt');
+  const playerId = idFor('sqlite-player'), otherId = idFor('sqlite-other'), receiptId = idFor('sqlite-receipt'), tidalId = idFor('sqlite-tidal');
   const base = { mode: 'daily', date: day(), completed: true, expiresAt: Date.now() - 1, finishedAt: Date.now() - 10000 };
   const receiptBase = { playerId: receiptId, date: '2000-01-01', rules: 'daily-3', seed: 1, startedAt: Date.now() - 120000, expiresAt: Date.now() - 60000 };
   expiredReceipts = {
@@ -67,6 +67,7 @@ before(async () => {
   };
   fs.writeFileSync(legacy, JSON.stringify({
     players: {
+      [tidalId]: { playerId: tidalId, coins: 2200, ownedSkins: [0], selectedSkin: 0, dailyKey: day() },
       [receiptId]: { playerId: receiptId, displayName: '回执玩家', tutorialComplete: true, coins: 73, experience: 29, dailyKey: day() },
       [playerId]: { playerId, displayName: '玩家甲', tutorialComplete: true, experience: 200, coins: 100, ownedSkins: [0, 2], selectedSkin: 2, dailyKey: day() },
       [otherId]: { playerId: otherId, displayName: '玩家乙', tutorialComplete: true }
@@ -105,6 +106,17 @@ test('legacy JSON imports once and a versioned leaderboard reads the shared data
   assert.deepEqual(board.data.rows.map(row => row.score), [120, 80]);
   const oldBoard = await request(endpoints[1], 'challenge/leaderboard', user.session);
   assert.equal(oldBoard.data.total, 1); assert.equal(oldBoard.data.rows[0].score, 900);
+});
+
+test('new original skin is purchased once across SQLite instances', async () => {
+  const login = await request(endpoints[0], 'auth/dev', null, { deviceId: 'sqlite-tidal' });
+  const token = login.data.session;
+  const [a, b] = await Promise.all(endpoints.map(endpoint => request(endpoint, 'skin/buy', token, { index: 24 })));
+  assert.equal(a.status, 200); assert.equal(b.status, 200);
+  assert.equal(b.data.profile.coins, 400);
+  assert.equal((await request(endpoints[1], 'skin/equip', token, { index: 24 })).status, 200);
+  const profile = (await request(endpoints[0], 'bootstrap', token)).data.profile;
+  assert.equal(profile.coins, 400); assert.deepEqual(profile.ownedSkins, [0, 24]); assert.equal(profile.selectedSkin, 24);
 });
 
 test('PvE start config survives SQLite writes from another instance', async () => {
