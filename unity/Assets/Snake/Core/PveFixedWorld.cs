@@ -359,6 +359,10 @@ namespace SnakeClub.Core
             projection.eventRemaining = EventTicksRemaining / (float)TickRate;
             projection.starVisible = eventActive && eventType == 1; projection.starPosition = ToPoint(star);
             projection.starHolder = StarHolder; projection.starProgress = starTicks / (8f * TickRate);
+            var viewer = fighters[0];
+            StrengthValues viewerPower = default;
+            bool canCompare = StrengthPreview && !Finished && viewer.alive && viewer.shieldTicks <= 0 &&
+                BodyStrength.TryCalculate(StrengthFor(viewer), 0, out viewerPower);
             for (int i = 0; i < fighters.Length; i++)
             {
                 var source = fighters[i]; var target = projection.snakes[i];
@@ -367,8 +371,16 @@ namespace SnakeClub.Core
                 target.eliminatedBy = source.eliminatedBy; target.eliminationReason = source.eliminationReason;
                 target.angle = source.motion.Angle * (float)(Math.PI * 2 / 65536); target.boosting = source.alive && source.motion.Boosting;
                 target.rebound = source.motion.ReboundTicks / (float)TickRate;
-                target.segments.Clear();
-                for (int j = 0; j < source.motion.Length; j++) target.segments.Add(ToPoint(source.motion.Segments[j]));
+                target.segments.Clear(); target.strengthWeakSegments.Clear();
+                bool eligible = canCompare && i != 0 && source.alive && source.shieldTicks <= 0 &&
+                    source.motion.Length > PveFixedMotion.MinimumLength && !strengthCombat.IsPairCoolingDown(Tick + 1L, viewer.id, source.id);
+                var defendingPower = eligible ? StrengthFor(source) : default;
+                for (int j = 0; j < source.motion.Length; j++)
+                {
+                    target.segments.Add(ToPoint(source.motion.Segments[j]));
+                    bool weak = eligible && j > 0 && BodyStrength.TryCalculate(defendingPower, j, out var part) && BodyStrength.CanEat(viewerPower.attack, part.defense);
+                    if (StrengthPreview) target.strengthWeakSegments.Add(weak);
+                }
             }
             for (int i = 0; i < fruit.Count; i++) { projection.fruits[i].position = ToPoint(fruit[i].position); projection.fruits[i].color = fruit[i].color; }
             projection.captureTick = lastCaptureTick; projection.captureCount = lastCaptureCount; projection.captureOwner = lastCaptureOwner;

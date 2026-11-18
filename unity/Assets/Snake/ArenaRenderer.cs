@@ -29,6 +29,7 @@ namespace SnakeClub
         private readonly List<Matrix4x4> eyes = new List<Matrix4x4>();
         private readonly List<Matrix4x4> pupils = new List<Matrix4x4>();
         private readonly List<Matrix4x4> scales = new List<Matrix4x4>();
+        private readonly List<Matrix4x4> weakPoints = new List<Matrix4x4>();
         private readonly List<Matrix4x4> trail = new List<Matrix4x4>();
         private readonly List<Matrix4x4> sparks = new List<Matrix4x4>();
         private readonly List<Matrix4x4> trailPulses = new List<Matrix4x4>();
@@ -50,6 +51,7 @@ namespace SnakeClub
         private Material eyeMaterial;
         private Material pupilMaterial;
         private Material scaleMaterial;
+        private Material weakPointMaterial;
         private Material trailLineMaterial;
         private Material trailPulseMaterial;
         private Material outerBackdropMaterial;
@@ -154,6 +156,9 @@ namespace SnakeClub
             pupilMaterial = MakeMaterial(new Color(.025f, .035f, .075f), .1f);
             scaleMaterial = MakeMaterial(new Color(.70f, 1f, .9f), .2f);
             scaleMaterial.EnableKeyword("_EMISSION");
+            weakPointMaterial = MakeMaterial(new Color(1f, .83f, .20f), .05f);
+            weakPointMaterial.EnableKeyword("_EMISSION");
+            weakPointMaterial.SetColor("_EmissionColor", new Color(.25f, .16f, .02f));
             trailPulseMaterial = MakeMaterial(new Color(.95f, 1f, .98f), .1f);
             trailPulseMaterial.EnableKeyword("_EMISSION");
             trailPulseMaterial.SetColor("_EmissionColor", new Color(.18f, .22f, .20f));
@@ -375,7 +380,7 @@ namespace SnakeClub
             foreach (var list in links) list.Clear();
             foreach (var list in horns) list.Clear();
             foreach (var list in fruits) list.Clear();
-            eyes.Clear(); pupils.Clear(); scales.Clear(); trail.Clear(); sparks.Clear(); trailPulses.Clear();
+            eyes.Clear(); pupils.Clear(); scales.Clear(); weakPoints.Clear(); trail.Clear(); sparks.Clear(); trailPulses.Clear();
             foreach (var character in characters.Values) if (character != null) character.enabled = false;
             foreach (var pair in characterTrails.Values) foreach (var line in pair) if (line != null) line.enabled = false;
             foreach (var ring in opponentMarkers.Values) if (ring != null) ring.enabled = false;
@@ -485,6 +490,12 @@ namespace SnakeClub
                         float bead = Mathf.Lerp(.36f, .18f, progress);
                         Vector3 point = positions[i]; point.y = .38f;
                         scales.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * bead));
+                    }
+                    if (StrengthBodyVisual && i < snake.strengthWeakSegments.Count && snake.strengthWeakSegments[i])
+                    {
+                        Vector3 point = positions[i];
+                        point.y = characterSprite != null ? .45f : positions[i].y + taper * .5f + .12f;
+                        weakPoints.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * .48f));
                     }
                     if (characterSprite == null && snake.id == playerId && i > 0 && i % (SelectedSkin == 1 ? 3 : 2) == 0)
                     {
@@ -645,7 +656,7 @@ namespace SnakeClub
             for (int i = 0; i < fruits.Length; i++) DrawBatch(fruits[i], fruitMaterials[i]);
             scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)]], Color.white, .65f);
             scaleMaterial.SetColor("_EmissionColor", scaleMaterial.color * .18f);
-            DrawBatch(scales, scaleMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, trailPulseMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
+            DrawBatch(scales, scaleMaterial); DrawBatch(weakPoints, weakPointMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, trailPulseMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
         }
 
         // Thin scanline bands leave the original path and characters readable.
@@ -700,6 +711,7 @@ namespace SnakeClub
             if (previewTexture != null) { previewTexture.Release(); Destroy(previewTexture); }
             if (captureSweepMesh != null) Destroy(captureSweepMesh);
             if (trailPulseMaterial != null) Destroy(trailPulseMaterial);
+            if (weakPointMaterial != null) Destroy(weakPointMaterial);
             if (outerBackdropMaterial != null) Destroy(outerBackdropMaterial);
         }
 
