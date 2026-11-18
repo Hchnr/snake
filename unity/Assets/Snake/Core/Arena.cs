@@ -654,6 +654,28 @@ namespace SnakeClub.Core
         }
     }
 
+    // Presentation only: fade the minimap when its opaque panel would cover
+    // an actor, and hold the fade briefly to avoid flickering at its edge.
+    public sealed class MinimapOcclusion
+    {
+        private int lastTick = -1, lastCoveredTick = -1000;
+        public float Visibility { get; private set; } = 1f;
+        public void Reset() { lastTick = -1; lastCoveredTick = -1000; Visibility = 1f; }
+        public void Advance(int tick, bool covered, float deltaTime, bool suspended, bool reduced = false)
+        {
+            if (tick < 0) return;
+            if (tick < lastTick) Reset();
+            lastTick = tick;
+            if (covered) lastCoveredTick = tick;
+            if (suspended) return;
+            float target = covered || (long)tick - lastCoveredTick < 10 ? .20f : 1f;
+            if (reduced) { Visibility = target; return; }
+            if (float.IsNaN(deltaTime) || float.IsInfinity(deltaTime) || deltaTime <= 0) return;
+            float step = Math.Min(deltaTime, .1f) / (target < Visibility ? .15f : .30f);
+            Visibility = target < Visibility ? Math.Max(target, Visibility - step) : Math.Min(target, Visibility + step);
+        }
+    }
+
     public struct EdgeObstacle
     {
         public float x, y, width, height;

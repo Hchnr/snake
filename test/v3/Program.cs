@@ -101,6 +101,7 @@ var cases = new (string name, Action run)[]
     ("first-run hints respond to player actions and stop on time", FirstRunHintsCases),
     ("late-round timer follows live match state", RoundTimerCases),
     ("arena visual clock freezes across suspension", ArenaVisualClockCases),
+    ("minimap fades on overlap and returns without flicker", MinimapOcclusionCases),
     ("drag steering works at any screen position and tracks one finger", FullScreenDrag),
     ("drag steering recovers missing touch ends and transfers control", TouchRecovery),
     ("audio feedback rebases after interruption without replaying old events", AudioFeedbackCursorCases),
@@ -488,6 +489,21 @@ static void NearbyDanger()
     Check(!DangerProbe.Find(state, "you", out _), "non-colliding neck incorrectly indicated danger");
     state.phase = "ended"; other.segments.Add(new Point(1, 0));
     Check(!DangerProbe.Find(state, "you", out _), "ended match retained danger warning");
+}
+
+static void MinimapOcclusionCases()
+{
+    var map = new MinimapOcclusion();
+    map.Advance(0, false, .1f, false); Check(map.Visibility == 1f, "clear minimap unexpectedly faded");
+    map.Advance(1, true, .1f, false); map.Advance(2, true, .1f, false);
+    Check(Math.Abs(map.Visibility - .2f) < .001f, "overlapping character did not reveal through minimap");
+    map.Advance(3, false, .1f, false); Check(Math.Abs(map.Visibility - .2f) < .001f, "minimap flickered at overlap boundary");
+    map.Advance(12, false, .1f, true); Check(Math.Abs(map.Visibility - .2f) < .001f, "suspended minimap changed");
+    map.Advance(12, false, .1f, false); Check(map.Visibility > .2f && map.Visibility < 1f, "minimap did not fade back gradually");
+    map.Advance(0, false, .1f, false); Check(map.Visibility == 1f, "old match occlusion leaked into new match");
+    map.Advance(1, true, float.NaN, false); Check(map.Visibility == 1f, "invalid delta corrupted visibility");
+    map.Advance(2, true, .01f, false, true); Check(Math.Abs(map.Visibility - .2f) < .001f, "reduced mode animated instead of switching");
+    map.Advance(12, false, .01f, false, true); Check(map.Visibility == 1f, "reduced mode did not restore the clear map");
 }
 
 static void ArenaVisualClockCases()

@@ -978,6 +978,40 @@ namespace SnakeClub
             return mesh;
         }
 
+        // Pixel-space bounds of the actual rendered sprite, including its
+        // current scale and reaction. Projection never affects collision.
+        public bool TryCharacterScreenBounds(string id, out Rect screenBounds)
+        {
+            screenBounds = default;
+            if (view == null || string.IsNullOrEmpty(id) || !characters.TryGetValue(id, out var sprite) ||
+                sprite == null || !sprite.enabled || sprite.sprite == null) return false;
+            Bounds bounds = sprite.bounds; Vector3 min = bounds.min, max = bounds.max;
+            float left = float.PositiveInfinity, right = float.NegativeInfinity, bottom = float.PositiveInfinity, top = float.NegativeInfinity;
+            for (int i = 0; i < 8; i++)
+            {
+                var point = view.WorldToScreenPoint(new Vector3((i & 1) == 0 ? min.x : max.x,
+                    (i & 2) == 0 ? min.y : max.y, (i & 4) == 0 ? min.z : max.z));
+                if (point.z <= 0) continue;
+                left = Mathf.Min(left, point.x); right = Mathf.Max(right, point.x);
+                bottom = Mathf.Min(bottom, point.y); top = Mathf.Max(top, point.y);
+            }
+            if (float.IsInfinity(left) || right <= left || top <= bottom) return false;
+            screenBounds = Rect.MinMaxRect(left, bottom, right, top); return true;
+        }
+
+        // Conservative fallback for procedural heads when character art is unavailable.
+        public bool TryFallbackHeadScreenBounds(Point head, out Rect screenBounds)
+        {
+            screenBounds = default;
+            if (view == null) return false;
+            Vector3 center = new Vector3(head.x, .72f, head.y);
+            var a = view.WorldToScreenPoint(center - view.transform.right * 2f - view.transform.up * 2f);
+            var b = view.WorldToScreenPoint(center + view.transform.right * 2f + view.transform.up * 2f);
+            if (a.z <= 0 || b.z <= 0) return false;
+            screenBounds = Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
+            return screenBounds.width > 0 && screenBounds.height > 0;
+        }
+
         public Vector3 WorldToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y) + view.transform.up * 5.7f);
         public Vector3 HeadToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y));
 
