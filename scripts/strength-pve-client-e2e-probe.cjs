@@ -9,7 +9,7 @@ const chrome = spawn(process.argv[2], [
   '--enable-unsafe-swiftshader', '--use-gl=angle', '--use-angle=swiftshader', '--remote-debugging-port=0',
   '--user-data-dir=' + profile, 'about:blank'
 ], { stdio: 'ignore' });
-let ws, stopped = false, started = false, sentInput = false, verifySeen = false, turns = 0;
+let ws, stopped = false, started = false, sentInput = false, verifySeen = false, catalogHeaderSeen = false, turns = 0;
 let inspectReplay = Promise.resolve(false);
 const pending = new Map();
 let id = 0;
@@ -75,6 +75,10 @@ async function steer() {
       event.error ? p.reject(Error(event.error.message)) : p.resolve(event.result);
     }
     if (event.method === 'Runtime.exceptionThrown') done(1, 'Browser exception: ' + event.params.exceptionDetails.text);
+    if (event.method === 'Network.requestWillBeSent' && event.params.request.method === 'POST' && event.params.request.url.endsWith('/api/v3/auth/dev')) {
+      const headers = event.params.request.headers;
+      catalogHeaderSeen = Object.entries(headers).some(([key, value]) => key.toLowerCase() === 'x-snake-catalog' && value === '2');
+    }
     if (event.method === 'Network.requestWillBeSent' && event.params.request.method === 'POST' && event.params.request.url.endsWith('/internal/strength-pve/verify')) {
       const request = event.params.request;
       const requestId = event.params.requestId;
@@ -120,8 +124,8 @@ async function steer() {
       const text = event.params.args.map(a => a.value || a.description || '').join(' ');
       if (text.includes('SNAKE_STRENGTH_E2E ')) {
         inspectReplay.then(requestSeen => {
-          if (text.includes('SNAKE_STRENGTH_E2E MATCH') && sentInput && requestSeen && verifySeen)
-            done(0, 'PASS: touch steering, boost and release produced a matching strength experimental server receipt.');
+          if (text.includes('SNAKE_STRENGTH_E2E MATCH') && sentInput && requestSeen && verifySeen && catalogHeaderSeen)
+            done(0, 'PASS: touch steering, boost and release produced a matching strength experimental server receipt and catalog capability.');
           else done(1, 'Client reported mismatch or missing real touch/replay evidence.');
         }).catch(() => done(1, 'Unable to inspect bounded replay input'));
       }
