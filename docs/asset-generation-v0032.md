@@ -10,6 +10,12 @@
 
 ## 原创角色
 
+### 森林守护者候选（2026-11-18）
+
+[蜷曲姿态概念图](research/characters/forest-guardian-concept.png)由内置 `image_gen` 生成，未输入其他图像：小型森林穿山甲、叶片鳞甲、绿白配色、琥珀眼和卷曲蕨叶尾，透明背景。它是用于探索角色轮廓的候选，不在游戏资源目录，不占用角色 ID，也未接入商城或对局。
+
+生成提示要求三分之四侧视、非对称蜷曲轮廓与清晰边缘；当前图的头部偏离画面中心、尾部占比大，与现有以精灵中心为头部碰撞锚点的表现不匹配，直接接入可能误导玩家。后续需设计正确的头部锚点和方向、分层或骨骼动作，验证小尺寸辨识度、透明边缘、包体和抖音真机表现，并记录素材使用权审查；不得将该概念图当作完整角色验收。
+
 位置：[`unity/Assets/Resources/Characters/`](../unity/Assets/Resources/Characters/)，文件分别为 `lanlight.png`、`ember.png`、`stardust.png`、`crystal.png`。通用提示词如下，`{subject}` 分别替换为下表内容：
 
 > Use case: stylized-concept. Asset type: original full-character sprite for a polished 2.5D mobile arcade game. Create {subject}. A single full front-facing character, expressive and distinct silhouette, no limbs; occupies most of image with transparent margins. Professional crisp flat 2D puppet-inspired shapes with clean dark colored outlines, gentle luminous shading, limited highlights and harmonious eye design; vivid but sophisticated, read clearly at small size. Entire silhouette must be visible. Completely original design. No snake body, no floor, no text, no logo, no background or cast shadow.
