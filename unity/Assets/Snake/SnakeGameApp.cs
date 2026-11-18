@@ -1031,7 +1031,8 @@ namespace SnakeClub
 
         private bool StrengthIntroVisible() => firstRun && tutorialHints && fixedPve != null && fixedPve.StrengthPreview && state != null &&
             state.phase == "running" && state.tick < 260 && !paused &&
-            string.IsNullOrEmpty(StrengthContactNotice.Text(fixedPve, state.tick, out _));
+            string.IsNullOrEmpty(StrengthContactNotice.Text(fixedPve, state.tick, out _)) &&
+            string.IsNullOrEmpty(CaptureNotice.Text(state, playerId, false));
 
         private void CollectNameplate(ArenaState world, SnakeState snake)
         {
