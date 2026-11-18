@@ -311,7 +311,7 @@ sealed class GameApi
             return Fail("强弱实验规则或开局快照不受支持");
         // Old completed experiments retain their receipt, but incomplete old
         // recordings must never be replayed using changed rules.
-        if (run.completed && (run.rules == StrengthPveEvalRules || run.rules == PveFixedRecording.PreviousExperimentalStrengthRules || run.rules == PveFixedRecording.OldestExperimentalStrengthRules))
+        if (run.completed && (run.rules == StrengthPveEvalRules || run.rules == PveFixedRecording.PriorExperimentalStrengthRules || run.rules == PveFixedRecording.PreviousExperimentalStrengthRules || run.rules == PveFixedRecording.OldestExperimentalStrengthRules))
             return StrengthPveReceipt(run);
         if (run.rules != StrengthPveEvalRules) return Fail("强弱实验规则或开局快照不受支持");
         if (string.IsNullOrEmpty(request.inputs) || request.inputs.Length > ((PveFixedRecording.MaxTicks * 2 + 2) / 3) * 4)

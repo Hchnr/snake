@@ -132,6 +132,7 @@ var cases = new (string name, Action run)[]
     ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
     ("strength bots promptly avoid lethal heads but not protected or equal heads", StrengthBotHeadCases),
     ("strength bots seek fruit near protected opponents", StrengthBotForagingCases),
+    ("strength bots avoid ineligible body targets", StrengthBotTargetEligibilityCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
     ("minimum-length strength boost explains why movement cannot accelerate", StrengthBoostNoticeCases),
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
@@ -1809,6 +1810,31 @@ static void StrengthBotForagingCases()
     Check(PveFixedMotion.DirectionX(right) > 0 && PveFixedMotion.DirectionX(left) < 0,
         "a nearby protected opponent prevented fruit seeking");
     Check(right == Heading(15000) && left == Heading(-15000), "fruit seeking was not deterministic");
+}
+
+static void StrengthBotTargetEligibilityCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    byte Heading(bool cooldown, bool shield)
+    {
+        var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+        var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+        actors[0] = new PveFixedFighter("you", new PveFixedMotion(-5000, 0, 0, 16));
+        actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 16)) { shieldTicks = shield ? 20 : 0 };
+        for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+        var fruit = (List<PveFixedFruit>)typeof(PveFixedWorld).GetField("fruit", flags).GetValue(world);
+        fruit.Clear(); fruit.Add(new PveFixedFruit(new CapturePoint(15000, 0), 0));
+        if (cooldown)
+        {
+            var combat = (StrengthBodyCombat)typeof(PveFixedWorld).GetField("strengthCombat", flags).GetValue(world);
+            var times = (Dictionary<(string, string), long>)typeof(StrengthBodyCombat).GetField("nextHit", flags).GetValue(combat);
+            times[("bot-1", "you")] = 8;
+        }
+        return (byte)typeof(PveFixedWorld).GetMethod("BotHeading", flags).Invoke(world, new object[] { 1 });
+    }
+    Check(PveFixedMotion.DirectionX(Heading(false, false)) < 0, "eligible body was not targeted");
+    Check(PveFixedMotion.DirectionX(Heading(true, false)) > 0, "bot targeted a body during cooldown");
+    Check(PveFixedMotion.DirectionX(Heading(false, true)) > 0, "protected bot targeted a body it cannot eat");
 }
 
 static void StrengthBoostNoticeCases()

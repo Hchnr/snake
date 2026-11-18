@@ -19,7 +19,8 @@ namespace SnakeClub.Core
         // Internal development markers, never release or rewards rulesets.
         public const string OldestExperimentalStrengthRules = "strength-pve-dev-1";
         public const string PreviousExperimentalStrengthRules = "strength-pve-dev-2";
-        public const string ExperimentalStrengthRules = "strength-pve-dev-3";
+        public const string PriorExperimentalStrengthRules = "strength-pve-dev-3";
+        public const string ExperimentalStrengthRules = "strength-pve-dev-4";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
@@ -240,7 +241,8 @@ namespace SnakeClub.Core
                 long bestTarget = 18000L * 18000L;
                 foreach (var other in fighters)
                 {
-                    if (other == self || !other.alive || other.shieldTicks > 0 || other.motion.Length <= PveFixedMotion.MinimumLength) continue;
+                    if (other == self || !other.alive || self.shieldTicks > 0 || other.shieldTicks > 0 ||
+                        other.motion.Length <= PveFixedMotion.MinimumLength || strengthCombat.IsPairCoolingDown(Tick, self.id, other.id)) continue;
                     var defense = StrengthFor(other);
                     for (int part = 1; part < other.motion.Length; part++)
                     {
