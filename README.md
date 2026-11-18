@@ -1,6 +1,6 @@
 # 灵蛇秘境 · Snake Club
 
-v0.0.3.2 正在开发中，首发以抖音小游戏为目标，浏览器 WebGL 用于开发验证。玩家在大地图对抗 AI：可以吃果实，淘汰对手会直接成长；撞墙反弹，不会因此出局。首发设计采用本地 PvE 和真人异步每日挑战，不要求玩家同时在线；微信小游戏也在目标范围内，排在抖音之后，目前尚未实现或验证。
+v0.0.3.2 正在开发中，首发以抖音小游戏为目标，浏览器 WebGL 用于开发验证。玩家在大地图对抗 AI：可以吃果实，淘汰对手会直接成长；撞墙反弹，不会因此出局。首发设计采用本地 PvE 和真人异步每日挑战，不要求玩家同时在线。
 
 ## 当前内容
 
@@ -168,20 +168,6 @@ python3 scripts/build-douyin-preview.py --appid '你的小游戏AppID' --output 
 该脚本默认使用 Unity `-batchmode -nographics`，避免构建时显示游戏或抢占桌面焦点；本机 TTSDK 6.9.7 已完成无图形离线转换。其他 SDK 版本的兼容性以实际构建为准；只有明确需要图形环境时才使用 `--graphics`。
 
 仅为经授权的小范围内部审阅，且本机已准备参考素材时，可显式加上 `--include-reference-skins`；该选项会将参考图放入测试包，不代表正式联动或已获商业使用权。构建完成后可将输出的 `tt-minigame` 目录导入抖音开发者工具生成预览码：预览时产物会交给抖音处理，并不等同于上传测试通道或更新已发布的版本。构建副本启用 `SNAKE_DOUYIN_TTSDK` 编译开关；离线预览会初始化 SDK，但不会请求抖音登录或连接账号服务。此前生成的预览包没有自动启用该开关，需重新构建才能验证这些平台适配代码。本离线练习包不使用本机游戏服务器，手机需要能够访问抖音获取预览内容。抖音账号登录、分享和广告需要另行配置与真机验证；普通 WebGL 构建或旧版 `dist/douyin` 都不是本 Unity 版本的抖音发布包。
-
-## 微信小游戏隔离转换实验
-
-微信仍是后续目标，当前没有微信真机或平台能力验收。使用[微信官方 Unity SDK 仓库](https://github.com/wechat-miniprogram/minigame-tuanjie-transform-sdk)，在本机单独检出已测试提交；SDK 不加入本仓库。以下占位配置只验证转换，不能用于扫码：
-
-```sh
-git clone https://github.com/wechat-miniprogram/minigame-tuanjie-transform-sdk.git /tmp/snake-wxsdk
-git -C /tmp/snake-wxsdk checkout --detach 915d4bf4f60ef0cd1c29316a8d67257185d609a7
-python3 scripts/build-wechat-isolated.py --sdk /tmp/snake-wxsdk --appid wx0000000000000000 \
-  --cdn https://example.invalid/snake-probe/ --output /tmp/snake-wechat-probe \
-  --strength-pve-preview --diagnostic
-```
-
-构建在临时工程中以 `-batchmode -nographics` 运行，不上传任何产物，关闭账号服务、开发登录及内部参考素材；微信 SDK 完成初始化并绑定前后台回调后才允许开始对局，退后台会暂停并清除输入，恢复时仍需玩家手动继续。脚本要求干净的指定 SDK Git 提交，不覆盖已有输出。产物包含 `minigame` 工程、`webgl` 资源和构建日志。使用真实 AppID 和 HTTPS 资源域名时需去掉 `--diagnostic` 并选择新的输出目录；还需自行配置平台域名、部署资源并用微信开发者工具与真机验证，构建成功不代表可以发布。SDK 仓库的根许可证为 MIT，SDK 附带的第三方组件应分别核对其许可证。 `python3 scripts/test-wechat-lifecycle.py` 可在无图形 Unity 中运行模拟回调测试；它不能替代微信真机的锁屏和前后台验证。
 
 ## 资源许可
 
