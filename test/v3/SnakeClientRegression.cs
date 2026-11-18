@@ -35,6 +35,7 @@ namespace SnakeClub.Tests.Editor
                 TestPracticeTutorialAccess();
                 TestDepthPracticeIsolation();
                 TestBackgroundSimulation();
+                TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
                 var client = owner.AddComponent<GameApiClient>();
                 var apply = typeof(GameApiClient).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
@@ -164,6 +165,22 @@ namespace SnakeClub.Tests.Editor
                 if (!string.IsNullOrEmpty(stamp)) File.WriteAllText(stamp, "passed\n");
             }
             finally { UnityEngine.Object.DestroyImmediate(owner); }
+        }
+
+        private static void TestStrengthBodyCombat()
+        {
+            var attacker = new PveFixedFighter("attacker", new PveFixedMotion(-11700, 0, 0, 16));
+            var defender = new PveFixedFighter("defender", new PveFixedMotion(0, 0, 0, 16));
+            var power = new StrengthInputs { basePower = 100, speed = 1000, baseSpeed = 1000,
+                randomFactor = 1000, operationFactor = 1000 };
+            var combat = new StrengthBodyCombat();
+            var bites = combat.Resolve(0, new[] { attacker, defender }, new[] { power, power });
+            Require(bites.Count == 1 && bites[0].segment == 13 && bites[0].removed == 3 &&
+                attacker.motion.Length == 19 && defender.motion.Length == 13 && attacker.alive && defender.alive,
+                "Unity strength combat did not consume the contacted tail and grow the attacker");
+            Require(combat.Resolve(1, new[] { attacker, defender }, new[] { power, power }).Count == 0,
+                "Unity strength combat cooldown did not prevent a repeat bite");
+            Debug.Log("PASS Unity experimental strength body combat");
         }
 
         private static void TestBackgroundSimulation()
