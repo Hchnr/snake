@@ -316,9 +316,14 @@ namespace SnakeClub
         {
             skinPage = NewRect("Skin page", layout); Position(skinPage, new Rect(0, 0, 1080, 1920));
             Panel("Skin header", skinPage, new Rect(50, 45, 980, 175), new Color(.025f, .09f, .16f, .9f));
-            var back = MakeButton("Skin back", skinPage, new Rect(75, 78, 145, 78), new Color(.18f, .30f, .40f, .98f), () => onSkinBack?.Invoke());
-            MakeText("Back label", back.transform, new Rect(0, 0, 145, 78), "返回", 26, Color.white, TextAnchor.MiddleCenter, true);
-            MakeText("Skin title", skinPage, new Rect(245, 72, 610, 78), "灵蛇衣橱", 47, Color.white, TextAnchor.MiddleCenter, true);
+            var back = MakeButton("Skin back", skinPage, new Rect(65, 66, 220, 100), new Color(.12f, .40f, .43f, 1f), () => onSkinBack?.Invoke());
+            Panel("Back arrow shaft", back.transform, new Rect(27, 47, 42, 7), Color.white);
+            var arrowUpper = Panel("Back arrow upper", back.transform, new Rect(27, 50, 27, 7), Color.white);
+            var arrowLower = Panel("Back arrow lower", back.transform, new Rect(27, 50, 27, 7), Color.white);
+            arrowUpper.rectTransform.localRotation = Quaternion.Euler(0, 0, 45);
+            arrowLower.rectTransform.localRotation = Quaternion.Euler(0, 0, -45);
+            MakeText("Back label", back.transform, new Rect(78, 0, 130, 100), "返回", 30, Color.white, TextAnchor.MiddleCenter, true);
+            MakeText("Skin title", skinPage, new Rect(300, 72, 555, 78), "灵蛇衣橱", 47, Color.white, TextAnchor.MiddleCenter, true);
             MakeText("Skin subtitle", skinPage, new Rect(210, 158, 660, 45), "选择喜欢的角色，带它去围猎", 23, new Color(.75f, .94f, .90f), TextAnchor.MiddleCenter);
             skinPortrait = MakeRaw("Skin character", skinPage, new Rect(190, 205, 700, 700), null); skinPortrait.raycastTarget = false;
             skinArenaPreview = MakeRaw("Skin arena preview", skinPage, new Rect(387, 205, 306, 544), null);
