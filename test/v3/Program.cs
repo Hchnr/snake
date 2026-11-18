@@ -365,6 +365,16 @@ static void MusicBehavior()
     Check(!MusicPolicy.ShouldPlay(true, true, false, false, false), "music continued in background");
     Check(!MusicPolicy.ShouldPlay(true, true, true, true, false), "music continued while paused");
     Check(!MusicPolicy.ShouldPlay(true, true, true, false, true), "music continued during an ad");
+    var fade = new MusicTransition();
+    Check(fade.Advance(false, .016f) && fade.Gain == 0, "first music clip did not start at silence");
+    Check(!fade.Advance(false, .1f) && Math.Abs(fade.Gain - .5f) < .001f, "first clip did not fade in");
+    Check(!fade.Advance(false, .1f) && fade.Gain == 1, "music did not reach its configured level");
+    Check(!fade.Advance(true, .1f) && Math.Abs(fade.Gain - .5f) < .001f, "old track did not fade out before the switch");
+    Check(!fade.Advance(false, .1f) && fade.Gain == 1, "rapidly reverting a switch did not restore the current track");
+    Check(!fade.Advance(true, .1f) && fade.Advance(true, .1f) && fade.Gain == 0, "new track was not switched at silence");
+    Check(!fade.Advance(true, float.NaN) && fade.Gain == 0, "invalid delta changed music gain");
+    Check(!fade.Advance(true, 1f) && Math.Abs(fade.Gain - .5f) < .001f, "large frame skipped the fade");
+    fade.Reset(); Check(fade.Advance(false, 0) && fade.Gain == 0, "failed track recovery retained stale transition state");
     var home = MusicComposer.Create(false); var battle = MusicComposer.Create(true);
     Check(home.Length == MusicComposer.SampleRate * MusicComposer.Seconds && battle.Length == home.Length, "incorrect loop duration");
     Check(home[0] == 0 && Math.Abs(home[^1]) < .01 && battle[0] == 0 && Math.Abs(battle[^1]) < .01, "loop boundary is not faded");
