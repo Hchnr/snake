@@ -45,6 +45,7 @@ namespace SnakeClub.Core
         public List<Point> segments = new List<Point>();
         // Local strength-preview hints, aligned with segments; not an online snapshot field.
         internal readonly List<bool> strengthWeakSegments = new List<bool>();
+        internal readonly List<bool> strengthThreatSegments = new List<bool>();
     }
 
     [Serializable]
@@ -230,9 +231,9 @@ namespace SnakeClub.Core
             if (tick < 60) return (hasSteered ? "强度足够才能吃身体" : "全屏拖动转向 · 强度足够才能吃身体") + "\n较弱会弹开";
             if (tick < 140)
             {
-                if (!hasSteered) return "全屏拖动转向 · 金点较弱可尝试吞食";
-                if (!hasBoosted) return "第二根手指按住加速 · 金点较弱可尝试吞食";
-                return "金点较弱 · 靠近可尝试吞食";
+                if (!hasSteered) return "全屏拖动转向\n金点较弱 · 红叉处身体有危险";
+                if (!hasBoosted) return "第二根手指按住加速\n金点较弱 · 红叉处身体有危险";
+                return "金点较弱 · 靠近可尝试吞食\n红叉处身体有危险";
             }
             return tick < 200 ? "围住对手可获得短时强化" : "时间到按当前长度排名 · 同长比淘汰";
         }

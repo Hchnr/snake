@@ -426,7 +426,7 @@ namespace SnakeClub.Core
                 target.eliminatedBy = source.eliminatedBy; target.eliminationReason = source.eliminationReason;
                 target.angle = source.motion.Angle * (float)(Math.PI * 2 / 65536); target.boosting = source.alive && source.motion.Boosting;
                 target.rebound = source.motion.ReboundTicks / (float)TickRate;
-                target.segments.Clear(); target.strengthWeakSegments.Clear();
+                target.segments.Clear(); target.strengthWeakSegments.Clear(); target.strengthThreatSegments.Clear();
                 bool eligible = canCompare && i != 0 && source.alive && source.shieldTicks <= 0 &&
                     source.motion.Length > PveFixedMotion.MinimumLength && !strengthCombat.IsPairCoolingDown(Tick + 1L, viewer.id, source.id);
                 var defendingPower = eligible ? StrengthFor(source) : default;
@@ -434,7 +434,31 @@ namespace SnakeClub.Core
                 {
                     target.segments.Add(ToPoint(source.motion.Segments[j]));
                     bool weak = eligible && j > 0 && BodyStrength.TryCalculate(defendingPower, j, out var part) && BodyStrength.CanEat(viewerPower.attack, part.defense);
-                    if (StrengthPreview) target.strengthWeakSegments.Add(weak);
+                    if (StrengthPreview) { target.strengthWeakSegments.Add(weak); target.strengthThreatSegments.Add(false); }
+                }
+            }
+            // Indicate only the nearest actual player-body segment for each
+            // nearby opponent. This is a current-state cue, not a prediction.
+            if (canCompare && viewer.motion.Length > PveFixedMotion.MinimumLength)
+            {
+                var ownBody = StrengthFor(viewer);
+                for (int i = 1; i < fighters.Length; i++)
+                {
+                    var other = fighters[i];
+                    if (!other.alive || other.shieldTicks > 0 || strengthCombat.IsPairCoolingDown(Tick + 1L, other.id, viewer.id)) continue;
+                    long headDx = (long)other.motion.X - viewer.motion.X, headDy = (long)other.motion.Y - viewer.motion.Y;
+                    if (headDx * headDx + headDy * headDy < 1440L * 1440L) continue;
+                    int closest = -1; long distance = 4500L * 4500L;
+                    for (int j = 1; j < viewer.motion.Length; j++)
+                    {
+                        var point = viewer.motion.Segments[j];
+                        long dx = (long)other.motion.X - point.x, dy = (long)other.motion.Y - point.y;
+                        long candidate = dx * dx + dy * dy;
+                        if (candidate < distance) { distance = candidate; closest = j; }
+                    }
+                    if (closest >= 0 && BodyStrength.TryCalculate(StrengthFor(other), 0, out var attack) &&
+                        BodyStrength.TryCalculate(ownBody, closest, out var defense) && BodyStrength.CanEat(attack.attack, defense.defense))
+                        projection.snakes[0].strengthThreatSegments[closest] = true;
                 }
             }
             for (int i = 0; i < fruit.Count; i++) { projection.fruits[i].position = ToPoint(fruit[i].position); projection.fruits[i].color = fruit[i].color; }

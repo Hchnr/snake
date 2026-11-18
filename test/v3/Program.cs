@@ -136,6 +136,7 @@ var cases = new (string name, Action run)[]
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
+    ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1744,6 +1745,40 @@ static void StrengthBotHeadCases()
     Check(Heading(repeated) == away, "head avoidance was not deterministic");
 }
 
+static void StrengthBodyThreatCases()
+{
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-13500, 3000, 0, 16));
+    for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+    var marks = world.RenderState().snakes[0].strengthThreatSegments;
+    Check(marks.Count == 16 && marks[15] && marks.Count(x => x) == 1, "nearby edible tail not marked");
+    var combat = typeof(PveFixedWorld).GetField("strengthCombat", flags).GetValue(world);
+    var cooldowns = (Dictionary<(string attacker, string defender), long>)typeof(StrengthBodyCombat).GetField("nextHit", flags).GetValue(combat);
+    cooldowns[("bot-1", "you")] = 9;
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "cooling attacker generated a warning");
+    cooldowns.Clear();
+    actors[1].shieldTicks = 1;
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "protected attacker generated a warning");
+    actors[1].shieldTicks = 0; actors[0].shieldTicks = 1;
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "protected player generated a warning");
+    actors[0].shieldTicks = 0;
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-13500, 4501, 0, 16));
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "distant attacker generated a warning");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 2000, 0, 16));
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "strong nearest segment incorrectly marked");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-1000, 0, 0, 40));
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "head contact should take precedence over body warnings");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-13500, 3000, 0, 16)) { alive = false };
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "dead attacker generated a warning");
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 5));
+    actors[1].alive = true;
+    Check(!world.RenderState().snakes[0].strengthThreatSegments.Any(x => x), "minimum-length body generated a warning");
+    Check(new PveFixedWorld(42, false, null).RenderState().snakes.All(s => s.strengthThreatSegments.Count == 0), "warning leaked into legacy rules");
+}
+
 static void StrengthHeadWarningCases()
 {
     var world = new PveFixedWorld(42, false, null, strengthPreview: true);
@@ -1772,7 +1807,8 @@ static void StrengthWeakPointCases()
     Check(StrengthTutorialHints.Select(0, false, false).Contains("全屏拖动") && StrengthTutorialHints.Select(0, false, false).Contains("弹开") &&
         !StrengthTutorialHints.Select(0, true, false).Contains("全屏拖动"), "strength tutorial did not follow steering");
     Check(StrengthTutorialHints.Select(80, false, false).Contains("全屏拖动") && StrengthTutorialHints.Select(80, true, false).Contains("第二根手指") &&
-        !StrengthTutorialHints.Select(80, true, true).Contains("第二根手指") && StrengthTutorialHints.Select(80, true, true).Contains("金点"),
+        !StrengthTutorialHints.Select(80, true, true).Contains("第二根手指") && StrengthTutorialHints.Select(80, true, true).Contains("金点") &&
+        StrengthTutorialHints.Select(80, true, true).Contains("红叉"),
         "strength tutorial did not follow actual steering and boost");
     Check(StrengthTutorialHints.Select(140, true, true).Contains("围住") && StrengthTutorialHints.Select(200, true, true).Contains("当前长度") &&
         StrengthTutorialHints.Select(260, false, false) == "", "strength tutorial did not complete on time");

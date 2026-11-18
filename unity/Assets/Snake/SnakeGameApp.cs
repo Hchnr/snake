@@ -742,6 +742,12 @@ namespace SnakeClub
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
             else if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.FindBeforeProtectionEnds(state, playerId, out _))
                 Label(new Rect(230, 1640, 620, 64), "附近有对手 · 保护即将结束", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
+            bool strengthBodyWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && me != null && me.strengthThreatSegments.Contains(true);
+            if (strengthBodyWarning)
+            {
+                Panel(new Rect(230, 1525, 620, 70), new Color(.12f, .055f, .045f, .90f));
+                Label(new Rect(245, 1530, 590, 60), "红叉处身体有危险 · 留意对手", 23, new Color(1f, .83f, .72f), TextAnchor.MiddleCenter, true);
+            }
             string boostHint = depthMode && !paused ? DepthChallenge.ReboundBoostHint(me) : "";
             if (!string.IsNullOrEmpty(boostHint))
             {
@@ -753,6 +759,7 @@ namespace SnakeClub
                 DrawNames(state);
                 edgeObstacles.Clear();
                 if (strengthHeadWarning) edgeObstacles.Add(new EdgeObstacle(250, 1635, 580, 74));
+                if (strengthBodyWarning) edgeObstacles.Add(new EdgeObstacle(230, 1525, 620, 70));
                 foreach (var entry in nameplateEntries)
                     edgeObstacles.Add(new EdgeObstacle(entry.box.x, entry.box.y, entry.box.width, entry.box.height));
                 bool hasObjectiveEdge = DrawEventTargetEdge(state, out Rect objectiveEdge);
@@ -935,6 +942,11 @@ namespace SnakeClub
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
             if (!paused && fixedPve != null && fixedPve.StrengthPreview && fixedPve.TryFindNearbyHeadThreat(playerId, out _))
                 nameplates.Reserve(250, 1635, 580, 74);
+            if (!paused && fixedPve != null && fixedPve.StrengthPreview)
+            {
+                var player = world.snakes.Find(s => s.id == playerId);
+                if (player != null && player.strengthThreatSegments.Contains(true)) nameplates.Reserve(230, 1525, 620, 70);
+            }
             if (StrengthIntroVisible()) nameplates.Reserve(100, 550, 880, 100);
             else if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
             {
