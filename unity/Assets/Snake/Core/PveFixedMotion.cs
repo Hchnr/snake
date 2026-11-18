@@ -119,7 +119,20 @@ namespace SnakeClub.Core
             long currentDistance = (long)(x - point.x) * (x - point.x) + (long)(y - point.y) * (y - point.y);
             long otherDistance = (long)(otherX - point.x) * (otherX - point.x) + (long)(otherY - point.y) * (otherY - point.y);
             if (currentDistance < 1116L * 1116L && otherDistance > currentDistance)
-            { x = otherX; y = otherY; dx = -dx; dy = -dy; }
+            { x = otherX; y = otherY; dx = -dx; dy = -dy; currentDistance = otherDistance; }
+            // At a corner both opposite normals can be clipped by the walls.
+            // Fall back toward the arena interior so the head actually clears
+            // this contact instead of repeatedly colliding at the same point.
+            if (currentDistance < 1116L * 1116L)
+            {
+                dx = -point.x; dy = -point.y;
+                distance = Distance(dx, dy);
+                if (distance > 0)
+                {
+                    x = Clamp(point.x + (int)((long)dx * separation / distance), -Edge, Edge);
+                    y = Clamp(point.y + (int)((long)dy * separation / distance), -Edge, Edge);
+                }
+            }
             PlaceSeparatedHead(x, y, dx, dy);
         }
         internal void PlaceSeparatedHead(int x, int y, int dx, int dy)
