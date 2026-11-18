@@ -17,8 +17,9 @@ namespace SnakeClub.Core
     {
         public const string ExperimentalRules = "fixed-pve-experiment-1";
         // Internal development markers, never release or rewards rulesets.
-        public const string PreviousExperimentalStrengthRules = "strength-pve-dev-1";
-        public const string ExperimentalStrengthRules = "strength-pve-dev-2";
+        public const string OldestExperimentalStrengthRules = "strength-pve-dev-1";
+        public const string PreviousExperimentalStrengthRules = "strength-pve-dev-2";
+        public const string ExperimentalStrengthRules = "strength-pve-dev-3";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
@@ -224,6 +225,7 @@ namespace SnakeClub.Core
                 if (distance < closest) { closest = distance; nearest = i; }
             }
             long vx = 0, vy = 0;
+            bool strengthObjective = false;
             if (nearest >= 0 && !StrengthPreview)
             {
                 int sign = self.motion.Length >= fighters[nearest].motion.Length || closest > 12000L * 12000L ? 1 : -1;
@@ -247,17 +249,17 @@ namespace SnakeClub.Core
                         if (distance >= bestTarget) continue;
                         BodyStrength.TryCalculate(defense, part, out var body);
                         if (!BodyStrength.CanEat(attack.attack, body.defense)) continue;
-                        bestTarget = distance; vx = dx * 2; vy = dy * 2;
+                        bestTarget = distance; vx = dx * 2; vy = dy * 2; strengthObjective = true;
                     }
                 }
                 if (StrengthPickupVisible || StrengthPickupPending)
                 {
                     long dx = (long)StrengthPickupPosition.x - self.motion.X, dy = (long)StrengthPickupPosition.y - self.motion.Y;
-                    if (dx * dx + dy * dy < 18000L * 18000L) { vx += dx * 2; vy += dy * 2; }
+                    if (dx * dx + dy * dy < 18000L * 18000L) { vx += dx * 2; vy += dy * 2; strengthObjective = true; }
                 }
             }
             else { AccumulateTrailAvoidance(self, fighters, ref vx, ref vy); AccumulateHeadAvoidance(self, fighters, ref vx, ref vy); }
-            if (nearest < 0 || closest > 10000L * 10000L)
+            if (nearest < 0 || closest > 10000L * 10000L || (StrengthPreview && !strengthObjective))
             {
                 long closestFruit = 18000L * 18000L; int fruitIndex = -1;
                 for (int i = 0; i < fruit.Count; i++)

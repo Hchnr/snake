@@ -25,7 +25,7 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     const playerId = 'strength-test-player';
     const date = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
     const snapshot = { version: 'strength-eval-setup-1', firstRun: true };
-    const base = { playerId, mode: 'strength-eval', date, rules: 'strength-pve-dev-2', seed: 73,
+    const base = { playerId, mode: 'strength-eval', date, rules: 'strength-pve-dev-3', seed: 73,
       startedAt: Date.now() - 120000, expiresAt: Date.now() + 300000, completed: false, strengthStartConfig: snapshot };
     const valid = { ...base, id: 'valid' };
     const growth = { ...base, id: 'growth', strengthStartConfig: { version: 'strength-eval-setup-2', firstRun: true, accountLevel: 8, basePower: 103, hardness: 14 } };
@@ -38,12 +38,14 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     const oldReceipt = { ...base, id: 'old-receipt', completed: true, expiresAt: Date.now() - 1000, score: 100, fixedWinner: 'you', fixedKills: 1, fixedLength: 20 };
     const oldRulesPending = { ...base, id: 'old-rules-pending', rules: 'strength-pve-dev-1' };
     const oldRulesReceipt = { ...oldReceipt, id: 'old-rules-receipt', rules: 'strength-pve-dev-1' };
+    const previousPending = { ...base, id: 'previous-pending', rules: 'strength-pve-dev-2' };
+    const previousReceipt = { ...oldReceipt, id: 'previous-receipt', rules: 'strength-pve-dev-2' };
     const unknownReceipt = { ...oldReceipt, id: 'unknown-receipt', rules: 'strength-pve-dev-unknown' };
     const fixture = path.join(temp, 'data.json');
     fs.writeFileSync(fixture, JSON.stringify({ players: { [playerId]: { playerId, dailyKey: date, coins: 73, experience: 29,
       tutorialComplete: true, completedMatches: 4 }, 'other-player': { playerId: 'other-player', dailyKey: date } },
       runs: { valid, growth, 'tampered-growth': tamperedGrowth, fast, unknown, missing, 'bad-snapshot': badSnapshot, expired, 'old-receipt': oldReceipt,
-        'old-rules-pending': oldRulesPending, 'old-rules-receipt': oldRulesReceipt, 'unknown-receipt': unknownReceipt } }));
+        'old-rules-pending': oldRulesPending, 'old-rules-receipt': oldRulesReceipt, 'previous-pending': previousPending, 'previous-receipt': previousReceipt, 'unknown-receipt': unknownReceipt } }));
     const port = await new Promise((resolve, reject) => {
       const socket = net.createServer(); socket.once('error', reject);
       socket.listen(0, '127.0.0.1', () => { const value = socket.address().port; socket.close(() => resolve(value)); });
@@ -78,6 +80,9 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     assert.deepEqual((await request('internal/strength-pve/verify', payload(oldReceipt, 'broken'))).data,
       { ok: true, verified: true, experimental: true, rules: base.rules, ticks: 100, winner: 'you', kills: 1, length: 20, stateDigest: '', rewards: 0 });
     assert.equal((await request('internal/strength-pve/verify', payload(oldRulesPending))).status, 400);
+    assert.equal((await request('internal/strength-pve/verify', payload(previousPending))).status, 400);
+    assert.deepEqual((await request('internal/strength-pve/verify', payload(previousReceipt, 'broken'))).data,
+      { ok: true, verified: true, experimental: true, rules: 'strength-pve-dev-2', ticks: 100, winner: 'you', kills: 1, length: 20, stateDigest: '', rewards: 0 });
     assert.equal((await request('internal/strength-pve/verify', payload(unknownReceipt))).status, 400);
     assert.deepEqual((await request('internal/strength-pve/verify', payload(oldRulesReceipt, 'broken'))).data,
       { ok: true, verified: true, experimental: true, rules: 'strength-pve-dev-1', ticks: 100, winner: 'you', kills: 1, length: 20, stateDigest: '', rewards: 0 });
@@ -107,7 +112,7 @@ test('local strength verifier binds seed and snapshot without rewards or legacy 
     assert.equal(profile.coins, 73); assert.equal(profile.experience, 29); assert.equal(profile.completedMatches, 4);
     const created = await request('internal/strength-pve/start', {});
     assert.equal(created.status, 200); assert.equal(created.data.mode, 'strength-eval');
-    assert.equal(created.data.rules, 'strength-pve-dev-2');
+    assert.equal(created.data.rules, 'strength-pve-dev-3');
     assert.equal(created.data.strengthStartConfig.version, 'strength-eval-setup-2');
     assert.equal(created.data.strengthStartConfig.firstRun, false);
     assert.equal(created.data.strengthStartConfig.accountLevel, 1);

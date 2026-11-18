@@ -30,7 +30,7 @@ match = pattern.search(reference)
 if not match:
     sys.exit('Desktop reference vector missing.')
 expected = match.group(1)
-if len(expected.split(',')) != 12:
+if len(expected.split(',')) != 18:
     sys.exit('Desktop strength matrix is incomplete.')
 coverage = 0
 for case in expected.split(','):
@@ -98,7 +98,7 @@ internal static class FixedVectorDiagnostic {
         if not actual_match:
             sys.exit('WebGL integer vector missing: ' + result.stdout[-1000:])
         actual = actual_match.group(1)
-        if len(actual.split(',')) != 12:
+        if len(actual.split(',')) != 18:
             sys.exit('WebGL strength matrix is incomplete.')
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
@@ -107,6 +107,6 @@ internal static class FixedVectorDiagnostic {
                     print('First differing matrix case: .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: strength preview differs across runtimes; do not enable replay-based rewards.')
-        print('MATCH: 12 sampled strength-preview matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
+        print('MATCH: 18 sampled strength-preview matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)
