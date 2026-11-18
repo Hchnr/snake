@@ -98,6 +98,7 @@ var cases = new (string name, Action run)[]
     ("strength loops reward real maneuver without elimination", StrengthLoopCases),
     ("strength match levels track actual actions after combat", StrengthLevelCases),
     ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
+    ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1601,6 +1602,42 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void StrengthNoticeCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+    fighters[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-11700, 0, 32768, 16));
+    for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+    ((List<PveFixedFruit>)world.Fruit).Clear();
+    world.Step(0, false);
+    Check(world.LastPlayerAttackTick == 1 && world.LastPlayerDamageTick == 1 && world.LastPlayerAttackCount > 0 && world.LastPlayerDamageCount > 0,
+        "real mutual body collision did not record both directions");
+    string notice = StrengthContactNotice.Text(world, 1, out bool warning);
+    Check(warning && notice.Contains("互相吞食") && notice.Contains("吃 " + world.LastPlayerAttackCount) &&
+        notice.Contains("失 " + world.LastPlayerDamageCount), "mutual bite omitted an actual outcome");
+    typeof(PveFixedWorld).GetProperty("LastPlayerBlockedTick").SetValue(world, 2);
+    notice = StrengthContactNotice.Text(world, 2, out warning);
+    Check(warning && notice.Contains("强度不足"), "older bite hid a newer blocked contact");
+    typeof(PveFixedWorld).GetProperty("LastPlayerHeadTieTick").SetValue(world, 3);
+    notice = StrengthContactNotice.Text(world, 3, out warning);
+    Check(warning && notice.Contains("势均力敌"), "older blocked contact hid a newer head tie");
+    Check(StrengthContactNotice.Text(world, 23, out _) == "" && StrengthContactNotice.Text(world, 0, out _) == "",
+        "expired or future event was shown");
+    Check(StrengthContactNotice.Text(new PveFixedWorld(42, false, null), 0, out _) == "", "strength feedback leaked into legacy");
+    var record = typeof(PveFixedWorld).GetMethod("RecordStrengthBite", flags);
+    var reversed = new PveFixedWorld(42, false, null, strengthPreview: true);
+    record.Invoke(reversed, new object[] { new BodyBite("bot-1", "you", 1, 2, 100, 50) });
+    record.Invoke(reversed, new object[] { new BodyBite("you", "bot-1", 1, 3, 100, 50) });
+    notice = StrengthContactNotice.Text(reversed, 0, out warning);
+    Check(warning && notice.Contains("吃 3 节") && notice.Contains("失 2 节"), "mutual feedback depended on bite order");
+    typeof(PveFixedWorld).GetProperty("Tick").SetValue(reversed, 1);
+    record.Invoke(reversed, new object[] { new BodyBite("you", "bot-1", 1, 1, 100, 50) });
+    notice = StrengthContactNotice.Text(reversed, 1, out warning);
+    Check(!warning && notice.Contains("吃掉身体 1 节"), "older damage hid a newer successful bite");
 }
 
 static void StrengthFairnessCases()

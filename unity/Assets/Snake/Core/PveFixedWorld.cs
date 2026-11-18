@@ -64,6 +64,10 @@ namespace SnakeClub.Core
         public int LastPlayerBiteTick { get; private set; } = -1;
         public int LastPlayerBiteCount { get; private set; }
         public bool LastPlayerWasBitten { get; private set; }
+        public int LastPlayerAttackTick { get; private set; } = -1;
+        public int LastPlayerAttackCount { get; private set; }
+        public int LastPlayerDamageTick { get; private set; } = -1;
+        public int LastPlayerDamageCount { get; private set; }
         public int LastPlayerBlockedTick { get; private set; } = -1;
         public int LastPlayerHeadTieTick { get; private set; } = -1;
         private readonly int[] strengthBuffTicks = new int[8];
@@ -515,6 +519,15 @@ namespace SnakeClub.Core
             return false;
         }
 
+        private void RecordStrengthBite(BodyBite bite)
+        {
+            AwardStrengthExperience(bite.attacker, bite.removed * 2);
+            if (bite.attacker == "you") { LastPlayerAttackTick = Tick; LastPlayerAttackCount = bite.removed; }
+            if (bite.defender == "you") { LastPlayerDamageTick = Tick; LastPlayerDamageCount = bite.removed; }
+            if (bite.attacker == "you" || bite.defender == "you")
+            { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
+        }
+
         public void Step(byte heading, bool boost)
         {
             if (Finished) return;
@@ -552,12 +565,7 @@ namespace SnakeClub.Core
                     foreach (var fighter in fighters)
                         if (fighter.alive && fighter.id == contact.attacker) { fighter.motion.SeparateFrom(contact.point, contact.tangent); break; }
                 }
-                foreach (var bite in bites)
-                {
-                    AwardStrengthExperience(bite.attacker, bite.removed * 2);
-                    if (bite.attacker == "you" || bite.defender == "you")
-                    { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
-                }
+                foreach (var bite in bites) RecordStrengthBite(bite);
                 for (int i = 0; i < fighters.Length; i++)
                     if (previouslyAlive[i] && !fighters[i].alive && fighters[i].credited)
                         AwardStrengthExperience(fighters[i].eliminatedBy, 5);
@@ -596,6 +604,28 @@ namespace SnakeClub.Core
             }
             if (!fighters[0].alive || living <= 1 || Tick >= maxTicks)
             { Finished = true; Winner = best >= 0 && !tied ? fighters[best].id : ""; if (eventActive) EndEvent(); }
+        }
+    }
+
+    // The most recent resolved contact takes precedence; simultaneous attacks
+    // and losses are both shown regardless of the order of combat outcomes.
+    public static class StrengthContactNotice
+    {
+        public static string Text(PveFixedWorld world, int tick, out bool warning)
+        {
+            warning = false;
+            if (world == null || !world.StrengthPreview || tick < 0) return "";
+            int Recent(int at) => at >= 0 && at <= tick && tick - at < 20 ? at : -1;
+            int attack = Recent(world.LastPlayerAttackTick), damage = Recent(world.LastPlayerDamageTick);
+            int blocked = Recent(world.LastPlayerBlockedTick), tie = Recent(world.LastPlayerHeadTieTick);
+            int latest = Math.Max(Math.Max(attack, damage), Math.Max(blocked, tie));
+            if (latest < 0) return "";
+            if (damage == latest && attack == latest)
+            { warning = true; return "互相吞食 · 吃 " + world.LastPlayerAttackCount + " 节 / 失 " + world.LastPlayerDamageCount + " 节"; }
+            if (damage == latest) { warning = true; return "身体被吃掉 " + world.LastPlayerDamageCount + " 节"; }
+            if (attack == latest) return "吃掉身体 " + world.LastPlayerAttackCount + " 节！";
+            warning = true;
+            return blocked == latest ? "强度不足 · 试试更弱的部位" : "势均力敌 · 双方弹开";
         }
     }
 }
