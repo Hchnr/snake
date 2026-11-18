@@ -383,6 +383,33 @@ namespace SnakeClub.Core
         }
     }
 
+    public readonly struct StrengthReactionPose
+    {
+        public readonly float ScaleX, ScaleY, DamageTint;
+        public StrengthReactionPose(float scaleX, float scaleY, float damageTint)
+        { ScaleX = scaleX; ScaleY = scaleY; DamageTint = damageTint; }
+    }
+
+    // Only the local player's real body-contact events feed this presentation.
+    // Simultaneous damage takes precedence so injury cannot be masked by a bite.
+    public static class StrengthReaction
+    {
+        private static float Pulse(float age, float duration)
+        {
+            if (float.IsNaN(age) || float.IsInfinity(age) || age < 0 || age >= duration) return 0;
+            return (float)Math.Sin(Math.PI * age / duration);
+        }
+        public static StrengthReactionPose Sample(float attackAge, float damageAge, bool reduced)
+        {
+            if (reduced) return new StrengthReactionPose(1, 1, 0);
+            float damage = Pulse(damageAge, .45f);
+            if (!float.IsNaN(damageAge) && damageAge >= 0 && damageAge < .45f)
+                return new StrengthReactionPose(1 + .10f * damage, 1 - .12f * damage, .25f * damage);
+            float attack = Pulse(attackAge, .35f);
+            return new StrengthReactionPose(1 - .05f * attack, 1 + .12f * attack, 0);
+        }
+    }
+
     // Visual state only: the simulation remains the source of angle and boost.
     // Uniform scaling preserves the source character's proportions.
     public sealed class CharacterMotion
