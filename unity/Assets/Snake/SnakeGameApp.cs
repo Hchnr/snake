@@ -730,7 +730,7 @@ namespace SnakeClub
                 captureVisible = point.z > 0 && projected.x >= 0 && projected.x <= 1080 && projected.y >= 0 && projected.y <= 1920;
             }
             string strengthNotice = StrengthContactNotice.Text(fixedPve, state != null ? state.tick : -1, out bool strengthWarning);
-            string captureText = CaptureNotice.Text(state, playerId, captureVisible);
+            string captureText = CaptureNotice.Text(state, playerId, captureVisible, fixedPve != null && fixedPve.StrengthPreview);
             if (string.IsNullOrEmpty(strengthNotice) && !string.IsNullOrEmpty(captureText))
                 Label(new Rect(240, 520, 600, 90), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
             string elimination = eliminationFeedback.Current(state);
