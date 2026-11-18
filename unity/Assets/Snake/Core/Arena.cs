@@ -88,6 +88,7 @@ namespace SnakeClub.Core
         public string captureOwner = "";
         public List<Point> capturePolygon = new List<Point>();
         // Local strength-practice presentation only; not a network event.
+        internal string strengthHeadThreat = "";
         internal int strengthLevelUpTick = -1, strengthLevelUp;
         internal int strengthAttackTick = -1, strengthDamageTick = -1;
         internal Point strengthAttackPoint, strengthDamagePoint;

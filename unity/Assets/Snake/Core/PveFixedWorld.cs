@@ -423,6 +423,7 @@ namespace SnakeClub.Core
             }
             projection.tick = Tick; projection.remaining = Math.Max(0, maxTicks - Tick) / (float)TickRate;
             projection.phase = Finished ? "ended" : "running"; projection.winner = Winner;
+            projection.strengthHeadThreat = TryFindNearbyHeadThreat(fighters[0].id, out var threatId) ? threatId : "";
             projection.eventKind = EventKind; projection.eventStatus = EventStatus; projection.eventTarget = EventTarget;
             projection.strengthPickupVisible = StrengthPreview && StrengthPickupVisible;
             projection.strengthPickupPending = StrengthPreview && !Finished && StrengthPickupPending;

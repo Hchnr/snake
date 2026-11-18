@@ -407,6 +407,15 @@ namespace SnakeClub.Tests.Editor
                     "expiring protection or nearby threat was not visible with reduced effects");
                 me.shield = other.shield = 0; renderer.Draw(state, "you");
                 Require(!rings["you"].enabled && arrow.enabled, "protection did not transition to current danger");
+                renderer.LegacyDangerWarning = false; renderer.StrengthBodyVisual = true;
+                typeof(ArenaState).GetField("strengthHeadThreat", flags).SetValue(state, "other"); renderer.Draw(state, "you");
+                Require(arrow.enabled && arrow.GetPosition(1).x > arrow.GetPosition(0).x,
+                    "strength warning did not point towards the actual opponent");
+                renderer.MotionPaused = true; renderer.Draw(state, "you"); Require(!arrow.enabled, "paused strength warning remained visible");
+                renderer.MotionPaused = false; other.alive = false; renderer.Draw(state, "you");
+                Require(!arrow.enabled, "dead opponent kept strength warning");
+                other.alive = true; typeof(ArenaState).GetField("strengthHeadThreat", flags).SetValue(state, ""); renderer.Draw(state, "you");
+                Require(!arrow.enabled, "strength warning appeared without an eligible threat");
                 state.phase = "ended"; renderer.Draw(state, "you"); Require(!arrow.enabled, "finished match kept the danger arrow");
                 Debug.Log("PASS Unity protection expiry stays legible with reduced effects");
             }
