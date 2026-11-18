@@ -12,7 +12,7 @@ namespace SnakeClub
             public string playerId, runId, token, inputs, mode, rules;
             public int score, seconds, actions;
         }
-        [Serializable] private sealed class PendingChallenges { public List<PendingChallenge> entries = new List<PendingChallenge>(); }
+        [Serializable] private sealed class PendingChallenges { public List<PendingChallenge> entries; }
 
         private GameApiClient api;
         private readonly PlayerProgress practiceProfile = new PlayerProgress();
@@ -198,7 +198,7 @@ namespace SnakeClub
                 });
                 return;
             }
-            if (!api.Connected) { BeginPve(null); resultNote = "离线练习不计账号奖励"; return; }
+            if (!api.Connected || ReadPending() == null) { BeginPve(null); resultNote = PendingStorageNotice(); return; }
             busy = true;
             api.Post("match/start", new ApiRequest(), reply =>
             {
@@ -216,7 +216,7 @@ namespace SnakeClub
             activeFriendDate = friendDate; activeFriendRules = friendRules;
             string requestedRules = activeFriendScore >= 0 ? activeFriendRules : DailyMatch.RulesVersion;
             friendDate = ""; friendRules = "";
-            if (!api.Connected) { BeginDaily(null); return; }
+            if (!api.Connected || ReadPending() == null) { BeginDaily(null); resultNote = PendingStorageNotice(); return; }
             busy = true;
             api.Post("challenge/start?rules=" + requestedRules, new ApiRequest(), reply => { busy = false; BeginDaily(reply.ok ? reply : null); });
         }
@@ -331,10 +331,11 @@ namespace SnakeClub
             }
             string runId = activeRun.runId;
             var pending = ReadPending();
+            if (pending == null) { resultNote = "成绩未保存：本机结算记录无法读取"; return; }
             pending.entries.Add(new PendingChallenge { playerId = activePlayerId, runId = runId, token = activeRun.token,
                 mode = daily != null ? "daily" : "pve", rules = activeRun.rules, inputs = daily != null || !depthMode ? Convert.ToBase64String(runInputs.ToArray()) : "",
                 score = daily != null ? daily.Score : 0, seconds = state.tick / 20, actions = controlActions });
-            SavePending(pending);
+            if (!SavePending(pending)) { resultNote = "成绩未保存：本机存储不可用"; return; }
             resultNote = api.Connected && appFocused && !appPaused && platformVisible && !adShowing ? "正在结算…" : "结果已保存，返回游戏后重试";
             FlushPending();
         }
@@ -363,18 +364,37 @@ namespace SnakeClub
             });
         }
 
+        // Never replace unreadable settlement data with an empty queue. A damaged
+        // queue must remain intact for recovery instead of erasing earlier runs.
         private static PendingChallenges ReadPending()
         {
-            string raw = PlayerPrefs.GetString(PendingKey, "");
-            if (!string.IsNullOrEmpty(raw)) try { var data = JsonUtility.FromJson<PendingChallenges>(raw); if (data != null && data.entries != null) return data; } catch (Exception) { }
-            return new PendingChallenges();
+            try
+            {
+                string raw = PlayerPrefs.GetString(PendingKey, "");
+                if (string.IsNullOrEmpty(raw)) return PlayerPrefs.HasKey(PendingKey) ? null : new PendingChallenges { entries = new List<PendingChallenge>() };
+                // JsonUtility silently materializes an empty list for missing or null
+                // fields, so check the envelope produced by our serializer first.
+                if (!System.Text.RegularExpressions.Regex.IsMatch(raw, @"^\s*\{\s*""entries""\s*:\s*\[.*\]\s*\}\s*$", System.Text.RegularExpressions.RegexOptions.Singleline)) return null;
+                var data = JsonUtility.FromJson<PendingChallenges>(raw);
+                return data != null && data.entries != null && !data.entries.Exists(item => item == null) ? data : null;
+            }
+            catch (Exception) { return null; }
         }
 
-        private static void SavePending(PendingChallenges data)
+        private static bool SavePending(PendingChallenges data)
         {
-            PlayerPrefs.SetString(PendingKey, JsonUtility.ToJson(data));
-            PlayerPrefs.Save();
+            try
+            {
+                PlayerPrefs.SetString(PendingKey, JsonUtility.ToJson(data));
+                PlayerPrefs.Save();
+                return true;
+            }
+            catch (Exception) { return false; }
         }
+
+        private string PendingStorageNotice() => api.Connected
+            ? "本机结算记录无法读取，本局仅供练习"
+            : "离线练习不计账号奖励";
 
         private void PumpIncomingFriend()
         {
@@ -411,7 +431,9 @@ namespace SnakeClub
                 (inGame && state != null && state.phase == "running") || Time.unscaledTime < nextPendingPoll ||
                 !pendingRetry.Due(Time.unscaledTime)) return;
             nextPendingPoll = Time.unscaledTime + 2f;
-            var entries = ReadPending().entries;
+            var pending = ReadPending();
+            if (pending == null) { frontNotice = "本机结算记录无法读取，已停止自动结算"; return; }
+            var entries = pending.entries;
             if (api.Profile == null)
             {
                 if (entries.Exists(item => item != null && !string.IsNullOrEmpty(item.playerId))) ConnectProfile();
@@ -426,6 +448,7 @@ namespace SnakeClub
         {
             if (!appFocused || appPaused || !platformVisible || adShowing || flushing || !api.Connected) return;
             var pending = ReadPending();
+            if (pending == null) { frontNotice = "本机结算记录无法读取，已停止自动结算"; return; }
             var entry = pending.entries.Find(item => item != null && PendingRetrySchedule.OwnedBy(item.playerId, api.Profile.playerId) &&
                 settlementRetry.Due(item.playerId, item.runId, Time.unscaledTime));
             if (entry == null) return;
@@ -438,7 +461,21 @@ namespace SnakeClub
                 if (reply.ok || terminal)
                 {
                     settlementRetry.Remove(entry.playerId, entry.runId);
-                    var latest = ReadPending(); latest.entries.RemoveAll(item => item != null && item.runId == entry.runId && PendingRetrySchedule.OwnedBy(item.playerId, entry.playerId)); SavePending(latest);
+                    var latest = ReadPending();
+                    if (latest == null)
+                    {
+                        frontNotice = "本机结算记录无法读取，已停止自动结算";
+                        if (activeRun != null && activeRun.runId == entry.runId) resultNote = "结算记录无法读取，请稍后查看账号进度";
+                        return;
+                    }
+                    latest.entries.RemoveAll(item => item != null && item.runId == entry.runId && PendingRetrySchedule.OwnedBy(item.playerId, entry.playerId));
+                    if (!SavePending(latest))
+                    {
+                        frontNotice = "结算记录保存失败，请稍后查看账号进度";
+                        if (activeRun != null && activeRun.runId == entry.runId) resultNote = "结算状态保存失败，请稍后查看账号进度";
+                        settlementRetry.Fail(entry.playerId, entry.runId, Time.unscaledTime);
+                        return;
+                    }
                     if (!reply.ok && (activeRun == null || activeRun.runId != entry.runId)) frontNotice = "待结算对局未通过：" + reply.error;
                     if (activeRun != null && activeRun.runId == entry.runId)
                     {
