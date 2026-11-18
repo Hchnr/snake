@@ -92,6 +92,7 @@ var cases = new (string name, Action run)[]
     ("ordinary PvE bots avoid head threats and pursue visible players", ArenaBotEncounterCases),
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
     ("experimental body strength is bounded and weakens toward the tail", BodyStrengthCases),
+    ("experimental strength combat bites real body segments deterministically", StrengthBodyCombatCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1591,6 +1592,63 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void StrengthBodyCombatCases()
+{
+    PveFixedFighter Fighter(string id, int x, int y = 0, int length = 16) => new(id, new PveFixedMotion(x, y, 0, length));
+    StrengthInputs Power(int value = 100, int hardness = 0) => new() { basePower = value, hardness = hardness,
+        speed = 1000, baseSpeed = 1000, randomFactor = 1000, operationFactor = 1000 };
+    var attacker = Fighter("attacker", -11700); var defender = Fighter("defender", 0);
+    var combat = new StrengthBodyCombat();
+    var bites = combat.Resolve(0, new[] { attacker, defender }, new[] { Power(), Power() });
+    Check(bites.Count == 1 && bites[0].segment == 13 && bites[0].removed == 3 &&
+        attacker.motion.Length == 19 && defender.motion.Length == 13 && attacker.alive && defender.alive,
+        "strong head did not consume the actual contacted tail or grow by the removed amount");
+    Check(combat.Resolve(1, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "pair cooldown did not prevent repeat bites");
+    bites = combat.Resolve(8, new[] { attacker, defender }, new[] { Power(), Power() });
+    Check(bites.Count == 1 && bites[0].removed == 1 && defender.motion.Length == 12, "bite did not recover after cooldown");
+
+    attacker = Fighter("attacker", -11700); defender = Fighter("defender", 0);
+    combat = new StrengthBodyCombat();
+    Check(combat.Resolve(0, new[] { attacker, defender }, new[] { Power(), Power(300, 300) }).Count == 0 && attacker.alive && defender.alive,
+        "weaker head consumed a stronger body or died merely from touching it");
+    defender.shieldTicks = 1;
+    Check(combat.Resolve(1, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "protected body was eaten");
+    defender.shieldTicks = 0; attacker.shieldTicks = 1;
+    Check(combat.Resolve(2, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "protected attacker ate a body");
+    attacker.shieldTicks = 0; defender.alive = false;
+    Check(combat.Resolve(3, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "dead body was eaten");
+    attacker = Fighter("attacker", -3600); defender = Fighter("defender", 0);
+    Check(new StrengthBodyCombat().Resolve(0, new[] { attacker, defender }, new[] { Power(), Power(110) }).Count == 0,
+        "a weaker head bypassed the nearest protected segment to eat a weaker neighboring segment");
+
+    string Contest(bool reverse)
+    {
+        var a = Fighter("a", -11700); var b = Fighter("b", -11700); var target = Fighter("target", 0);
+        var actors = reverse ? new[] { target, b, a } : new[] { a, b, target };
+        var entries = new[] { Power(), Power(), Power() };
+        var outcome = new StrengthBodyCombat().Resolve(0, actors, entries);
+        Check(outcome.Count == 1 && target.motion.Length == 13, "simultaneous bites double-consumed a body");
+        return outcome[0].attacker;
+    }
+    Check(Contest(false) == "a" && Contest(true) == "a", "tie ownership depended on list order");
+    var weaker = Fighter("a", -11700); var stronger = Fighter("b", -11700); var victim = Fighter("target", 0);
+    var contested = new StrengthBodyCombat().Resolve(0, new[] { weaker, stronger, victim }, new[] { Power(), Power(130), Power() });
+    Check(contested.Count == 1 && contested[0].attacker == "b", "ID order beat a stronger simultaneous attack");
+    var mutualA = Fighter("a", 0);
+    var mutualB = new PveFixedFighter("b", new PveFixedMotion(-11700, 0, 32768, 16));
+    var mutual = new StrengthBodyCombat().Resolve(0, new[] { mutualA, mutualB }, new[] { Power(), Power() });
+    Check(mutual.Count == 2 && mutualA.motion.Length == 16 && mutualB.motion.Length == 16 &&
+        mutual.Any(x => x.attacker == "a" && x.defender == "b" && x.removed == 3) &&
+        mutual.Any(x => x.attacker == "b" && x.defender == "a" && x.removed == 3),
+        "simultaneous mutual bites did not use the same snapshot and apply both growth awards");
+    var tiny = Fighter("tiny", 0, length: 5); attacker = Fighter("attacker", -2700);
+    Check(new StrengthBodyCombat().Resolve(0, new[] { attacker, tiny }, new[] { Power(), Power() }).Count == 0 && tiny.motion.Length == 5,
+        "minimum body length was not preserved");
+    bool rejected = false;
+    try { combat.Resolve(3, new[] { attacker, defender }, new[] { Power(), Power() }); } catch (ArgumentOutOfRangeException) { rejected = true; }
+    Check(rejected, "repeated tick was accepted");
 }
 
 static void BodyStrengthCases()

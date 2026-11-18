@@ -78,6 +78,15 @@ namespace SnakeClub.Core
                     tail.y + (int)((long)dy * Spacing / distance)));
             }
         }
+        // Used only by the isolated strength combat prototype. The head and
+        // minimum body remain intact; surviving segments keep their order.
+        internal int RemoveBodySegments(int start, int count)
+        {
+            if (start < 1 || start >= Length || count <= 0) return 0;
+            int removed = Math.Min(Math.Min(count, Length - start), Length - MinimumLength);
+            if (removed > 0) segments.RemoveRange(start, removed);
+            return removed;
+        }
         // Detects geometry only: cooldowns, immunity and victim resolution
         // belong to the future match rules, not to this movement primitive.
         public bool TryCapture(out CaptureLoop loop) => CaptureGeometry.TryLoop(PreviousHead, segments, out loop);
