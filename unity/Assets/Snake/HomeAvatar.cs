@@ -27,7 +27,8 @@ namespace SnakeClub
         private GameObject model, ornaments;
         private Transform head, tail;
         private Camera portrait;
-        private SpriteRenderer referenceCharacter;
+        private SpriteRenderer referenceCharacter, referenceHead;
+        private Transform referenceHeadPivot;
         private RenderTexture texture;
         private Mesh bodyMesh, coneMesh;
         private Vector3[] vertices;
@@ -79,6 +80,13 @@ namespace SnakeClub
             reference.transform.rotation = portrait.transform.rotation;
             referenceCharacter = reference.AddComponent<SpriteRenderer>();
             referenceCharacter.enabled = false;
+            var pivot = new GameObject("Wenda reference head pivot");
+            pivot.layer = 31; pivot.transform.SetParent(reference.transform, false);
+            pivot.transform.localPosition = new Vector3(0, -.32f, 0); referenceHeadPivot = pivot.transform;
+            var headLayer = new GameObject("Wenda reference head");
+            headLayer.layer = 31; headLayer.transform.SetParent(pivot.transform, false);
+            headLayer.transform.localPosition = new Vector3(0, .32f, 0);
+            referenceHead = headLayer.AddComponent<SpriteRenderer>(); referenceHead.sortingOrder = 1; referenceHead.enabled = false;
 
             model = new GameObject("Portrait Snake"); model.transform.SetParent(transform, false); model.transform.position = origin;
             body = Material(Color.white, .48f); accent = Material(Color.white, .3f);
@@ -240,8 +248,12 @@ namespace SnakeClub
             var reference = SkinVisual.DisplaySprite(skin);
             if (referenceCharacter != null)
             {
-                referenceCharacter.sprite = reference;
+                Sprite layerBody = null, layerHead = null;
+                bool layered = reference != null && SkinVisual.TryWendaLayers(skin, out layerBody, out layerHead);
+                referenceCharacter.sprite = layered ? layerBody : reference;
                 referenceCharacter.enabled = reference != null;
+                if (referenceHead != null) { referenceHead.sprite = layered ? layerHead : null; referenceHead.enabled = layered; }
+                if (referenceHeadPivot != null) referenceHeadPivot.localRotation = Quaternion.identity;
             }
             model.SetActive(reference == null);
             if (reference != null) return;
@@ -289,6 +301,8 @@ namespace SnakeClub
                 float motion = ReducedEffects ? 0f : Mathf.Sin(time * 2f);
                 referenceCharacter.transform.position = portrait.transform.position + portrait.transform.forward * 8f + portrait.transform.up * (motion * .055f + resultPose.Lift);
                 referenceCharacter.transform.rotation = portrait.transform.rotation * Quaternion.Euler(0, 0, motion * 1.4f + resultPose.Tilt);
+                if (referenceHead != null && referenceHead.enabled)
+                    referenceHeadPivot.localRotation = Quaternion.Euler(0, 0, ReducedEffects ? 0 : Mathf.Sin(time * 2.4f) * 2.5f);
                 return;
             }
             float motionTime = ReducedEffects ? 0f : time;

@@ -21,6 +21,29 @@ namespace SnakeClub.Editor
             };
         }
 
+        // Optional internal-only Wenda head/body layers; other reference
+        // characters and normal builds do not depend on this local sample.
+        public static void StageOptionalReferenceLayers(string staged)
+        {
+            const string source = "Assets/Editor/ReferenceSkins/wenda_layers";
+            bool hasBody = File.Exists(source + "/body.png"), hasHead = File.Exists(source + "/head.png");
+            if (!hasBody && !hasHead) return;
+            if (!hasBody || !hasHead) throw new InvalidOperationException("Wenda reference requires both local layers.");
+            if (string.IsNullOrEmpty(AssetDatabase.CreateFolder(staged, "wenda_layers")))
+                throw new InvalidOperationException("Could not create reference layer staging folder.");
+            foreach (string name in new[] { "body", "head" })
+                if (!AssetDatabase.CopyAsset(source + "/" + name + ".png", staged + "/wenda_layers/" + name + ".png"))
+                    throw new InvalidOperationException("Could not stage Wenda reference layer: " + name);
+            AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+            foreach (string name in new[] { "body", "head" })
+            {
+                var importer = AssetImporter.GetAtPath(staged + "/wenda_layers/" + name + ".png") as TextureImporter;
+                if (importer == null) throw new InvalidOperationException("Could not configure Wenda reference layer: " + name);
+                importer.npotScale = TextureImporterNPOTScale.None; importer.mipmapEnabled = false;
+                importer.alphaIsTransparency = true; importer.maxTextureSize = 1024; importer.SaveAndReimport();
+            }
+        }
+
         private static void EnsureScene()
         {
             if (!Directory.Exists("Assets/Scenes")) Directory.CreateDirectory("Assets/Scenes");
@@ -93,6 +116,7 @@ namespace SnakeClub.Editor
                             throw new InvalidOperationException("Could not stage reference image: " + source);
                     }
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                    StageOptionalReferenceLayers(staged);
                 }
                 result = BuildPipeline.BuildPlayer(new[] { ScenePath }, output, target, BuildOptions.None);
             }
