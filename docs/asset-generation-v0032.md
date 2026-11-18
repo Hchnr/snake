@@ -25,6 +25,8 @@
 
 本机位置：`unity/Assets/Editor/ReferenceSkins/`，该目录已被 Git 忽略，公开仓库不含这些图片。这些是基于 [Sprunki 非官方角色资料](https://sprunki.com/sprunki-characters)中角色普通形态图片生成的内部视觉参考；20 个 PNG 的文件名与 `SkinCatalog` 中 `reference-` 后的 ID 相同。它们**不是官方联动资产或授权证明**，不随默认播放器构建发布。
 
+2026-11-18：以本机 `wenda.png` 为输入，使用内置 imagegen 分别编辑出同画布的头部和身体两张透明 PNG，位于本机忽略目录 `ReferenceSkins/wenda_layers/`；原完整立绘保留。头部要求保留五官、耳朵和侧边轮廓并移除身体；身体要求保留原位置与比例、移除头部并向颈部稍作延伸。两层为内部动作测试样板，不是原始分层文件，也不是授权证明；需要人工核对参考及视觉品质。仅显式选择包含参考素材的内部构建时暂存到 Resources，默认构建不包含；缺失任一层时渲染回退到完整参考图，构建若发现不完整的本机层素材则失败。
+
 生成时先查看各角色参考图，再以其为输入，要求保留整体轮廓、眼睛、比例、配色、身体和标志性部件，并明确禁止蛇身、3D 玩具、额外肢体、文字和背景。Wenda 与 Raddy 分别使用以下提示词：
 
 > Use case: identity-preserve. Asset type: internal game character sprite, transparent PNG. Reference image is Wenda from Sprunki; faithfully retain the exact full-character front-facing silhouette and identity: tall pointed white cat ears, circular white head, white eyelashes/side spikes, eyebrows and large outlined eyes, mouth, and the same long simple white trapezoidal torso. Keep the relative head/body size, the eye and ear spacing, and clean flat 2D outlined puppet style extremely close to the provided reference. Output a single complete standing character centered with comfortable transparent margin, crisp high-resolution antialiased edges. Slightly refined production-quality line work is permitted but do not redesign, do not make it a snake, sphere, toy, 3D, or add arms, feet, accessories, text, logos, backgrounds, or drop shadows. The sprite is for an internal reference-only proof of concept.

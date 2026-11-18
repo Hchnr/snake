@@ -36,6 +36,7 @@ namespace SnakeClub
         private readonly List<Matrix4x4> trailPulses = new List<Matrix4x4>();
         private readonly Dictionary<string, List<Vector3>> smoothed = new Dictionary<string, List<Vector3>>();
         private readonly Dictionary<string, SpriteRenderer> characters = new Dictionary<string, SpriteRenderer>();
+        private readonly Dictionary<string, SpriteRenderer> referenceHeads = new Dictionary<string, SpriteRenderer>();
         private readonly Dictionary<string, CharacterMotion> characterMotions = new Dictionary<string, CharacterMotion>();
         private readonly EliminationTransition eliminations = new EliminationTransition();
         private readonly Dictionary<string, ExitPose> exitPoses = new Dictionary<string, ExitPose>();
@@ -396,6 +397,7 @@ namespace SnakeClub
             foreach (var list in fruits) list.Clear();
             eyes.Clear(); pupils.Clear(); scales.Clear(); weakPoints.Clear(); threatMarks.Clear(); trail.Clear(); sparks.Clear(); trailPulses.Clear();
             foreach (var character in characters.Values) if (character != null) character.enabled = false;
+            foreach (var referenceHead in referenceHeads.Values) if (referenceHead != null) referenceHead.enabled = false;
             foreach (var pair in characterTrails.Values) foreach (var line in pair) if (line != null) line.enabled = false;
             foreach (var ring in opponentMarkers.Values) if (ring != null) ring.enabled = false;
             foreach (var ring in protectionMarkers.Values) if (ring != null) ring.enabled = false;
@@ -466,6 +468,8 @@ namespace SnakeClub
                             departing.transform.position = pose.position + view.transform.up * (.35f * progress);
                             departing.transform.localScale = pose.scale * (1f - .16f * progress);
                             departing.color = new Color(1f, 1f, 1f, 1f - progress);
+                            if (referenceHeads.TryGetValue(snake.id, out var departingHead) && departingHead != null && departingHead.sprite != null)
+                            { departingHead.enabled = true; departingHead.color = departing.color; }
                         }
                     }
                     else exitPoses.Remove(snake.id);
@@ -562,7 +566,20 @@ namespace SnakeClub
                     // Keep the controlled character recognizable when sprites overlap.
                     // Re-evaluate every frame because online player identity can change.
                     character.sortingOrder = snake.id == playerId ? 20 : 10;
-                    character.sprite = characterSprite; character.color = Color.white; character.enabled = true;
+                    Sprite layerBody = null, layerHead = null;
+                    bool layered = SkinVisual.TryWendaLayers(visualSkin, out layerBody, out layerHead);
+                    character.sprite = layered ? layerBody : characterSprite; character.color = Color.white; character.enabled = true;
+                    referenceHeads.TryGetValue(snake.id, out var referenceHead);
+                    if (layered && referenceHead == null)
+                    {
+                        var pivot = new GameObject("Wenda reference head pivot"); pivot.transform.SetParent(character.transform, false);
+                        pivot.transform.localPosition = new Vector3(0, -.32f, 0);
+                        var headLayer = new GameObject("Wenda reference head"); headLayer.transform.SetParent(pivot.transform, false);
+                        headLayer.transform.localPosition = new Vector3(0, .32f, 0);
+                        referenceHeads[snake.id] = referenceHead = headLayer.AddComponent<SpriteRenderer>();
+                    }
+                    if (referenceHead != null)
+                    { referenceHead.sprite = layered ? layerHead : null; referenceHead.enabled = layered; referenceHead.sortingOrder = character.sortingOrder + 1; }
                     if (!characterMotions.TryGetValue(snake.id, out var motion))
                         characterMotions[snake.id] = motion = new CharacterMotion();
                     motion.Update(state.tick, snake.angle, snake.boosting, Time.deltaTime, ReducedEffects,
@@ -577,6 +594,12 @@ namespace SnakeClub
                     character.transform.rotation = view.transform.rotation * Quaternion.Euler(0, 0, -forward.x * 4f + motion.LeanDegrees);
                     character.transform.localScale = new Vector3(characterScale * reaction.ScaleX, characterScale * reaction.ScaleY, characterScale);
                     if (reaction.DamageTint > 0) character.color = Color.Lerp(Color.white, new Color(1f, .55f, .50f), reaction.DamageTint);
+                    if (layered && referenceHead != null)
+                    {
+                        referenceHead.color = character.color;
+                        float headTurn = ReducedEffects ? 0f : Mathf.Clamp(-motion.LeanDegrees * .45f + Mathf.Sin(visualClock.Time * 2.4f + snake.color) * 2f, -5f, 5f);
+                        referenceHead.transform.parent.localRotation = Quaternion.Euler(0, 0, headTurn);
+                    }
                 }
                 if (snake.id == playerId)
                 {

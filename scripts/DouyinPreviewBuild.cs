@@ -30,6 +30,7 @@ public static class DouyinPreviewBuild
                     if (!AssetDatabase.CopyAsset(file.Replace('\\', '/'), staged + "/" + Path.GetFileName(file)))
                         throw new InvalidOperationException("Could not stage " + Path.GetFileName(file));
                 AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                SnakeClub.Editor.SnakeBuilder.StageOptionalReferenceLayers(staged);
             }
             var settings = StarkBuilderSettings.Instance;
             settings.appId = Environment.GetEnvironmentVariable("SNAKE_DOUYIN_PREVIEW_APPID");
