@@ -64,6 +64,9 @@ python3 scripts/test-fixed-pve-client-e2e.py
 # 后台验证角落、小地图及暂停键附近的拖拽、双指与暂停恢复
 python3 scripts/test-fullscreen-touch-webgl.py
 
+# 后台用模拟触摸完成强弱试玩，并将实际输入分别在 WebGL 与 .NET 重放
+python3 scripts/test-strength-touch-replay-webgl.py
+
 # 使用图形后端在临时 Unity 工程中验证运行时动画与 UI 命中
 npm run test:unity:play
 ```

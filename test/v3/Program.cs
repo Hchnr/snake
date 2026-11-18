@@ -3,6 +3,15 @@ using System.Collections;
 using System.Reflection;
 using SnakeClub.Core;
 
+if (args.Length == 4 && args[0] == "strength-replay-terminal")
+{
+    int seed = int.Parse(args[1]); bool first = args[2] == "1";
+    byte[] tape = Convert.FromBase64String(args[3]);
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay)) throw new InvalidOperationException("Invalid recording");
+    Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
+    return;
+}
+
 if (args.Length == 1 && args[0] == "strength-pve-vector")
 {
     Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.Compute());
@@ -1647,6 +1656,8 @@ static void StrengthRecordingCases()
                 Check(a.motion.Segments[j].x == b.motion.Segments[j].x && a.motion.Segments[j].y == b.motion.Segments[j].y,
                     "strength recording changed a body segment");
         }
+        Check(SnakeClub.Tests.StrengthPveReplayVector.Terminal(live) == SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay),
+            "terminal fingerprint changed after strength replay");
         Check(live.Fruit.Count == replay.Fruit.Count, "strength recording changed fruit count");
         for (int i = 0; i < live.Fruit.Count; i++)
             Check(live.Fruit[i].position.x == replay.Fruit[i].position.x && live.Fruit[i].position.y == replay.Fruit[i].position.y &&
