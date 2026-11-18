@@ -364,6 +364,13 @@ static void AudioFeedbackCursorCases()
     Check(StrengthSoundFeedback.Select(true, cursor.LastTick, 201, 198, -1) == StrengthSoundCue.None &&
         StrengthSoundFeedback.Select(true, cursor.LastTick, 201, 201, -1) == StrengthSoundCue.Bite,
         "resume replayed an old bite or suppressed a new bite");
+    Check(StrengthSoundFeedback.CaptureHaptic(true, 10, 11, 11, "you", "you", 0), "actual strength loop lacked haptic feedback");
+    Check(!StrengthSoundFeedback.CaptureHaptic(false, 10, 11, 11, "you", "you", 0) &&
+        StrengthSoundFeedback.CaptureHaptic(false, 10, 11, 11, "you", "you", 1), "legacy loop haptic changed");
+    Check(!StrengthSoundFeedback.CaptureHaptic(true, 10, 11, 11, "other", "you", 0) &&
+        !StrengthSoundFeedback.CaptureHaptic(true, 11, 12, 11, "you", "you", 0) &&
+        !StrengthSoundFeedback.CaptureHaptic(true, 10, 11, 12, "you", "you", 0) &&
+        !StrengthSoundFeedback.CaptureHaptic(true, -1, 0, 0, "you", "you", 0), "foreign, stale, future or baseline loop vibrated");
 }
 
 static void MusicBehavior()

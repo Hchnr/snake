@@ -986,6 +986,13 @@ namespace SnakeClub.Core
     public enum StrengthSoundCue { None, Bite, Damage, Pickup }
     public static class StrengthSoundFeedback
     {
+        // In strength practice, a recorded loop already means the player
+        // surrounded a valid opponent and earned the buff; it does not kill.
+        public static bool CaptureHaptic(bool strengthPreview, int previousTick, int currentTick,
+            int captureTick, string owner, string playerId, int captureCount) =>
+            previousTick >= 0 && currentTick > previousTick && captureTick > previousTick && captureTick <= currentTick &&
+            !string.IsNullOrEmpty(playerId) && owner == playerId && (strengthPreview || captureCount > 0);
+
         // Only events since the previous observed simulation step are audible.
         // At the same tick, damage takes precedence over a bite or pickup.
         public static StrengthSoundCue Select(bool active, int previousTick, int currentTick, int attackTick, int damageTick, int pickupTick = -1)

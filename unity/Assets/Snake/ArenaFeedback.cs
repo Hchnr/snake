@@ -86,7 +86,8 @@ namespace SnakeClub
                 pulse = snake.rebound; ended = state.phase == "ended"; captureTick = state.captureTick; return;
             }
             bool eliminationOccurred = snake.kills > kills;
-            bool captureOccurred = state.captureOwner == playerId && state.captureCount > 0 && state.captureTick >= 0 && state.captureTick != captureTick;
+            bool captureOccurred = StrengthSoundFeedback.CaptureHaptic(strengthWorld != null && strengthWorld.StrengthPreview,
+                previousTick, state.tick, state.captureTick, state.captureOwner, playerId, state.captureCount);
             bool reboundOccurred = snake.rebound > 0 && pulse <= 0;
             bool starOccurred = snake.starPoints > stars;
             bool bossHit = boss != null && bossShield >= 0 && boss.bossShield < bossShield;
