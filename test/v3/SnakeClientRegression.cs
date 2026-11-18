@@ -522,6 +522,31 @@ namespace SnakeClub.Tests.Editor
                 Require(trails["bot-1"][0].widthMultiplier > trails["you"][0].widthMultiplier &&
                     trails["you"][0].widthCurve.Evaluate(1) < trails["you"][0].widthCurve.Evaluate(0),
                     "stronger body width or weaker tail taper missing");
+                var buffers = (System.Collections.Generic.Dictionary<string, Vector3[][]>)typeof(ArenaRenderer).GetField("characterTrailVertices", flags).GetValue(renderer);
+                var projected = world.RenderState();
+                void CheckTrail(int first)
+                {
+                    var segments = projected.snakes.Find(s => s.id == "you").segments;
+                    for (int layer = 0; layer < 2; layer++)
+                    {
+                        var line = trails["you"][layer];
+                        Require(line.positionCount == segments.Count - first, "trail vertex count did not follow body length");
+                        for (int i = 0; i < line.positionCount; i++)
+                        {
+                            var actual = line.GetPosition(i); var expected = segments[i + first];
+                            Require(Mathf.Abs(actual.x - expected.x) < .001f && Mathf.Abs(actual.z - expected.y) < .001f &&
+                                Mathf.Abs(actual.y - (.23f + .02f * layer)) < .001f, "trail vertex did not match the body segment");
+                        }
+                    }
+                }
+                CheckTrail(1);
+                var cached = buffers["you"]; renderer.Draw(projected, "you");
+                Require(ReferenceEquals(cached, buffers["you"]), "unchanged trail allocated new vertex buffers");
+                var ownSegments = projected.snakes.Find(s => s.id == "you").segments;
+                ownSegments.Add(new Point(-30, 4)); renderer.Draw(projected, "you"); CheckTrail(1);
+                ownSegments.RemoveRange(ownSegments.Count - 4, 4); renderer.Draw(projected, "you"); CheckTrail(1);
+                renderer.StrengthBodyVisual = false; renderer.Draw(projected, "you"); CheckTrail(2);
+                renderer.StrengthBodyVisual = true;
                 var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
                 clock.Advance(.7f, false); renderer.Draw(world.RenderState(), "you");
                 var characters = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
