@@ -612,11 +612,13 @@ namespace SnakeClub
                         reaction = reactionCursor.Observe(state.tick, snake.strengthAttackTick, snake.strengthDamageTick,
                             visualClock.Time, MotionPaused, ReducedEffects);
                     }
-                    float bob = ReducedEffects ? 0 : .06f * Mathf.Sin(visualClock.Time * 4f + snake.color);
+                    bool original = OriginalIdleMotion.TrySample(visualSkin, visualClock.Time + snake.color * .31f, ReducedEffects, out var idle);
+                    float bob = original ? idle.Lift : ReducedEffects ? 0 : .06f * Mathf.Sin(visualClock.Time * 4f + snake.color);
+                    float idleX = original ? idle.ScaleX : 1f, idleY = original ? idle.ScaleY : 1f;
                     // Preserve the collision anchor while the full sprite reacts.
-                    character.transform.position = center + view.transform.up * (2f * characterScale * reaction.ScaleY + bob);
-                    character.transform.rotation = view.transform.rotation * Quaternion.Euler(0, 0, -forward.x * 4f + motion.LeanDegrees);
-                    character.transform.localScale = new Vector3(characterScale * reaction.ScaleX, characterScale * reaction.ScaleY, characterScale);
+                    character.transform.position = center + view.transform.up * (2f * characterScale * reaction.ScaleY * idleY + bob);
+                    character.transform.rotation = view.transform.rotation * Quaternion.Euler(0, 0, -forward.x * 4f + motion.LeanDegrees + (original ? idle.Tilt : 0));
+                    character.transform.localScale = new Vector3(characterScale * reaction.ScaleX * idleX, characterScale * reaction.ScaleY * idleY, characterScale);
                     if (reaction.DamageTint > 0) character.color = Color.Lerp(Color.white, new Color(1f, .55f, .50f), reaction.DamageTint);
                     if (layered && referenceHead != null)
                     {

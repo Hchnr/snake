@@ -301,9 +301,13 @@ namespace SnakeClub
             ResultPose resultPose = ResultMotion.Sample(resultVisible && resultWon, ReducedEffects, time - resultStartedAt);
             if (referenceCharacter != null && referenceCharacter.enabled)
             {
+                bool original = OriginalIdleMotion.TrySample(skin, time, ReducedEffects, out var pose);
                 float motion = ReducedEffects ? 0f : Mathf.Sin(time * 2f);
-                referenceCharacter.transform.position = portrait.transform.position + portrait.transform.forward * 8f + portrait.transform.up * (motion * .055f + resultPose.Lift);
-                referenceCharacter.transform.rotation = portrait.transform.rotation * Quaternion.Euler(0, 0, motion * 1.4f + resultPose.Tilt);
+                float lift = original ? pose.Lift : motion * .055f;
+                float tilt = original ? pose.Tilt : motion * 1.4f;
+                referenceCharacter.transform.position = portrait.transform.position + portrait.transform.forward * 8f + portrait.transform.up * (lift + resultPose.Lift);
+                referenceCharacter.transform.rotation = portrait.transform.rotation * Quaternion.Euler(0, 0, tilt + resultPose.Tilt);
+                referenceCharacter.transform.localScale = original ? new Vector3(pose.ScaleX, pose.ScaleY, 1f) : Vector3.one;
                 if (referenceHead != null && referenceHead.enabled)
                     referenceHeadPivot.localRotation = Quaternion.Euler(0, 0, ReducedEffects ? 0 : Mathf.Sin(time * 2.4f) * 2.5f);
                 return;

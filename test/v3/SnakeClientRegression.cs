@@ -522,6 +522,12 @@ namespace SnakeClub.Tests.Editor
                 Require(trails["bot-1"][0].widthMultiplier > trails["you"][0].widthMultiplier &&
                     trails["you"][0].widthCurve.Evaluate(1) < trails["you"][0].widthCurve.Evaluate(0),
                     "stronger body width or weaker tail taper missing");
+                var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
+                clock.Advance(.7f, false); renderer.Draw(world.RenderState(), "you");
+                var characters = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
+                Require(OriginalIdleMotion.TrySample(0, clock.Time, false, out var idle) &&
+                    Mathf.Abs(characters["you"].transform.localScale.x - 1.35f * idle.ScaleX) < .005f,
+                    "original idle pose was not applied in the arena");
                 var before = trails["bot-1"][0].startColor;
                 ((int[])typeof(PveFixedWorld).GetField("strengthBuffTicks", flags).GetValue(world))[1] = 120;
                 renderer.ReducedEffects = true; renderer.Draw(world.RenderState(), "you");
@@ -593,6 +599,14 @@ namespace SnakeClub.Tests.Editor
                 avatar.Skin = 24; renderer.SelectedSkin = 24; renderer.Draw(state, "you");
                 Require(avatarBody.enabled && avatarBody.sprite == tidal && sprites["you"].sprite == tidal,
                     "new original character did not appear in both home and arena");
+                avatar.Visible = true; avatar.ReducedEffects = true;
+                typeof(HomeAvatar).GetMethod("Update", flags).Invoke(avatar, null);
+                Require(avatarBody.transform.localScale == Vector3.one, "reduced home mode retained original idle motion");
+                avatar.ReducedEffects = false;
+                OriginalIdleMotion.TrySample(24, Time.unscaledTime, false, out var homePose);
+                typeof(HomeAvatar).GetMethod("Update", flags).Invoke(avatar, null);
+                Require(Mathf.Abs(avatarBody.transform.localScale.x - homePose.ScaleX) < .005f &&
+                    Mathf.Abs(avatarBody.transform.localScale.y - homePose.ScaleY) < .005f, "original idle pose was not applied at home");
                 for (int i = 0; i < ids.Length; i++) if (available[i])
                 {
                     avatar.Skin = ids[i]; renderer.SelectedSkin = ids[i]; renderer.Draw(state, "you");
