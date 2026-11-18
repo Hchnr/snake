@@ -652,7 +652,14 @@ namespace SnakeClub
                             trail.Add(Matrix4x4.TRS(glow, Quaternion.identity, Vector3.one * size));
                         }
                     }
-                    if (LegacyDangerWarning && (DangerProbe.Find(state, playerId, out var danger) || DangerProbe.FindBeforeProtectionEnds(state, playerId, out danger)))
+                    Point danger = default;
+                    bool hasDanger = LegacyDangerWarning && (DangerProbe.Find(state, playerId, out danger) || DangerProbe.FindBeforeProtectionEnds(state, playerId, out danger));
+                    if (!hasDanger && StrengthBodyVisual && !MotionPaused && state.phase == "running" && !string.IsNullOrEmpty(state.strengthHeadThreat))
+                    {
+                        var threat = state.snakes.Find(item => item.id == state.strengthHeadThreat && item.alive && item.shield <= 0 && item.segments.Count > 0);
+                        if (threat != null) { danger = threat.segments[0]; hasDanger = true; }
+                    }
+                    if (hasDanger)
                     {
                         Point offset = danger - snake.segments[0];
                         if (offset.Length > .01f)

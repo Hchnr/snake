@@ -747,11 +747,14 @@ namespace SnakeClub
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
                 Label(new Rect(125, 560, 830, 80), StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
-            bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && fixedPve.TryFindNearbyHeadThreat(playerId, out _);
+            bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && state != null && !string.IsNullOrEmpty(state.strengthHeadThreat);
             if (strengthHeadWarning)
             {
                 Panel(new Rect(250, 1635, 580, 74), new Color(.12f, .075f, .04f, .90f));
-                Label(new Rect(270, 1640, 540, 64), "附近有强敌 · 注意碰头", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
+                var threat = state.snakes.Find(s => s.id == state.strengthHeadThreat);
+                bool hasDirection = me != null && me.segments.Count > 0 && threat != null && threat.segments.Count > 0 &&
+                    (threat.segments[0] - me.segments[0]).Length > .01f;
+                Label(new Rect(270, 1640, 540, 64), hasDirection ? "附近有强敌 · 留意方向箭头" : "附近有强敌 · 注意碰头", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
             }
             else if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
@@ -964,7 +967,7 @@ namespace SnakeClub
         private void DrawNames(ArenaState world)
         {
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
-            if (!paused && fixedPve != null && fixedPve.StrengthPreview && fixedPve.TryFindNearbyHeadThreat(playerId, out _))
+            if (!paused && fixedPve != null && fixedPve.StrengthPreview && !string.IsNullOrEmpty(world.strengthHeadThreat))
                 nameplates.Reserve(250, 1635, 580, 74);
             if (!paused && fixedPve != null && fixedPve.StrengthPreview)
             {

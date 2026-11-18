@@ -1946,8 +1946,9 @@ static void StrengthHeadWarningCases()
     actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(5000, 0, 0, 40));
     for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
     Check(world.TryFindNearbyHeadThreat("you", out var id) && id == "bot-1", "nearby stronger opponent not reported");
+    Check(world.RenderState().strengthHeadThreat == "bot-1", "actual threat not projected");
     actors[0].shieldTicks = 1;
-    Check(!world.TryFindNearbyHeadThreat("you", out _), "warned while player protected");
+    Check(!world.TryFindNearbyHeadThreat("you", out _) && world.RenderState().strengthHeadThreat == "", "warned while player protected");
     actors[0].shieldTicks = 0; actors[1].shieldTicks = 1;
     Check(!world.TryFindNearbyHeadThreat("you", out _), "warned about protected opponent");
     actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(6001, 0, 0, 40));
