@@ -1240,6 +1240,26 @@ static void EdgeMarkerLayoutCases()
     Check(!EdgeIndicatorLayout.TryPlace(edge, blockers, out _), "marker obscured a fully occupied screen");
     Check(!EdgeIndicatorLayout.TryPlace(new Point(float.NaN, 0), null, out _), "invalid edge was accepted");
     Check(EdgeIndicatorLayout.TryPlace(new Point(970, 410), null, out var corner) && corner.y >= 656, "minimap or tutorial was covered");
+    float width = EdgeIndicatorLayout.ObjectiveWidth;
+    Check(EdgeIndicatorLayout.TryPlace(new Point(970, 900), null, out var wide, width) && wide.x >= 30 && wide.x + width <= 1050,
+        "wide objective indicator exceeded the safe viewport");
+    var extension = new List<EdgeObstacle> { new(wide.x + 150, wide.y, 40, 54) };
+    Check(EdgeIndicatorLayout.TryPlace(new Point(970, 900), extension, out var moved, width) &&
+        !(moved.x < extension[0].x + extension[0].width && moved.x + width > extension[0].x &&
+          moved.y < extension[0].y + extension[0].height && moved.y + 54 > extension[0].y), "extended part ignored an obstacle");
+    Check(EdgeIndicatorLayout.TryPlace(new Point(970, 410), null, out var wideCorner, width) && wideCorner.y >= 656,
+        "wide indicator covered minimap or tutorial");
+    Check(!EdgeIndicatorLayout.TryPlace(edge, null, out _, float.NaN) && !EdgeIndicatorLayout.TryPlace(edge, null, out _, 1021),
+        "invalid objective width was accepted");
+    foreach (float x in new[] { 110f, 540f, 970f }) foreach (float y in new[] { 410f, 580f, 900f, 1450f })
+    {
+        if (!EdgeIndicatorLayout.TryPlace(new Point(x, y), null, out var candidate, width)) continue;
+        Check(candidate.x >= 30 && candidate.x + width <= 1050 && candidate.y >= 383 && candidate.y <= 1450,
+            "wide marker left the usable screen");
+        Check(!(candidate.x + width > 760 && candidate.y < 545) &&
+            !(candidate.y < 656 && candidate.y + 54 > 544 && candidate.x + width > 94 && candidate.x < 986),
+            "wide marker covered minimap or tutorial in another edge position");
+    }
 }
 
 static void CaptureNoticeCases()

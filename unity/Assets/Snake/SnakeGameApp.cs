@@ -921,8 +921,8 @@ namespace SnakeClub
             if (!EventTargetIndicator.TryEdge(new Point(projected.x, projected.y), 110, 410, 970, 1450, out var edge)) return false;
             Vector2 direction = projected - ToVirtual(playerScreen);
             if (direction.sqrMagnitude < .01f) return false;
-            if (!EdgeIndicatorLayout.TryPlace(edge, edgeObstacles, out Point origin)) return false;
-            box = new Rect(origin.x, origin.y, 140, 54);
+            if (!EdgeIndicatorLayout.TryPlace(edge, edgeObstacles, out Point origin, EdgeIndicatorLayout.ObjectiveWidth)) return false;
+            box = new Rect(origin.x, origin.y, EdgeIndicatorLayout.ObjectiveWidth, 54);
             Panel(box, new Color(.15f, .11f, .06f, .88f));
             DrawEdgeArrow(box, direction, new Color(1f, .88f, .55f));
             Label(new Rect(box.x + 48, box.y, box.width - 48, box.height), name, 22, new Color(1f, .88f, .55f), TextAnchor.MiddleCenter, true);
