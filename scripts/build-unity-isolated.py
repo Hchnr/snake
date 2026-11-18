@@ -60,6 +60,7 @@ with tempfile.TemporaryDirectory(prefix='snake-unity-build-') as directory:
         config = json.loads(config_path.read_text())
         config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=False, experimentalFixedPve=args.fixed_pve_preview, experimentalStrengthPve=args.strength_pve_preview)
         config['experimentalComparison'] = args.comparison_preview
+        config['experimentalStrengthPveServer'] = False
         if args.fixed_pve_local_api:
             config.update(apiUrl=args.fixed_pve_local_api, allowDevLogin=True, experimentalFixedPveServer=True)
         else:

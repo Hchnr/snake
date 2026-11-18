@@ -41,7 +41,7 @@ test('local fixed PvE verifier binds the snapshot and recording without issuing 
       const socket = net.createServer(); socket.once('error', reject);
       socket.listen(0, '127.0.0.1', () => { const value = socket.address().port; socket.close(() => resolve(value)); });
     });
-    child = spawn('dotnet', [serverDll], { cwd: root, env: { ...process.env, SNAKE_ENV: 'development', SNAKE_FIXED_PVE_EVAL: '1',
+    child = spawn('dotnet', [serverDll], { cwd: root, env: { ...process.env, SNAKE_ENV: 'development', SNAKE_FIXED_PVE_EVAL: '1', SNAKE_STRENGTH_EVAL: '0',
       SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), SNAKE_SESSION_KEY: key, SNAKE_DATA_FILE: fixture,
       SNAKE_SQLITE_FILE: path.join(temp, 'state.sqlite'), SNAKE_DEV_AUTH: '0', SNAKE_DEV_ADS: '0', SNAKE_RATE_LIMIT_PER_MIN: '10000' }, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = ''; child.stdout.on('data', c => output += c); child.stderr.on('data', c => output += c);
@@ -54,6 +54,7 @@ test('local fixed PvE verifier binds the snapshot and recording without issuing 
       if (!ready) await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.ok(ready, `server failed to start: ${output}`);
+    assert.equal((await fetch(`${endpoint}/api/v3/internal/strength-pve/start`, { method: 'POST' })).status, 404);
     const session = sign(`${playerId}:${Math.floor(Date.now() / 1000) + 3600}`);
     async function request(route, body, bearer = session) {
       const response = await fetch(`${endpoint}/api/v3/${route}`, { method: body === undefined ? 'GET' : 'POST',

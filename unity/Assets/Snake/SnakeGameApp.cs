@@ -215,10 +215,11 @@ namespace SnakeClub
             dragSteering.Reset(); connection.Close();
             online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = null; depthMode = false;
-            firstRun = run != null ? run.startConfig.firstRun : !practiceProfile.tutorialComplete;
-            var profile = run != null ? run.startConfig.MatchProfile() : practiceProfile;
+            bool strengthRun = run != null && run.mode == "strength-eval";
+            firstRun = run == null ? !practiceProfile.tutorialComplete : strengthRun ? run.strengthStartConfig.firstRun : run.startConfig.firstRun;
+            var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                run == null && api.Config.StrengthPvePreview);
+                strengthRun || (run == null && api.Config.StrengthRulesPreview));
             state = fixedPve.RenderState();
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
@@ -229,7 +230,7 @@ namespace SnakeClub
             activePracticeAccount = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
             verifiedDaily = false; verifiedShareToken = "";
             resultNote = fixedPve.StrengthPreview ? "强弱吞食试玩 · 不计账号奖励或排行" : "整数规则试玩 · 不计账号奖励或排行";
-            arenaRenderer.SelectedSkin = run != null ? run.startConfig.skin : EffectiveSkin;
+            arenaRenderer.SelectedSkin = run != null && !strengthRun ? run.startConfig.skin : EffectiveSkin;
         }
 
         private void StartOnline(string action)
@@ -342,7 +343,7 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthPvePreview);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);

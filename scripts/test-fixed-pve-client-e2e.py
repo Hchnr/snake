@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='snake-fixed-client-e2e-') as directory:
     config_path = project / 'Assets/Resources/GameConfig.json'
     config = json.loads(config_path.read_text())
     config.update(serverUrl='', apiUrl=f'http://127.0.0.1:{api_port}', allowDevLogin=True,
-                  allowReferenceSkinPreview=False, experimentalFixedPve=False, experimentalFixedPveServer=True)
+                  allowReferenceSkinPreview=False, experimentalFixedPve=False, experimentalFixedPveServer=True, experimentalStrengthPveServer=False)
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     # This marker is only in the temporary player and observes the actual UI decision.
     front = project / 'Assets/Snake/SnakeGameFront.cs'

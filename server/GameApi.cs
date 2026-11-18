@@ -60,6 +60,15 @@ sealed class GameApi
             app.MapPost("/api/v3/internal/fixed-pve/verify", (HttpContext context, FixedPveEvalRequest request) =>
                 IsLocal(context) ? service.WithPlayer(context, (p, now) => service.VerifyFixedPve(p, request, now), request.runId) : Fail("仅限本机测试", 403));
         }
+        // Separate, mutable strength prototype; unavailable in production and
+        // only reachable over loopback when explicitly enabled.
+        if (!service.production && Environment.GetEnvironmentVariable("SNAKE_STRENGTH_EVAL") == "1")
+        {
+            app.MapPost("/api/v3/internal/strength-pve/start", (HttpContext context) =>
+                IsLocal(context) ? service.WithPlayer(context, (p, now) => service.StartRun(p, now, "strength-eval", StrengthPveEvalRules)) : Fail("仅限本机测试", 403));
+            app.MapPost("/api/v3/internal/strength-pve/verify", (HttpContext context, FixedPveEvalRequest request) =>
+                IsLocal(context) ? service.WithPlayer(context, (p, now) => service.VerifyStrengthPve(p, request, now), request.runId) : Fail("仅限本机测试", 403));
+        }
         app.MapPost("/api/v3/match/start", (HttpContext context) => service.WithPlayer(context, (p, now) => service.StartRun(p, now, "pve")));
         app.MapPost("/api/v3/match/finish", (HttpContext context, MatchRequest request) => service.WithPlayer(context, (p, now) => service.FinishPve(p, request, now), request.runId));
         app.MapPost("/api/v3/challenge/start", (HttpContext context) =>
@@ -80,6 +89,8 @@ sealed class GameApi
     }
 
     private const string FixedPveEvalRules = PveFixedRecording.ExperimentalRules;
+    // Dev identifier only: prototype semantics may change, never use for rewards.
+    private const string StrengthPveEvalRules = PveFixedRecording.ExperimentalStrengthRules;
     private static bool IsLocal(HttpContext context) => context.Connection.RemoteIpAddress != null && IPAddress.IsLoopback(context.Connection.RemoteIpAddress);
 
     private IResult DevLogin(HttpContext context, AuthRequest request)
@@ -231,14 +242,18 @@ sealed class GameApi
         if (production && mode == "pve") return Fail("普通对局奖励验证尚未开放，请先进行练习", 503);
         string date = Day(now);
         string rules = requestedRules ?? DailyMatch.RulesVersion;
-        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" || mode == "fixed-eval" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
+        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" || mode == "fixed-eval" || mode == "strength-eval" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
         if (mode == "pve" && p.trialSkin > 0)
         {
             bool reserved = !string.IsNullOrEmpty(p.trialRunId) && data.runs.TryGetValue(p.trialRunId, out var trialRun) && !trialRun.completed && now.ToUnixTimeMilliseconds() - trialRun.startedAt < 190000;
             if (!reserved) { run.trialSkin = p.trialSkin; p.trialRunId = run.id; }
         }
         if (mode == "pve" || mode == "fixed-eval") run.startConfig = PveStartConfig.Capture(p, run.trialSkin);
+        if (mode == "strength-eval") run.strengthStartConfig = StrengthEvalStartConfig.Capture(p);
         data.runs[run.id] = run;
+        if (mode == "strength-eval")
+            return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules,
+                strengthStartConfig = run.strengthStartConfig, serverTime = run.startedAt, expiresAt = run.expiresAt });
         return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules, trialSkin = run.trialSkin, startConfig = run.startConfig, serverTime = run.startedAt, expiresAt = run.expiresAt });
     }
 
@@ -287,6 +302,30 @@ sealed class GameApi
         run.fixedLength = world.Fighters[0].motion.Length; run.fixedEventPoints = world.Fighters[0].eventPoints;
         return FixedPveReceipt(run);
     }
+
+    private IResult VerifyStrengthPve(PlayerProgress p, FixedPveEvalRequest request, DateTimeOffset now)
+    {
+        var run = FindRun(p, request.runId, request.token, "strength-eval", now);
+        if (run == null) return Fail("强弱实验对局凭证无效或已过期");
+        if (run.rules != StrengthPveEvalRules || run.strengthStartConfig == null || !run.strengthStartConfig.Supported)
+            return Fail("强弱实验规则或开局快照不受支持");
+        if (run.completed) return StrengthPveReceipt(run);
+        if (string.IsNullOrEmpty(request.inputs) || request.inputs.Length > ((PveFixedRecording.MaxTicks * 2 + 2) / 3) * 4)
+            return Fail("强弱实验回放长度无效");
+        byte[] inputs;
+        try { inputs = Convert.FromBase64String(request.inputs); }
+        catch (FormatException) { return Fail("强弱实验回放格式无效"); }
+        if (!PveFixedRecording.TryReplayStrength(run.seed, run.strengthStartConfig.firstRun, inputs, out var world))
+            return Fail("强弱实验回放不完整或无效");
+        if (now.ToUnixTimeMilliseconds() - run.startedAt + 2000 < world.Tick * 50L)
+            return Fail("强弱实验对局时长无效");
+        run.completed = true; run.finishedAt = now.ToUnixTimeMilliseconds(); run.score = world.Tick;
+        run.fixedWinner = world.Winner; run.fixedKills = world.Fighters[0].kills; run.fixedLength = world.Fighters[0].motion.Length;
+        return StrengthPveReceipt(run);
+    }
+
+    private static IResult StrengthPveReceipt(RunRecord run) => Results.Json(new { ok = true, verified = true, experimental = true,
+        rules = run.rules, ticks = run.score, winner = run.fixedWinner, kills = run.fixedKills, length = run.fixedLength, rewards = 0 });
 
     private static IResult FixedPveReceipt(RunRecord run) => Results.Json(new { ok = true, verified = true, experimental = true,
         rules = run.rules, ticks = run.score, winner = run.fixedWinner, kills = run.fixedKills,
@@ -472,6 +511,7 @@ sealed class RunRecord
     public long startedAt, finishedAt, expiresAt;
     public bool completed;
     public PveStartConfig? startConfig;
+    public StrengthEvalStartConfig? strengthStartConfig;
     public string fixedWinner = "";
     public int fixedKills, fixedLength, fixedEventPoints;
 }

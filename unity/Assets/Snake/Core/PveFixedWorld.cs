@@ -16,6 +16,8 @@ namespace SnakeClub.Core
     public static class PveFixedRecording
     {
         public const string ExperimentalRules = "fixed-pve-experiment-1";
+        // Internal mutable dev marker, never a release or rewards ruleset.
+        public const string ExperimentalStrengthRules = "strength-pve-dev-1";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, out result);

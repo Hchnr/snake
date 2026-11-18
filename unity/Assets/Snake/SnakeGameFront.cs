@@ -110,7 +110,7 @@ namespace SnakeClub
         private void StartMain()
         {
             if (api.Config.ComparisonPreview) { frontPage = "comparison"; return; }
-            if (api.Config.FixedPvePreview || api.Config.FixedPveServerPreview) { RequestPve(); return; }
+            if (api.Config.FixedPvePreview || api.Config.FixedPveServerPreview || api.Config.StrengthPveServerPreview) { RequestPve(); return; }
             if (!TutorialReady) RequestPve();
             else RequestDaily();
         }
@@ -169,6 +169,20 @@ namespace SnakeClub
         {
             if (busy) return;
             depthMode = false;
+            if (api.Config.StrengthPveServerPreview)
+            {
+                if (!api.Connected) { BeginFixedPve(); resultNote = "本机验证服务未连接 · 离线试玩，不计奖励"; return; }
+                busy = true;
+                api.Post("internal/strength-pve/start", new ApiRequest(), reply =>
+                {
+                    busy = false;
+                    if (reply.ok && reply.mode == "strength-eval" && reply.rules == PveFixedRecording.ExperimentalStrengthRules &&
+                        !string.IsNullOrEmpty(reply.runId) && !string.IsNullOrEmpty(reply.token) && reply.strengthStartConfig != null && reply.strengthStartConfig.Supported)
+                        BeginFixedPveWithRun(reply);
+                    else { BeginFixedPve(); resultNote = "本机实验开局不可用 · 离线试玩，不计奖励"; }
+                });
+                return;
+            }
             if (api.Config.FixedPvePreview) { BeginFixedPve(); return; }
             if (api.Config.FixedPveServerPreview)
             {
@@ -329,18 +343,20 @@ namespace SnakeClub
         {
             var world = fixedPve;
             var run = activeRun;
-            if (run == null || !api.Config.FixedPveServerPreview || !api.Connected || api.Profile.playerId != activePlayerId)
+            bool strength = world != null && world.StrengthPreview && run != null && run.mode == "strength-eval" && api.Config.StrengthPveServerPreview;
+            bool fixedEval = world != null && !world.StrengthPreview && run != null && run.mode == "fixed-eval" && api.Config.FixedPveServerPreview;
+            if ((!strength && !fixedEval) || !api.Connected || api.Profile.playerId != activePlayerId)
             { resultNote = world != null && world.StrengthPreview ? "强弱吞食试玩 · 不计账号奖励或排行" : "整数规则试玩 · 不计账号奖励或排行"; return; }
             string player = activePlayerId;
             resultNote = "正在验证本机回放 · 不计奖励或排行";
-            api.Post("internal/fixed-pve/verify", new ApiRequest { runId = run.runId, token = run.token,
+            api.Post(strength ? "internal/strength-pve/verify" : "internal/fixed-pve/verify", new ApiRequest { runId = run.runId, token = run.token,
                 inputs = Convert.ToBase64String(runInputs.ToArray()) }, reply =>
             {
-                if (fixedPve != world || activeRun != run || activePlayerId != player) return;
-                bool matches = reply.ok && reply.verified && reply.experimental && reply.rules == PveFixedRecording.ExperimentalRules &&
+                if (fixedPve != world || activeRun != run || activePlayerId != player || !api.Connected || api.Profile.playerId != player) return;
+                bool matches = reply.ok && reply.verified && reply.experimental && reply.rules == (strength ? PveFixedRecording.ExperimentalStrengthRules : PveFixedRecording.ExperimentalRules) &&
                     reply.rewards == 0 && reply.ticks == world.Tick && reply.winner == world.Winner &&
                     reply.kills == world.Fighters[0].kills && reply.length == world.Fighters[0].motion.Length &&
-                    reply.eventPoints == world.Fighters[0].eventPoints;
+                    (strength || reply.eventPoints == world.Fighters[0].eventPoints);
                 resultNote = matches ? "本机回放一致 · 不计奖励或排行" : reply.ok ?
                     "本机回放结果不一致 · 不计奖励或排行" : "本机回放未验证 · 不计奖励或排行";
             });
@@ -543,7 +559,7 @@ namespace SnakeClub
         private void DrawSkins()
         {
             PlayerProgress p = CurrentProfile;
-            FrontHeader("灵蛇衣橱", api.Config.StrengthPvePreview ? "强弱试玩属性统一 · 皮肤仅改变外观" : "收集外观与小幅属性 · 每日挑战使用统一属性");
+            FrontHeader("灵蛇衣橱", api.Config.StrengthRulesPreview ? "强弱试玩属性统一 · 皮肤仅改变外观" : "收集外观与小幅属性 · 每日挑战使用统一属性");
             if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(185, 280, 710, 600), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
             Label(new Rect(180, 815, 720, 70), Progression.SkinNames[previewSkin] + "  ·  " + Progression.SkinDescriptions[previewSkin], 32, Color.white, TextAnchor.MiddleCenter, true);
             int count = api.Config.allowReferenceSkinPreview ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount;
@@ -586,19 +602,19 @@ namespace SnakeClub
         private void DrawMore()
         {
             FrontHeader("更多玩法", "成长、挑战与排行");
-            if (Button(new Rect(130, 390, 820, 140), api.Config.StrengthPvePreview ? "强弱吞食  ·  统一属性" : "普通围猎  ·  属性生效", new Color(.10f, .55f, .46f))) RequestPve();
+            if (Button(new Rect(130, 390, 820, 140), api.Config.StrengthRulesPreview ? "强弱吞食  ·  统一属性" : "普通围猎  ·  属性生效", new Color(.10f, .55f, .46f))) RequestPve();
             if (Button(new Rect(130, 570, 820, 140), "每日挑战  ·  60 秒", new Color(.20f, .38f, .69f))) RequestDaily();
             if (Button(new Rect(130, 750, 820, 140), "每日排行榜", new Color(.34f, .31f, .62f))) OpenBoard();
             if (Button(new Rect(130, 930, 820, 140), "灵蛇天赋", new Color(.30f, .30f, .56f))) frontPage = "talents";
             int completed = DepthChallenge.CompletedMatches(CurrentProfile);
             if (Button(new Rect(130, 1110, 820, 140), completed >= 3 ? "秘境深潜  ·  三重挑战" : "秘境深潜  ·  " + completed + "/3 场", new Color(.42f, .28f, .57f))) StartDepth();
-            Label(new Rect(150, 1300, 780, 120), string.IsNullOrEmpty(frontNotice) ? (api.Config.StrengthPvePreview ? "强弱吞食试玩采用统一属性\n皮肤和天赋不影响本局" : "每日挑战采用统一属性\n普通围猎可体验皮肤与天赋加成") : frontNotice, 25, new Color(.84f, .96f, .94f), TextAnchor.MiddleCenter);
+            Label(new Rect(150, 1300, 780, 120), string.IsNullOrEmpty(frontNotice) ? (api.Config.StrengthRulesPreview ? "强弱吞食试玩采用统一属性\n皮肤和天赋不影响本局" : "每日挑战采用统一属性\n普通围猎可体验皮肤与天赋加成") : frontNotice, 25, new Color(.84f, .96f, .94f), TextAnchor.MiddleCenter);
         }
 
         private void DrawTalents()
         {
             PlayerProgress p = CurrentProfile;
-            FrontHeader("灵蛇天赋", api.Config.StrengthPvePreview ? "强弱试玩属性统一，天赋不影响本局" : "自由搭配，可免费重置；每日榜不应用属性");
+            FrontHeader("灵蛇天赋", api.Config.StrengthRulesPreview ? "强弱试玩属性统一，天赋不影响本局" : "自由搭配，可免费重置；每日榜不应用属性");
             Panel(new Rect(75, 310, 930, 150), new Color(.025f, .08f, .14f, .91f));
             Label(new Rect(100, 330, 880, 55), "成长等级 " + Progression.Level(p.experience) + "     可用点数 " + Progression.AvailablePoints(p), 32, Color.white, TextAnchor.MiddleCenter, true);
             int next = Progression.ExperienceForLevel(Progression.Level(p.experience) + 1);

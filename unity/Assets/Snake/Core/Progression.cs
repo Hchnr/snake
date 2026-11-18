@@ -45,6 +45,19 @@ namespace SnakeClub.Core
         public bool Supported => version == CurrentVersion;
     }
 
+    // Local diagnostic only; this records a server-chosen first-run value.
+    // The strength rules and future account attributes are not frozen here.
+    [Serializable]
+    public sealed class StrengthEvalStartConfig
+    {
+        public const string CurrentVersion = "strength-eval-setup-1";
+        public string version = "";
+        public bool firstRun;
+        public static StrengthEvalStartConfig Capture(PlayerProgress profile)
+            => new StrengthEvalStartConfig { version = CurrentVersion, firstRun = !profile.tutorialComplete };
+        public bool Supported => version == CurrentVersion;
+    }
+
     [Serializable]
     public sealed class ExpeditionState
     {

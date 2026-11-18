@@ -38,6 +38,16 @@ namespace SnakeClub.Tests.Editor
                 strengthConfig.allowDevLogin = false; strengthConfig.experimentalComparison = true; Require(!strengthConfig.StrengthPvePreview, "strength preview allowed comparison mode");
                 strengthConfig.experimentalComparison = false; strengthConfig.experimentalFixedPveServer = true; Require(!strengthConfig.StrengthPvePreview, "strength preview allowed verifier mode");
                 Debug.Log("PASS Unity strength preview is restricted to offline practice");
+                var strengthServer = new GameConfiguration { experimentalStrengthPveServer = true,
+                    apiUrl = "http://127.0.0.1:2568", serverUrl = "", allowDevLogin = true };
+                Require(strengthServer.StrengthPveServerPreview && strengthServer.StrengthRulesPreview, "local strength verifier configuration rejected");
+                strengthServer.apiUrl = "http://127.0.0.1.example.com:2568"; Require(!strengthServer.StrengthPveServerPreview, "remote strength verifier allowed");
+                strengthServer.apiUrl = "http://127.0.0.1:2568/path"; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed API path");
+                strengthServer.apiUrl = "http://127.0.0.1:2568"; strengthServer.allowDevLogin = false; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed without development login");
+                strengthServer.allowDevLogin = true; strengthServer.experimentalFixedPveServer = true; Require(!strengthServer.StrengthPveServerPreview && !strengthServer.FixedPveServerPreview, "two verifiers enabled simultaneously");
+                strengthServer.experimentalFixedPveServer = false; strengthServer.experimentalComparison = true; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed comparison mode");
+                strengthServer.experimentalComparison = false; strengthServer.serverUrl = "ws://127.0.0.1:2567/ws"; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed room backend");
+                Debug.Log("PASS Unity strength server preview requires explicit loopback configuration");
                 TestFixedPvePreviewFlow();
                 TestGameplayComparison();
                 TestPracticeTutorialAccess();
@@ -57,6 +67,9 @@ namespace SnakeClub.Tests.Editor
                 Require(client.Profile.playerId == "test-player" && client.Seed == 123 && client.AdEnabled, "leaderboard response cleared account state or daily seed");
                 Apply("{\"ok\":true,\"runId\":\"run-zero\",\"date\":\"2026-11-16\",\"seed\":0,\"rules\":\"daily-2\"}");
                 Require(client.Seed == 0, "a valid zero seed was not accepted from run start");
+                var strengthReply = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"runId\":\"strength\",\"mode\":\"strength-eval\",\"rules\":\"strength-pve-dev-1\",\"seed\":73,\"strengthStartConfig\":{\"version\":\"strength-eval-setup-1\",\"firstRun\":true}}");
+                Require(strengthReply.strengthStartConfig != null && strengthReply.strengthStartConfig.Supported && strengthReply.strengthStartConfig.firstRun,
+                    "strength server snapshot did not deserialize");
                 Apply("{\"ok\":true,\"runId\":\"pve\",\"mode\":\"pve\",\"date\":\"2026-11-16\",\"seed\":789}");
                 Require(client.Seed == 0, "PvE seed overwrote daily challenge seed");
                 Apply("{\"ok\":true,\"runId\":\"fixed\",\"mode\":\"fixed-eval\",\"date\":\"2026-11-16\",\"seed\":654}");
@@ -536,6 +549,22 @@ namespace SnakeClub.Tests.Editor
                 Require(actual.Fighters[0].motion.X == expected.Fighters[0].motion.X && actual.Fighters[0].motion.Y == expected.Fighters[0].motion.Y &&
                     actual.Fighters[0].shieldTicks == expected.Fighters[0].shieldTicks && (string)Field("activePlayerId").GetValue(app) == "local-eval" &&
                     renderer.SelectedSkin == 2, "local verifier did not start from the server seed and snapshot");
+                Call("BackToMenu");
+                api.Configure(new GameConfiguration { experimentalStrengthPveServer = true, apiUrl = "http://127.0.0.1:2568", serverUrl = "", allowDevLogin = true });
+                Call("RequestPve");
+                var offlineStrength = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(offlineStrength != null && offlineStrength.StrengthPreview && Field("activeRun").GetValue(app) == null &&
+                    ((string)Field("resultNote").GetValue(app)).Contains("离线试玩"), "unavailable strength verifier did not fall back to offline strength practice");
+                Call("BackToMenu");
+                var strengthSnapshot = new StrengthEvalStartConfig { version = StrengthEvalStartConfig.CurrentVersion, firstRun = true };
+                var strengthRun = new ApiReply { ok = true, runId = "strength-run", token = "token", seed = 73,
+                    mode = "strength-eval", rules = PveFixedRecording.ExperimentalStrengthRules, strengthStartConfig = strengthSnapshot };
+                Call("BeginFixedPveWithRun", strengthRun);
+                var actualStrength = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                var expectedStrength = new PveFixedWorld(strengthRun.seed, strengthSnapshot.firstRun, null, strengthPreview: true);
+                Require(actualStrength.StrengthPreview && actualStrength.Fighters[0].motion.X == expectedStrength.Fighters[0].motion.X &&
+                    actualStrength.Fighters[0].motion.Y == expectedStrength.Fighters[0].motion.Y && actualStrength.Fighters[0].shieldTicks == expectedStrength.Fighters[0].shieldTicks &&
+                    (string)Field("activePlayerId").GetValue(app) == "local-eval", "strength verifier did not use the server seed and snapshot");
                 Call("BackToMenu");
                 Debug.Log("PASS Unity offline fixed PvE start, input, pause and isolated settlement");
             }

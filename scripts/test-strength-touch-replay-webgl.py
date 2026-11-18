@@ -47,7 +47,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     config_path = project / 'Assets/Resources/GameConfig.json'
     config = json.loads(config_path.read_text())
     config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=False,
-                  experimentalFixedPve=True, experimentalStrengthPve=True, experimentalFixedPveServer=False, experimentalComparison=False)
+                  experimentalFixedPve=True, experimentalStrengthPve=True, experimentalFixedPveServer=False, experimentalStrengthPveServer=False, experimentalComparison=False)
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     app_path = project / 'Assets/Snake/SnakeGameApp.cs'
     code = app_path.read_text()
