@@ -133,6 +133,7 @@ var cases = new (string name, Action run)[]
     ("strength bots promptly avoid lethal heads but not protected or equal heads", StrengthBotHeadCases),
     ("strength bots seek fruit near protected opponents", StrengthBotForagingCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
+    ("minimum-length strength boost explains why movement cannot accelerate", StrengthBoostNoticeCases),
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
     ("strength replay diagnostics detect hidden-state divergence", StrengthHiddenDiagnosticsCases),
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
@@ -1800,6 +1801,40 @@ static void StrengthBotForagingCases()
     Check(PveFixedMotion.DirectionX(right) > 0 && PveFixedMotion.DirectionX(left) < 0,
         "a nearby protected opponent prevented fruit seeking");
     Check(right == Heading(15000) && left == Heading(-15000), "fruit seeking was not deterministic");
+}
+
+static void StrengthBoostNoticeCases()
+{
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, PveFixedMotion.MinimumLength));
+    foreach (var fighter in actors) fighter.shieldTicks = 100;
+    ((List<PveFixedFruit>)typeof(PveFixedWorld).GetField("fruit", flags).GetValue(world)).Clear();
+    world.Step(0, true);
+    var state = world.RenderState();
+    string Notice(bool request = true, bool suspend = false) => StrengthBoostNotice.Text(world, state, "you", request, suspend);
+    Check(!actors[0].motion.Boosting && Notice().Contains("吃果实恢复"), "actual minimum-length boost attempt was not explained");
+    Check(Notice(false) == "" && Notice(true, true) == "", "notice remained after releasing boost or while suspended");
+    state.snakes[0].boosting = true;
+    Check(Notice() == "", "notice contradicted a boost that actually happened");
+    state.snakes[0].boosting = false; state.snakes[0].alive = false;
+    Check(Notice() == "", "eliminated player received a boost notice");
+    state.snakes[0].alive = true; state.phase = "ended";
+    Check(Notice() == "", "ended match retained the boost notice");
+    state.phase = "running"; actors[0].motion.Grow(1); state = world.RenderState();
+    Check(Notice() == "", "notice remained after actual growth restored boost eligibility");
+    Check(StrengthBoostNotice.Text(new PveFixedWorld(42, false, null), state, "you", true, false) == "", "strength notice leaked into legacy mode");
+    var draining = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var drainActors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(draining);
+    drainActors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, PveFixedMotion.MinimumLength + 1));
+    foreach (var fighter in drainActors) fighter.shieldTicks = 1000;
+    ((List<PveFixedFruit>)typeof(PveFixedWorld).GetField("fruit", flags).GetValue(draining)).Clear();
+    for (int i = 0; i < 60 && drainActors[0].motion.Length > PveFixedMotion.MinimumLength; i++) draining.Step(0, true);
+    Check(drainActors[0].motion.Length == PveFixedMotion.MinimumLength && drainActors[0].motion.Boosting &&
+        StrengthBoostNotice.Text(draining, draining.RenderState(), "you", true, false) == "", "last real boost step falsely displayed the restriction");
+    draining.Step(0, true);
+    Check(!drainActors[0].motion.Boosting && StrengthBoostNotice.Text(draining, draining.RenderState(), "you", true, false) != "", "restriction was not explained after boost stopped");
 }
 
 static void StrengthHiddenDiagnosticsCases()
