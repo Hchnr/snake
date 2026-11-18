@@ -106,7 +106,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-client-e2e-') as directo
             state = json.loads(data.read_text())
             runs = list(state.get('runs', {}).values()); players = list(state.get('players', {}).values())
             if (len(runs) != 1 or runs[0].get('mode') != 'strength-eval' or
-                    runs[0].get('rules') != 'strength-pve-dev-2' or not runs[0].get('completed')):
+                    runs[0].get('rules') != 'strength-pve-dev-3' or not runs[0].get('completed')):
                 sys.exit('Expected one verified current-rules strength experimental run in isolated storage.')
             if len(players) != 1 or any(players[0].get(k, 0) != 0 for k in ('coins', 'experience', 'completedMatches')) or state.get('rewards'):
                 sys.exit('Experimental run unexpectedly changed rewards or progress.')

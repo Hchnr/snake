@@ -31,7 +31,7 @@ namespace SnakeClub.Tests
         public static string Compute()
         {
             var result = new StringBuilder("strength=");
-            foreach (int seed in new[] { 1, 73 })
+            foreach (int seed in new[] { 1, 2, 73 })
             foreach (bool first in new[] { false, true })
             for (int pattern = 0; pattern < 3; pattern++)
             {

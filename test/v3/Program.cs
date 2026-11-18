@@ -131,6 +131,7 @@ var cases = new (string name, Action run)[]
     ("strength match levels track actual actions after combat", StrengthLevelCases),
     ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
     ("strength bots promptly avoid lethal heads but not protected or equal heads", StrengthBotHeadCases),
+    ("strength bots seek fruit near protected opponents", StrengthBotForagingCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
     ("strength replay diagnostics detect hidden-state divergence", StrengthHiddenDiagnosticsCases),
@@ -1757,6 +1758,26 @@ static void StrengthBotHeadCases()
     Check(Heading(equal) == 128, "bot avoided an equally strong head as if it were lethal");
     var repeated = Match(true);
     Check(Heading(repeated) == away, "head avoidance was not deterministic");
+}
+
+static void StrengthBotForagingCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    byte Heading(int fruitX)
+    {
+        var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+        var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+        actors[0] = new PveFixedFighter("you", new PveFixedMotion(-5000, 0, 0, 16)) { shieldTicks = 100 };
+        actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 16));
+        for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+        var fruit = (List<PveFixedFruit>)typeof(PveFixedWorld).GetField("fruit", flags).GetValue(world);
+        fruit.Clear(); fruit.Add(new PveFixedFruit(new CapturePoint(fruitX, 0), 0));
+        return (byte)typeof(PveFixedWorld).GetMethod("BotHeading", flags).Invoke(world, new object[] { 1 });
+    }
+    byte right = Heading(15000), left = Heading(-15000);
+    Check(PveFixedMotion.DirectionX(right) > 0 && PveFixedMotion.DirectionX(left) < 0,
+        "a nearby protected opponent prevented fruit seeking");
+    Check(right == Heading(15000) && left == Heading(-15000), "fruit seeking was not deterministic");
 }
 
 static void StrengthHiddenDiagnosticsCases()
