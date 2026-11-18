@@ -64,6 +64,10 @@ namespace SnakeClub.Core
         public int LastPlayerBiteCount { get; private set; }
         public bool LastPlayerWasBitten { get; private set; }
         public int LastPlayerBlockedTick { get; private set; } = -1;
+        private readonly int[] strengthBuffTicks = new int[8];
+        private int nextStrengthPickupTick, strengthPickupExpires;
+        public bool StrengthPickupVisible { get; private set; }
+        public CapturePoint StrengthPickupPosition { get; private set; }
         private readonly int[] botTimer = new int[8];
         private readonly byte[] botDirection = new byte[8];
         private readonly bool[] botBoost = new bool[8];
@@ -94,6 +98,7 @@ namespace SnakeClub.Core
                     new PveFixedMotion(head.x, head.y, heading * 256, DailyMatch.CaptureStartingLength)) { shieldTicks = (firstRun && i == 0 ? 4 : 3) * TickRate };
                 botDirection[i] = (byte)heading;
             }
+            if (StrengthPreview) nextStrengthPickupTick = 100 + Next(61);
         }
         private int Next(int max)
         {
@@ -196,6 +201,11 @@ namespace SnakeClub.Core
                         if (!BodyStrength.CanEat(attack.attack, body.defense)) continue;
                         bestTarget = distance; vx = dx * 2; vy = dy * 2;
                     }
+                }
+                if (StrengthPickupVisible)
+                {
+                    long dx = (long)StrengthPickupPosition.x - self.motion.X, dy = (long)StrengthPickupPosition.y - self.motion.Y;
+                    if (dx * dx + dy * dy < 18000L * 18000L) { vx += dx * 2; vy += dy * 2; }
                 }
             }
             else { AccumulateTrailAvoidance(self, fighters, ref vx, ref vy); AccumulateHeadAvoidance(self, fighters, ref vx, ref vy); }
@@ -322,6 +332,8 @@ namespace SnakeClub.Core
             projection.tick = Tick; projection.remaining = Math.Max(0, maxTicks - Tick) / (float)TickRate;
             projection.phase = Finished ? "ended" : "running"; projection.winner = Winner;
             projection.eventKind = EventKind; projection.eventStatus = EventStatus; projection.eventTarget = EventTarget;
+            projection.strengthPickupVisible = StrengthPreview && StrengthPickupVisible;
+            projection.strengthPickupPosition = ToPoint(StrengthPickupPosition);
             projection.eventPosition = ToPoint(eventCenter); projection.eventRadius = eventActive && eventType == 2 ? 14f : 0f;
             projection.eventRemaining = EventTicksRemaining / (float)TickRate;
             projection.starVisible = eventActive && eventType == 1; projection.starPosition = ToPoint(star);
@@ -345,11 +357,51 @@ namespace SnakeClub.Core
         }
         private static Point ToPoint(CapturePoint point) => new Point(point.x / 1000f, point.y / 1000f);
 
-        private static StrengthInputs StrengthFor(PveFixedFighter fighter) => new StrengthInputs {
+        private StrengthInputs StrengthFor(PveFixedFighter fighter) => new StrengthInputs {
             basePower = 100, length = fighter.motion.Length, hardness = 0, matchLevel = 0,
             speed = fighter.motion.Boosting ? 495 : fighter.motion.ReboundTicks > 0 ? 345 : 300,
-            baseSpeed = 300, boosting = fighter.motion.Boosting, randomFactor = 1000, operationFactor = 1000
+            baseSpeed = 300, boosting = fighter.motion.Boosting,
+            randomFactor = StrengthBuffTicks(fighter.id) > 0 ? 1120 : 1000, operationFactor = 1000
         };
+
+        public int StrengthBuffTicks(string id)
+        {
+            if (!StrengthPreview || string.IsNullOrEmpty(id)) return 0;
+            for (int i = 0; i < fighters.Length; i++)
+                if (fighters[i].id == id && fighters[i].alive) return strengthBuffTicks[i];
+            return 0;
+        }
+
+        private void UpdateStrengthPickupBeforeMovement()
+        {
+            for (int i = 0; i < strengthBuffTicks.Length; i++) if (strengthBuffTicks[i] > 0) strengthBuffTicks[i]--;
+            if (StrengthPickupVisible && Tick >= strengthPickupExpires)
+            { StrengthPickupVisible = false; nextStrengthPickupTick = Tick + 160 + Next(81); }
+            if (!StrengthPickupVisible && Tick >= nextStrengthPickupTick && fighters[0].alive)
+            {
+                byte angle = (byte)Next(256); int radius = 10000 + Next(6001);
+                StrengthPickupPosition = new CapturePoint(ClampEvent(fighters[0].motion.X + PveFixedMotion.DirectionX(angle) * radius / 10000),
+                    ClampEvent(fighters[0].motion.Y + PveFixedMotion.DirectionY(angle) * radius / 10000));
+                StrengthPickupVisible = true; strengthPickupExpires = Tick + 200;
+            }
+        }
+
+        private void CollectStrengthPickup()
+        {
+            if (!StrengthPickupVisible) return;
+            int winner = -1; long closest = 1250L * 1250L + 1;
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                if (!fighters[i].alive) continue;
+                long distance = DistanceSquared(fighters[i].motion.X - StrengthPickupPosition.x, fighters[i].motion.Y - StrengthPickupPosition.y);
+                if (distance > 1250L * 1250L) continue;
+                if (winner < 0 || distance < closest || (distance == closest && string.CompareOrdinal(fighters[i].id, fighters[winner].id) < 0))
+                { winner = i; closest = distance; }
+            }
+            if (winner < 0) return;
+            strengthBuffTicks[winner] = 120; // Six seconds; refresh, do not stack.
+            StrengthPickupVisible = false; nextStrengthPickupTick = Tick + 160 + Next(81);
+        }
 
         public bool TryGetStrength(string id, out StrengthValues head, out int tailDefense)
         {
@@ -369,6 +421,7 @@ namespace SnakeClub.Core
         {
             if (Finished) return;
             Tick++;
+            if (StrengthPreview) UpdateStrengthPickupBeforeMovement();
             if (!StrengthPreview && Tick == 15 * TickRate && !eventDone) StartEvent();
             for (int i = 0; i < fighters.Length; i++) previouslyAlive[i] = fighters[i].alive;
             for (int i = 0; i < fighters.Length; i++)
@@ -380,6 +433,7 @@ namespace SnakeClub.Core
             }
             if (StrengthPreview)
             {
+                CollectStrengthPickup();
                 for (int i = 0; i < fighters.Length; i++) strengthInputs[i] = StrengthFor(fighters[i]);
                 var headGrowth = StrengthHeadCombat.Resolve(fighters, strengthInputs, deferGrowth: true);
                 var bites = strengthCombat.Resolve(Tick, fighters, strengthInputs);
