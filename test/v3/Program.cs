@@ -1716,6 +1716,24 @@ static void StrengthPracticeWorldCases()
     blockedWorld.Step(0, false);
     Check(blockedWorld.LastPlayerBlockedTick == 1 && blockedActors[0].alive && blockedActors[1].motion.Length == 80,
         "weak contact did not report insufficient strength without eliminating the player");
+    var blockedHead = blockedActors[0].motion.Segments[0];
+    long nearestBody = long.MaxValue;
+    foreach (var part in blockedActors[1].motion.Segments.Skip(1))
+    {
+        long dx = (long)blockedHead.x - part.x, dy = (long)blockedHead.y - part.y;
+        nearestBody = Math.Min(nearestBody, dx * dx + dy * dy);
+    }
+    Check(nearestBody >= 1116L * 1116L, "blocked head remained inside the body");
+    var separate = typeof(PveFixedMotion).GetMethod("SeparateFrom", BindingFlags.Instance | BindingFlags.NonPublic);
+    var overlapA = new PveFixedMotion(0, 0, 0, 16); var overlapB = new PveFixedMotion(0, 0, 0, 16);
+    separate.Invoke(overlapA, new object[] { new CapturePoint(0, 0), new CapturePoint(1800, 0) });
+    separate.Invoke(overlapB, new object[] { new CapturePoint(0, 0), new CapturePoint(1800, 0) });
+    Check(overlapA.X == overlapB.X && overlapA.Y == overlapB.Y && overlapA.Angle == overlapB.Angle &&
+        Math.Abs(overlapA.Y) >= 1116, "exact-overlap separation was not deterministic or clear of a straight body");
+    var edge = new PveFixedMotion(PveFixedMotion.Edge, PveFixedMotion.Edge, 0, 16);
+    separate.Invoke(edge, new object[] { new CapturePoint(PveFixedMotion.Edge, PveFixedMotion.Edge), new CapturePoint(1800, 0) });
+    Check(Math.Abs(edge.X) <= PveFixedMotion.Edge && Math.Abs(edge.Y) <= PveFixedMotion.Edge &&
+        Math.Abs(edge.Y - PveFixedMotion.Edge) >= 1116, "separation failed at the world boundary");
     var first = new PveFixedWorld(73, true, null, true); var second = new PveFixedWorld(73, true, null, true);
     for (int i = 0; i < 600 && !first.Finished; i++)
     {
