@@ -891,6 +891,18 @@ static void CharacterMotionCases()
     Check(motion.LeanDegrees > 0 && motion.LeanDegrees <= 8, "opposite turn did not lean in the other direction");
     motion.Update(31, -.5f, true, .05f, true, true);
     Check(motion.LeanDegrees == 0 && motion.Scale == 1, "reduced effects did not restore a neutral pose");
+    var idleReaction = StrengthReaction.Sample(-1, -1, false);
+    var biteReaction = StrengthReaction.Sample(.175f, -1, false);
+    var hurtReaction = StrengthReaction.Sample(-1, .225f, false);
+    var mutualReaction = StrengthReaction.Sample(.175f, .225f, false);
+    Check(idleReaction.ScaleX == 1 && idleReaction.ScaleY == 1 && idleReaction.DamageTint == 0, "idle character reacted without contact");
+    Check(biteReaction.ScaleY > 1 && biteReaction.ScaleX < 1 && biteReaction.DamageTint == 0, "actual bite lacked a distinct pose");
+    Check(hurtReaction.ScaleY < 1 && hurtReaction.ScaleX > 1 && hurtReaction.DamageTint > 0, "damage lacked a distinct pose");
+    Check(mutualReaction.ScaleY == hurtReaction.ScaleY && mutualReaction.DamageTint == hurtReaction.DamageTint, "simultaneous damage did not take priority");
+    var reducedReaction = StrengthReaction.Sample(.175f, .225f, true);
+    Check(reducedReaction.ScaleX == 1 && reducedReaction.ScaleY == 1 && reducedReaction.DamageTint == 0 &&
+        StrengthReaction.Sample(float.NaN, float.PositiveInfinity, false).ScaleY == 1 &&
+        StrengthReaction.Sample(2, 2, false).ScaleY == 1, "reaction leaked into reduced mode or beyond its duration");
     var wrapped = new CharacterMotion();
     wrapped.Update(0, 3.13f, false, .05f, false, true);
     wrapped.Update(1, -3.13f, false, .05f, false, true);

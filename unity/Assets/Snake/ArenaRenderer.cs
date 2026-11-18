@@ -568,12 +568,15 @@ namespace SnakeClub
                     motion.Update(state.tick, snake.angle, snake.boosting, Time.deltaTime, ReducedEffects,
                         !MotionPaused && state.phase == "running");
                     float characterScale = 1.35f * motion.Scale;
+                    bool react = StrengthBodyVisual && state.phase == "running" && snake.id == playerId && ReferenceEquals(strengthImpactSource, state);
+                    var reaction = react ? StrengthReaction.Sample(visualClock.Time - strengthAttackStarted, visualClock.Time - strengthDamageStarted, ReducedEffects)
+                        : new StrengthReactionPose(1, 1, 0);
                     float bob = ReducedEffects ? 0 : .06f * Mathf.Sin(visualClock.Time * 4f + snake.color);
-                    // Anchor the bottom of the camera-facing sprite at the real
-                    // head position, leaving the collision marker visible.
-                    character.transform.position = center + view.transform.up * (2f * characterScale + bob);
+                    // Preserve the collision anchor while the full sprite reacts.
+                    character.transform.position = center + view.transform.up * (2f * characterScale * reaction.ScaleY + bob);
                     character.transform.rotation = view.transform.rotation * Quaternion.Euler(0, 0, -forward.x * 4f + motion.LeanDegrees);
-                    character.transform.localScale = Vector3.one * characterScale;
+                    character.transform.localScale = new Vector3(characterScale * reaction.ScaleX, characterScale * reaction.ScaleY, characterScale);
+                    if (reaction.DamageTint > 0) character.color = Color.Lerp(Color.white, new Color(1f, .55f, .50f), reaction.DamageTint);
                 }
                 if (snake.id == playerId)
                 {

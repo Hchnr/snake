@@ -441,9 +441,20 @@ namespace SnakeClub.Tests.Editor
                 Require(Mathf.Abs(attack.GetPosition(0).x - .35f - match.LastPlayerAttackPoint.x / 1000f) < .01f &&
                     Mathf.Abs(damage.GetPosition(0).x - .35f - match.LastPlayerDamagePoint.x / 1000f) < .01f,
                     "impact position differed from the actual bite");
-                renderer.ReducedEffects = true; renderer.Draw(match.RenderState(), "you");
-                Require(attack.enabled && damage.enabled && attack.widthMultiplier > 0, "reduced effects hid the impact");
                 var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
+                clock.Advance(.2f, false); renderer.Draw(match.RenderState(), "you");
+                var sprites = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
+                var playerSprite = sprites["you"];
+                Require(playerSprite.transform.localScale.x > playerSprite.transform.localScale.y && playerSprite.color.g < 1,
+                    "mutual bite did not show the actual player's damage reaction");
+                renderer.MotionPaused = true; var pausedScale = playerSprite.transform.localScale;
+                clock.Advance(1f, true); renderer.Draw(match.RenderState(), "you");
+                Require(playerSprite.transform.localScale == pausedScale, "paused damage pose did not freeze");
+                renderer.MotionPaused = false;
+                renderer.ReducedEffects = true; renderer.Draw(match.RenderState(), "you");
+                Require(Mathf.Abs(playerSprite.transform.localScale.x - playerSprite.transform.localScale.y) < .001f && playerSprite.color == Color.white,
+                    "reduced effects retained the sprite reaction");
+                Require(attack.enabled && damage.enabled && attack.widthMultiplier > 0, "reduced effects hid the impact");
                 clock.Advance(1f, false); renderer.Draw(match.RenderState(), "you");
                 Require(!attack.enabled && !damage.enabled, "an expired event replayed on a later frame");
                 renderer.StrengthBodyVisual = false; renderer.Draw(match.RenderState(), "you");
