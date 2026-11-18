@@ -61,11 +61,16 @@ python3 scripts/test-fixed-pve-webgl.py
 # 构建隔离客户端并在本机以真实时间模拟触摸，验证一局无奖励回放
 python3 scripts/test-fixed-pve-client-e2e.py
 
+# 后台验证角落、小地图及暂停键附近的拖拽、双指与暂停恢复
+python3 scripts/test-fullscreen-touch-webgl.py
+
 # 使用图形后端在临时 Unity 工程中验证运行时动画与 UI 命中
 npm run test:unity:play
 ```
 
 WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定可执行文件；它们在临时工程中编译并用静音无头浏览器运行，可能耗时数分钟。强弱试玩可运行 `python3 scripts/test-strength-pve-webgl.py`，对 12 局完整对局的逐步可观察状态进行 .NET / WebGL 指纹对照；该脚本和 `TryReplayStrength` 仅用于研发，不能验证所有隐藏状态、任意输入或抖音设备，也不能用于正式奖励。客户端检查还会启动临时本机服务并按真实时间完成一局。指纹一致只覆盖脚本样本，不代表抖音手机、所有输入或可信发奖已通过。
+
+全屏触摸脚本使用隔离构建和静音无头浏览器，临时延长角色保护以完成输入测试；它不是抖音真机或锁屏恢复验收。
 
 每日挑战接口测试按实际局时等待，可能需要约 1 分钟；测试数据放在临时目录，不使用本机游戏存档。Unity 回归检查需要已安装并启用许可证的 Editor；可用 `UNITY_EDITOR` 指定可执行文件。
 

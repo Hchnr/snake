@@ -62,6 +62,7 @@ namespace SnakeClub
         private readonly KillFeedback killFeedback = new KillFeedback();
         private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
+        private bool suppressPendingDragUp;
         private bool firstRun, tutorialHints = true, hasSteered, tutorialClosedLoop, tutorialRebounded, tutorialBoosted;
         private bool depthMode, depthWon;
         private int depthRoom;
@@ -484,7 +485,7 @@ namespace SnakeClub
                         Vector2 last = ToVirtual(touch.position);
                         if (dragSteering.Move(touch.fingerId, new Point(last.x, last.y), out Point next)) { direction = next; acted = true; hasSteered = true; }
                     }
-                    if (dragSteering.End(touch.fingerId)) suppressPointerUpFrame = Time.frameCount;
+                    if (dragSteering.End(touch.fingerId)) { suppressPointerUpFrame = Time.frameCount; suppressPendingDragUp = true; }
                 }
                 else activeTouchIds.Add(touch.fingerId);
             }
@@ -510,7 +511,7 @@ namespace SnakeClub
                 if (Input.GetMouseButtonUp(0))
                 {
                     if (dragSteering.Move(-1, point, out Point last)) { direction = last; acted = true; hasSteered = true; }
-                    if (dragSteering.End(-1)) suppressPointerUpFrame = Time.frameCount;
+                    if (dragSteering.End(-1)) { suppressPointerUpFrame = Time.frameCount; suppressPendingDragUp = true; }
                 }
             }
             if (acted) controlActions++;
@@ -576,12 +577,25 @@ namespace SnakeClub
         private void OnGUI()
         {
             if (rounded == null || ResultOverlayVisible) return;
-            if (inGame && Event.current.type == EventType.MouseUp && suppressPointerUpFrame == Time.frameCount)
+            if (inGame && (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseUp))
             {
-                // A drag may have started over an IMGUI button. Since its release
-                // is consumed, explicitly clear the button's captured pointer.
-                GUIUtility.hotControl = 0;
-                Event.current.Use();
+                int activeTouches = 0;
+                for (int i = 0; i < Input.touchCount; i++)
+                {
+                    TouchPhase phase = Input.GetTouch(i).phase;
+                    if (phase != TouchPhase.Ended && phase != TouchPhase.Canceled) activeTouches++;
+                }
+                bool mouseUp = Event.current.type == EventType.MouseUp;
+                if (!mouseUp && activeTouches <= 1 && !dragSteering.Moved) suppressPendingDragUp = false;
+                bool dragReleased = suppressPointerUpFrame == Time.frameCount || suppressPendingDragUp || dragSteering.Moved;
+                if (DragSteering.SuppressGuiPointer(mouseUp, dragReleased, activeTouches))
+                {
+                    // UI release may arrive before or after the input frame.
+                    // Consume it and clear any captured IMGUI button.
+                    if (mouseUp) suppressPendingDragUp = false;
+                    GUIUtility.hotControl = 0;
+                    Event.current.Use();
+                }
             }
             SafeUiMetrics(out float scale, out float left, out float top);
             Matrix4x4 old = GUI.matrix;
