@@ -196,7 +196,8 @@ namespace SnakeClub
             selectedPreview = Mathf.Clamp(preview, 0, SkinCatalog.All.Length - 1);
             var skin = SkinCatalog.Get(selectedPreview);
             Set(skinName, skin.Name);
-            Set(skinDescription, skin.Description + (skin.ReferencePreview ? " · 内部参考" : " · 每日挑战属性统一"));
+            Set(skinDescription, strengthPvePreview ? (skin.ReferencePreview ? "内部参考 · 试玩仅改变外观" : "强弱试玩仅改变外观 · 属性统一") :
+                skin.Description + (skin.ReferencePreview ? " · 内部参考" : " · 每日挑战属性统一"));
             for (int i = 0; i < skinCards.Length; i++)
             {
                 var card = skinCards[i];

@@ -97,6 +97,7 @@ var cases = new (string name, Action run)[]
     ("strength pickup applies visible temporary power fairly and expires", StrengthPickupCases),
     ("strength loops reward real maneuver without elimination", StrengthLoopCases),
     ("strength match levels track actual actions after combat", StrengthLevelCases),
+    ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1600,6 +1601,59 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void StrengthFairnessCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var profile = new PlayerProgress { selectedSkin = 2, talents = new[] { 3, 3, 3, 3, 3, 3, 0, 0, 0 } };
+    foreach (bool firstRun in new[] { false, true })
+    {
+        var neutral = new PveFixedWorld(1927, firstRun, null, strengthPreview: true);
+        var decorated = new PveFixedWorld(1927, firstRun, profile, strengthPreview: true);
+        for (int tick = 0; tick < 600 && !neutral.Finished; tick++)
+        {
+            byte heading = (byte)(tick * 7); bool boost = tick % 40 > 25;
+            neutral.Step(heading, boost); decorated.Step(heading, boost);
+            Check(neutral.Finished == decorated.Finished && neutral.Winner == decorated.Winner &&
+                neutral.StrengthPickupVisible == decorated.StrengthPickupVisible &&
+                neutral.StrengthPickupPosition.x == decorated.StrengthPickupPosition.x && neutral.StrengthPickupPosition.y == decorated.StrengthPickupPosition.y,
+                "skin or talents changed strength-preview simulation");
+            for (int j = 0; j < neutral.Fighters.Count; j++)
+            {
+                var a = neutral.Fighters[j]; var b = decorated.Fighters[j];
+                Check(a.alive == b.alive && a.motion.X == b.motion.X && a.motion.Y == b.motion.Y &&
+                    a.motion.Length == b.motion.Length && neutral.StrengthLevel(a.id) == decorated.StrengthLevel(b.id),
+                    "profile affected fighter movement, length or level");
+            }
+        }
+    }
+    var positions = new[] { new CapturePoint(-60000, -60000), new CapturePoint(60000, -60000),
+        new CapturePoint(-60000, 60000), new CapturePoint(60000, 60000) };
+    var seen = new bool[4];
+    for (int seed = 1; seed <= 128; seed++)
+    {
+        var world = new PveFixedWorld(seed, false, null, strengthPreview: true);
+        var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+        for (int i = 0; i < fighters.Length; i++)
+            if (i < positions.Length) fighters[i] = new PveFixedFighter(i == 0 ? "you" : "bot-" + i,
+                new PveFixedMotion(positions[i].x, positions[i].y, 0, 16));
+            else fighters[i].alive = false;
+        typeof(PveFixedWorld).GetField("nextStrengthPickupTick", flags).SetValue(world, 0);
+        typeof(PveFixedWorld).GetMethod("UpdateStrengthPickupBeforeMovement", flags).Invoke(world, null);
+        Check(world.StrengthPickupVisible, "forced pickup did not spawn");
+        int anchor = -1;
+        for (int i = 0; i < positions.Length; i++)
+        {
+            long dx = (long)world.StrengthPickupPosition.x - positions[i].x, dy = (long)world.StrengthPickupPosition.y - positions[i].y;
+            if (dx * dx + dy * dy <= 16010L * 16010L) { Check(anchor < 0, "ambiguous pickup anchor"); anchor = i; }
+        }
+        Check(anchor >= 0, "pickup did not spawn near a living fighter"); seen[anchor] = true;
+    }
+    Check(seen.All(value => value), "pickup anchor selection ignored a living fighter");
+    var legacy = new PveFixedWorld(1927, false, profile);
+    var regularBonuses = (PveFixedBonuses)typeof(PveFixedWorld).GetField("playerBonuses", flags).GetValue(legacy);
+    Check(regularBonuses.pickup > 0 && regularBonuses.turn > 0, "legacy profile bonuses changed");
 }
 
 static void StrengthLevelCases()
