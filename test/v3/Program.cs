@@ -555,6 +555,12 @@ static void FullScreenDrag()
 }
 static void TouchRecovery()
 {
+    Check(!DragSteering.SuppressGuiPointer(false, false, 1) && !DragSteering.SuppressGuiPointer(true, false, 0),
+        "single finger button tap was consumed");
+    Check(DragSteering.SuppressGuiPointer(false, false, 2) && DragSteering.SuppressGuiPointer(true, false, 1),
+        "secondary finger button events were not consumed");
+    Check(DragSteering.SuppressGuiPointer(true, true, 0) && !DragSteering.SuppressGuiPointer(true, false, 0),
+        "desktop drag release and click were not distinguished");
     var drag = new DragSteering(12);
     drag.Begin(3, new Point(100, 100));
     drag.ReconcileTouches(new[] { 3, 7 });

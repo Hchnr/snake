@@ -15,6 +15,11 @@ namespace SnakeClub.Core
 
         public bool IsTracking(int id) => Active && pointerId == id;
 
+        // A secondary finger is a gameplay boost, not an IMGUI button tap.
+        // A single-finger tap and desktop mouse clicks remain available.
+        public static bool SuppressGuiPointer(bool mouseUp, bool dragReleased, int activeTouches)
+            => mouseUp ? dragReleased || activeTouches > 0 : activeTouches > 1;
+
         // Some hosts drop an end/cancel event when a finger leaves the app.
         // Never retain a vanished touch, and let real touches replace mouse emulation.
         public void ReconcileTouches(IReadOnlyList<int> activeTouchIds)
