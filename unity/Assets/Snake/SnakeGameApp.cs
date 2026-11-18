@@ -955,11 +955,11 @@ namespace SnakeClub
             if (!nameplates.TryPlace(snake.id, new Point(position.x, position.y), out var placed)) return;
             string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
             if (fixedPve != null && fixedPve.TryGetStrength(snake.id, out var power, out int tailDefense))
-                label = (snake.id == playerId ? "你 · 攻" + power.attack : (snake.bot ? "AI" : "玩家") + " · 尾" + tailDefense) +
+                label = (snake.id == playerId ? "你·攻" + power.attack : (snake.bot ? "AI" : "玩家") + "·尾" + tailDefense) +
                     (fixedPve.StrengthBuffTicks(snake.id) > 0 || fixedPve.StrengthLoopTicks(snake.id) > 0 ? "+" : "");
             if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
             if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
-            if (snake.shield > 0) label += " · 保护";
+            if (snake.shield > 0) label += fixedPve != null && fixedPve.StrengthPreview ? " 保护" : " · 保护";
             nameplateEntries.Add(new NameplateEntry { box = new Rect(placed.x, placed.y, NameplateLayout.Width, NameplateLayout.Height),
                 anchor = position, color = arenaRenderer.TrailColor(snake, playerId), label = label });
         }
