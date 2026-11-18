@@ -88,7 +88,7 @@ async function main() {
   await touch('touchEnd', [point(350, 500, 2)]); await delay(150); await touch('touchEnd', []);
   await waitFor(() => hasSince(0, 'SNAKE_STRENGTH_E2E '), 'complete actual-touch match and local replay', 180000);
   const line = events.find(e => e.includes('SNAKE_STRENGTH_E2E '));
-  const match = line.match(/SNAKE_STRENGTH_E2E (?:MATCH|FAIL) -?\d+ [01] \d+ [0-9a-f]{16} [A-Za-z0-9+/=]+/);
+  const match = line.match(/SNAKE_STRENGTH_E2E (?:MATCH|FAIL) -?\d+ [01] \d+ s1-[0-9a-f]{16} [A-Za-z0-9+/=]+/);
   if (!match) throw Error('Malformed strength replay result');
   console.log(match[0]);
 }

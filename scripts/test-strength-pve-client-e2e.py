@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-client-e2e-') as directo
     # This marker is only in the temporary player and observes the actual UI decision.
     front = project / 'Assets/Snake/SnakeGameFront.cs'
     code = front.read_text()
-    marker = '                resultNote = matches ? "本机回放一致 · 不计奖励或排行" : reply.ok ?'
+    marker = '                resultNote = matches ? "本机回放一致 · 不计奖励或排行" : reply.ok && strength && string.IsNullOrEmpty(reply.stateDigest) ?'
     if code.count(marker) != 1:
         sys.exit('Client verification decision changed; update the diagnostic fixture.')
     code = code.replace(marker, '                Debug.Log("SNAKE_STRENGTH_E2E " + (matches ? "MATCH" : "FAIL"));\n' + marker, 1)

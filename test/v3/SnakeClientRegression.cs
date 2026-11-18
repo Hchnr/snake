@@ -70,6 +70,8 @@ namespace SnakeClub.Tests.Editor
                 var strengthReply = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"runId\":\"strength\",\"mode\":\"strength-eval\",\"rules\":\"strength-pve-dev-1\",\"seed\":73,\"strengthStartConfig\":{\"version\":\"strength-eval-setup-1\",\"firstRun\":true}}");
                 Require(strengthReply.strengthStartConfig != null && strengthReply.strengthStartConfig.Supported && strengthReply.strengthStartConfig.firstRun,
                     "strength server snapshot did not deserialize");
+                var digestReply = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"stateDigest\":\"s1-0123456789abcdef\"}");
+                Require(digestReply.stateDigest == "s1-0123456789abcdef", "strength diagnostic digest did not deserialize");
                 Apply("{\"ok\":true,\"runId\":\"pve\",\"mode\":\"pve\",\"date\":\"2026-11-16\",\"seed\":789}");
                 Require(client.Seed == 0, "PvE seed overwrote daily challenge seed");
                 Apply("{\"ok\":true,\"runId\":\"fixed\",\"mode\":\"fixed-eval\",\"date\":\"2026-11-16\",\"seed\":654}");

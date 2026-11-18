@@ -16,7 +16,7 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
         inputs.Add(heading); inputs.Add(boost ? (byte)1 : (byte)0); world.Step(heading, boost);
     }
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = world.Tick, winner = world.Winner, kills = world.Fighters[0].kills,
-        length = world.Fighters[0].motion.Length, inputs = Convert.ToBase64String(inputs.ToArray()) }));
+        length = world.Fighters[0].motion.Length, stateDigest = StrengthStateDigest.Compute(world), inputs = Convert.ToBase64String(inputs.ToArray()) }));
     return;
 }
 
@@ -1817,6 +1817,16 @@ static void StrengthRecordingCases()
         }
         Check(SnakeClub.Tests.StrengthPveReplayVector.Terminal(live) == SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay),
             "terminal fingerprint changed after strength replay");
+        string digest = StrengthStateDigest.Compute(live);
+        Check(digest.StartsWith("s1-") && StrengthStateDigest.Matches(replay, digest) && !StrengthStateDigest.Matches(replay, "") &&
+            !StrengthStateDigest.Matches(replay, "s1-0000000000000000"), "strength digest was not verified correctly");
+        var replayFruit = (List<PveFixedFruit>)replay.Fruit;
+        var fruit = replayFruit[0];
+        replayFruit[0] = new PveFixedFruit(new CapturePoint(fruit.position.x + 1, fruit.position.y), fruit.color);
+        Check(live.Tick == replay.Tick && live.Winner == replay.Winner && live.Fighters[0].kills == replay.Fighters[0].kills &&
+            live.Fighters[0].motion.Length == replay.Fighters[0].motion.Length && !StrengthStateDigest.Matches(replay, digest),
+            "a different terminal field passed the stronger comparison");
+        replayFruit[0] = fruit;
         Check(live.Fruit.Count == replay.Fruit.Count, "strength recording changed fruit count");
         for (int i = 0; i < live.Fruit.Count; i++)
             Check(live.Fruit[i].position.x == replay.Fruit[i].position.x && live.Fruit[i].position.y == replay.Fruit[i].position.y &&

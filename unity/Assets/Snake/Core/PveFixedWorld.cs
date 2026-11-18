@@ -684,6 +684,46 @@ namespace SnakeClub.Core
         }
     }
 
+    // Non-cryptographic terminal diagnostic for the local, no-reward strength
+    // experiment. This is not an integrity proof or a complete simulation hash.
+    public static class StrengthStateDigest
+    {
+        public static bool Matches(PveFixedWorld world, string digest) => !string.IsNullOrEmpty(digest) && world != null &&
+            world.StrengthPreview && world.Finished && string.Equals(digest, Compute(world), StringComparison.Ordinal);
+        public static string Compute(PveFixedWorld world)
+        {
+            if (world == null || !world.StrengthPreview || !world.Finished) throw new ArgumentException("Expected a completed strength preview");
+            ulong hash = 14695981039346656037UL;
+            void AddInt(int value)
+            {
+                unchecked { for (int i = 0; i < 4; i++) { hash ^= (byte)(value >> (i * 8)); hash *= 1099511628211UL; } }
+            }
+            void AddString(string value)
+            {
+                if (value == null) { AddInt(-1); return; }
+                AddInt(value.Length); foreach (char c in value) AddInt(c);
+            }
+            AddInt(world.Tick); AddString(world.Winner); AddInt(world.StrengthBasePower); AddInt(world.StrengthHardness);
+            AddInt(world.StrengthPickupVisible ? 1 : 0); AddInt(world.StrengthPickupPosition.x); AddInt(world.StrengthPickupPosition.y);
+            AddInt(world.LastPlayerAttackTick); AddInt(world.LastPlayerAttackCount); AddInt(world.LastPlayerDamageTick); AddInt(world.LastPlayerDamageCount);
+            AddInt(world.LastPlayerBlockedTick); AddInt(world.LastPlayerHeadTieTick);
+            foreach (var fighter in world.Fighters)
+            {
+                AddString(fighter.id); AddInt(fighter.alive ? 1 : 0); AddInt(fighter.shieldTicks); AddInt(fighter.kills);
+                AddString(fighter.eliminatedBy); AddString(fighter.eliminationReason); AddInt(fighter.motion.Angle);
+                AddInt(fighter.motion.Length); AddInt(fighter.motion.ReboundTicks); AddInt(fighter.motion.ReboundCooldown);
+                AddInt(fighter.motion.Boosting ? 1 : 0); AddInt(world.StrengthBuffTicks(fighter.id)); AddInt(world.StrengthLoopTicks(fighter.id));
+                bool hasLevel = world.TryGetStrengthLevelProgress(fighter.id, out int level, out int xp, out int required);
+                AddInt(hasLevel ? 1 : 0); AddInt(level); AddInt(xp); AddInt(required);
+                bool hasPower = world.TryGetStrength(fighter.id, out var power, out int tail);
+                AddInt(hasPower ? 1 : 0); AddInt(power.attack); AddInt(power.defense); AddInt(tail);
+                foreach (var part in fighter.motion.Segments) { AddInt(part.x); AddInt(part.y); }
+            }
+            foreach (var fruit in world.Fruit) { AddInt(fruit.position.x); AddInt(fruit.position.y); AddInt(fruit.color); }
+            return "s1-" + hash.ToString("x16");
+        }
+    }
+
     // The most recent resolved contact takes precedence; simultaneous attacks
     // and losses are both shown regardless of the order of combat outcomes.
     public static class StrengthContactNotice
