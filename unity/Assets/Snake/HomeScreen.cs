@@ -166,7 +166,7 @@ namespace SnakeClub
 
         public void SetState(PlayerProgress profile, Texture character, string message, bool busy, bool connected, bool sound,
             int equipped, int preview, bool referencesEnabled, bool trialAvailable, bool friendChallenge = false,
-            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100, int friendScore = 0, string friendRules = "", string friendDate = "", bool tutorialHints = true, bool fixedPvePreview = false, bool tutorialReady = false, bool strengthPvePreview = false, bool strengthServerPreview = false)
+            bool reduce = false, bool haptics = false, bool hapticsSupported = false, bool music = true, int musicVolume = 100, int effectsVolume = 100, int friendScore = 0, string friendRules = "", string friendDate = "", bool tutorialHints = true, bool fixedPvePreview = false, bool tutorialReady = false, bool strengthPvePreview = false, bool strengthServerPreview = false, bool offlineCosmeticPreview = false)
         {
             if (canvas == null || profile == null) return;
             reducedEffects = reduce;
@@ -196,7 +196,8 @@ namespace SnakeClub
             selectedPreview = Mathf.Clamp(preview, 0, SkinCatalog.All.Length - 1);
             var skin = SkinCatalog.Get(selectedPreview);
             Set(skinName, skin.Name);
-            Set(skinDescription, strengthServerPreview ? "皮肤仅改变外观 · 账号成长影响攻防" : strengthPvePreview ? (skin.ReferencePreview ? "内部参考 · 试玩仅改变外观" : "强弱试玩仅改变外观 · 属性统一") :
+            Set(skinDescription, offlineCosmeticPreview && !skin.ReferencePreview && !profile.ownedSkins.Contains(selectedPreview) ? "离线试玩仅改变外观 · 不增加属性" :
+                strengthServerPreview ? "皮肤仅改变外观 · 账号成长影响攻防" : strengthPvePreview ? (skin.ReferencePreview ? "内部参考 · 试玩仅改变外观" : "强弱试玩仅改变外观 · 属性统一") :
                 skin.Description + (skin.ReferencePreview ? " · 内部参考" : " · 每日挑战属性统一"));
             for (int i = 0; i < skinCards.Length; i++)
             {
@@ -218,7 +219,7 @@ namespace SnakeClub
                 Color cardColor = i == selectedPreview ? new Color(.17f, .63f, .57f, .96f) : new Color(.035f, .14f, .21f, .94f);
                 if (card.color != cardColor) card.color = cardColor;
                 Set(skinStates[i], SkinCatalog.Get(i).ReferencePreview ? "造型预览" : profile.ownedSkins.Contains(i) ? "已拥有" :
-                    i == 1 ? (strengthPvePreview ? (connected ? "旧版完成 2 场领取" : "联网完成旧版 2 场领取") : connected ? "完成 2 场免费领取" : "联网完成 2 场领取") : SkinCatalog.Get(i).Price + " 金币");
+                    offlineCosmeticPreview ? "可离线试玩" : i == 1 ? (strengthPvePreview ? (connected ? "旧版完成 2 场领取" : "联网完成旧版 2 场领取") : connected ? "完成 2 场免费领取" : "联网完成 2 场领取") : SkinCatalog.Get(i).Price + " 金币");
             }
             int pages = ((referencesEnabled ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount) + 5) / 6;
             if (skinPageIndex >= pages) skinPageIndex = pages - 1;
@@ -228,9 +229,9 @@ namespace SnakeClub
             bool owned = profile.ownedSkins.Contains(selectedPreview);
             bool available = SkinVisual.Texture(selectedPreview) != null && (!skin.ReferencePreview || referencesEnabled);
             bool canEquip = available || (owned && !skin.ReferencePreview);
-            Set(skinActionText, equipped == selectedPreview ? "使用中" : !available ? (canEquip ? "使用备用显示" : "素材不可用") : skin.ReferencePreview ? "本机试用" : owned ? "使用造型" :
-                skin.Price + (selectedPreview == 1 ? " 金币提前解锁" : " 金币解锁"));
-            Set(skinNotice, !available ? (owned ? "素材暂不可用，使用备用显示；拥有状态保留" : "素材暂不可用，请稍后再试") : string.IsNullOrEmpty(message) ? "金币 " + profile.coins : message);
+            Set(skinActionText, equipped == selectedPreview ? (!owned && !skin.ReferencePreview && offlineCosmeticPreview ? "试玩中 · 未解锁" : "使用中") : !available ? (canEquip ? "使用备用显示" : "素材不可用") : skin.ReferencePreview ? "本机试用" : owned ? "使用造型" :
+                offlineCosmeticPreview ? "离线试玩造型" : skin.Price + (selectedPreview == 1 ? " 金币提前解锁" : " 金币解锁"));
+            Set(skinNotice, !available ? (owned ? "素材暂不可用，使用备用显示；拥有状态保留" : "素材暂不可用，请稍后再试") : string.IsNullOrEmpty(message) ? (offlineCosmeticPreview && !owned && !skin.ReferencePreview ? "仅本次离线试玩 · 不解锁、不保存" : "金币 " + profile.coins) : message);
             skinAction.interactable = canEquip && !busy && equipped != selectedPreview;
             skinTrial.gameObject.SetActive(available && trialAvailable && !skin.ReferencePreview && !owned);
             Set(skinTrialText, "看 1 次广告，试穿 1 局");

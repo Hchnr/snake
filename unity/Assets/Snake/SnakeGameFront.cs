@@ -35,7 +35,7 @@ namespace SnakeClub
         private bool developerRooms = false;
         private string caveStory = "";
         private float caveStoryUntil;
-        private int previewSkin, lastRewardCoins, localVisualSkin = -1;
+        private int previewSkin, lastRewardCoins, localVisualSkin = -1, offlineVisualSkin = -1;
         private ApiReply board;
         private int boardGeneration;
         private const string StrengthPracticeTutorialKey = "snake.v033.strengthPracticeTutorial";
@@ -51,7 +51,11 @@ namespace SnakeClub
         private bool TutorialReady => CurrentProfile.tutorialComplete || (api != null && api.Connected &&
             !string.IsNullOrEmpty(practicedAccount) && api.Profile.playerId == practicedAccount);
         private bool ReferencePreviewEnabled => api != null && api.Config.allowReferenceSkinPreview && SkinVisual.ReferenceAvailable;
-        private int EffectiveSkin => ReferencePreviewEnabled && SkinCatalog.IsReference(localVisualSkin) ? localVisualSkin : CurrentProfile.selectedSkin;
+        // This is a visual-only session preview, never an ownership or stats change.
+        private bool OfflineCosmeticPreview => api != null && !api.Connected && !api.Config.allowDevLogin &&
+            string.IsNullOrWhiteSpace(api.Config.apiUrl) && string.IsNullOrWhiteSpace(api.Config.serverUrl);
+        private int EffectiveSkin => ReferencePreviewEnabled && SkinCatalog.IsReference(localVisualSkin) ? localVisualSkin :
+            OfflineCosmeticPreview && SkinCatalog.IsOwnedSkin(offlineVisualSkin) ? offlineVisualSkin : CurrentProfile.selectedSkin;
 
         private void SetupHomeScreen()
         {
@@ -90,17 +94,23 @@ namespace SnakeClub
             if (SkinCatalog.Get(index).ReferencePreview)
             {
                 if (!ReferencePreviewEnabled || SkinVisual.Texture(index) == null) return;
-                localVisualSkin = index; PlayerPrefs.SetInt("snake.v031.previewSkin", index); PlayerPrefs.Save();
+                offlineVisualSkin = -1; localVisualSkin = index; PlayerPrefs.SetInt("snake.v031.previewSkin", index); PlayerPrefs.Save();
                 previewSkin = index; frontNotice = "本机造型试用中";
             }
-            else if (!api.Connected && !p.ownedSkins.Contains(index)) frontNotice = "联网后可解锁并保存皮肤";
+            else if (!api.Connected && !p.ownedSkins.Contains(index))
+            {
+                if (!OfflineCosmeticPreview) { frontNotice = "联网后可解锁并保存皮肤"; return; }
+                if (SkinVisual.Texture(index) == null) { frontNotice = "素材暂不可用，无法试玩"; return; }
+                localVisualSkin = -1; offlineVisualSkin = index; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index;
+                frontNotice = "离线试玩造型 · 不解锁、不保存";
+            }
             else if (!api.Connected)
             {
-                localVisualSkin = -1; practiceProfile.selectedSkin = index; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index;
+                localVisualSkin = -1; offlineVisualSkin = -1; practiceProfile.selectedSkin = index; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index;
             }
             else Mutate(p.ownedSkins.Contains(index) ? "skin/equip" : "skin/buy", new ApiRequest { index = index }, reply =>
             {
-                if (reply.ok) { localVisualSkin = -1; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index; }
+                if (reply.ok) { localVisualSkin = -1; offlineVisualSkin = -1; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index; }
             });
         }
 
@@ -622,7 +632,7 @@ namespace SnakeClub
             PlayerProgress p = CurrentProfile;
             FrontHeader("灵蛇衣橱", api.Config.StrengthPveServerPreview ? "本机成长实验 · 皮肤仅改变外观" : (api.Config.StrengthRulesPreview || DefaultStrengthMain) ? "强弱试玩属性统一 · 皮肤仅改变外观" : "收集外观与小幅属性 · 每日挑战使用统一属性");
             if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(185, 280, 710, 600), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
-            Label(new Rect(180, 815, 720, 70), Progression.SkinNames[previewSkin] + "  ·  " + Progression.SkinDescriptions[previewSkin], 32, Color.white, TextAnchor.MiddleCenter, true);
+            Label(new Rect(180, 815, 720, 70), Progression.SkinNames[previewSkin] + "  ·  " + (OfflineCosmeticPreview && !p.ownedSkins.Contains(previewSkin) && SkinCatalog.IsOwnedSkin(previewSkin) ? "试玩仅改变外观" : Progression.SkinDescriptions[previewSkin]), 32, Color.white, TextAnchor.MiddleCenter, true);
             int count = api.Config.allowReferenceSkinPreview ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount;
             for (int slot = 0; slot < count; slot++)
             {
@@ -631,24 +641,13 @@ namespace SnakeClub
                 Rect card = new Rect(90 + slot % 2 * 465, 905 + slot / 2 * 225, 435, 205);
                 Panel(card, i == previewSkin ? new Color(.10f, .31f, .33f, .96f) : new Color(.035f, .10f, .16f, .93f));
                 Label(new Rect(card.x + 25, card.y + 8, 385, 48), Progression.SkinNames[i], 31, Color.white, TextAnchor.MiddleCenter, true);
-                Label(new Rect(card.x + 25, card.y + 58, 385, 43), Progression.SkinDescriptions[i], 22, new Color(.66f, .89f, .84f), TextAnchor.MiddleCenter);
+                Label(new Rect(card.x + 25, card.y + 58, 385, 43), OfflineCosmeticPreview && !p.ownedSkins.Contains(i) && !SkinCatalog.IsReference(i) ? "试玩仅改变外观" : Progression.SkinDescriptions[i], 22, new Color(.66f, .89f, .84f), TextAnchor.MiddleCenter);
                 if (SmallButton(new Rect(card.x + 24, card.y + 118, 145, 70), "预览", new Color(.18f, .31f, .40f), 24)) previewSkin = index;
                 bool reference = SkinCatalog.Get(i).ReferencePreview;
-                string action = reference ? (EffectiveSkin == i ? "试用中" : "本机试用") : p.ownedSkins.Contains(i) ? (EffectiveSkin == i ? "已使用" : "使用") : Progression.SkinPrices[i] + " 金币";
+                string action = reference ? (EffectiveSkin == i ? "试用中" : "本机试用") : p.ownedSkins.Contains(i) ? (EffectiveSkin == i ? "已使用" : "使用") :
+                    OfflineCosmeticPreview ? (EffectiveSkin == i ? "试玩中" : "试玩造型") : Progression.SkinPrices[i] + " 金币";
                 if (SmallButton(new Rect(card.x + 188, card.y + 118, 220, 70), action, new Color(.12f, .51f, .44f), 23) && EffectiveSkin != index)
-                {
-                    if (reference)
-                    {
-                        localVisualSkin = index; PlayerPrefs.SetInt("snake.v031.previewSkin", index); PlayerPrefs.Save();
-                        previewSkin = index; frontNotice = "本机造型试用中";
-                    }
-                    else if (!api.Connected && !p.ownedSkins.Contains(index)) frontNotice = "联网后可解锁并保存皮肤";
-                    else if (!api.Connected) { localVisualSkin = -1; practiceProfile.selectedSkin = index; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index; }
-                    else Mutate(p.ownedSkins.Contains(index) ? "skin/equip" : "skin/buy", new ApiRequest { index = index }, reply =>
-                    {
-                        if (reply.ok) { localVisualSkin = -1; PlayerPrefs.DeleteKey("snake.v031.previewSkin"); previewSkin = index; }
-                    });
-                }
+                    EquipPreviewSkin(index);
             }
             if (p.trialSkin > 0)
                 Label(new Rect(120, 1600, 840, 70), "下场普通对局试穿 " + Progression.SkinNames[p.trialSkin], 26, new Color(.65f, .95f, .84f), TextAnchor.MiddleCenter);

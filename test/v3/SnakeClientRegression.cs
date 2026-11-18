@@ -51,6 +51,7 @@ namespace SnakeClub.Tests.Editor
                 TestPendingStorageProtection();
                 TestFixedPvePreviewFlow();
                 TestStrengthPracticeFirstRun();
+                TestOfflineCosmeticTrial();
                 TestDefaultStrengthMain();
                 TestGameplayComparison();
                 TestPracticeTutorialAccess();
@@ -149,7 +150,13 @@ namespace SnakeClub.Tests.Editor
                     foreach (var button in owner.GetComponentsInChildren<Button>(true)) if (button.name == name) return button;
                     throw new Exception("UI button not found: " + name);
                 }
-                screen.SetState(new PlayerProgress(), null, "", false, false, true, 0, 24, false, false);
+                screen.SetState(new PlayerProgress(), null, "", false, false, true, 0, 24, false, false, offlineCosmeticPreview: true);
+                var texts = owner.GetComponentsInChildren<Text>(true);
+                Require(Array.Find(texts, t => t.name == "Equip label").text.Contains("离线试玩") &&
+                    Array.Find(texts, t => t.name == "Skin description").text.Contains("不增加属性") &&
+                    Array.Find(texts, t => t.name == "Skin notice").text.Contains("不解锁"), "offline trial was not clearly labeled");
+                screen.SetState(new PlayerProgress(), null, "", false, false, true, 24, 24, false, false, offlineCosmeticPreview: true);
+                Require(Array.Find(texts, t => t.name == "Equip label").text.Contains("未解锁"), "active trial appeared owned");
                 Require(FindButton("Skin card 24").gameObject.activeSelf && !FindButton("Skin card 4").gameObject.activeSelf,
                     "new owned skin was hidden or an internal reference was exposed");
                 FindButton("Skin card 24").onClick.Invoke();
@@ -638,6 +645,47 @@ namespace SnakeClub.Tests.Editor
                 UnityEngine.Object.DestroyImmediate(root);
                 if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
                 if (hadHintKey) PlayerPrefs.SetInt(hintKey, originalHint); else PlayerPrefs.DeleteKey(hintKey);
+                PlayerPrefs.Save();
+            }
+        }
+
+        private static void TestOfflineCosmeticTrial()
+        {
+            const string key = "snake.v031.previewSkin";
+            bool hadKey = PlayerPrefs.HasKey(key); int original = PlayerPrefs.GetInt(key, 0);
+            var root = new GameObject("Offline cosmetic trial regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>();
+                var api = root.AddComponent<GameApiClient>();
+                api.Configure(new GameConfiguration { apiUrl = "", serverUrl = "", allowDevLogin = false });
+                var renderer = root.AddComponent<ArenaRenderer>(); var connection = root.AddComponent<RoomConnection>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic; var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                int Effective() => (int)type.GetProperty("EffectiveSkin", flags).GetValue(app);
+                Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, renderer); Field("connection").SetValue(app, connection);
+                var practice = (PlayerProgress)Field("practiceProfile").GetValue(app);
+                Call("EquipPreviewSkin", 24);
+                Require(Effective() == 24 && practice.selectedSkin == 0 && !practice.ownedSkins.Contains(24),
+                    "offline cosmetic trial changed ownership or did not select the visual");
+                Call("BeginDefaultStrengthPractice");
+                var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(renderer.SelectedSkin == 24 && world.StrengthBasePower == 100 && practice.selectedSkin == 0,
+                    "offline visual was not used in practice or changed strength");
+                Call("BeginPve", new object[] { null });
+                Require(renderer.SelectedSkin == 24 && practice.selectedSkin == 0 && !practice.ownedSkins.Contains(24),
+                    "offline cosmetic trial affected legacy practice profile or was not shown");
+                api.Configure(new GameConfiguration { apiUrl = "https://example.invalid", serverUrl = "", allowDevLogin = false });
+                Require(Effective() == 0, "temporary offline visual leaked to configured account mode");
+                Call("EquipPreviewSkin", 24);
+                Require(Effective() == 0 && !practice.ownedSkins.Contains(24), "disconnected account mode allowed free selection");
+                Debug.Log("PASS Unity offline cosmetic trial is visual-only and isolated");
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(root);
+                if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
                 PlayerPrefs.Save();
             }
         }
