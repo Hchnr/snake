@@ -44,6 +44,7 @@ namespace SnakeClub.Core
         public Point bossAim;
         public List<Point> segments = new List<Point>();
         // Local strength-preview hints, aligned with segments; not an online snapshot field.
+        internal int strengthAttackTick = -1, strengthDamageTick = -1;
         internal readonly List<bool> strengthWeakSegments = new List<bool>();
         internal readonly List<bool> strengthThreatSegments = new List<bool>();
     }
@@ -390,7 +391,7 @@ namespace SnakeClub.Core
         { ScaleX = scaleX; ScaleY = scaleY; DamageTint = damageTint; }
     }
 
-    // Only the local player's real body-contact events feed this presentation.
+    // Real body-contact events feed this presentation.
     // Simultaneous damage takes precedence so injury cannot be masked by a bite.
     public static class StrengthReaction
     {
@@ -407,6 +408,26 @@ namespace SnakeClub.Core
                 return new StrengthReactionPose(1 + .10f * damage, 1 - .12f * damage, .25f * damage);
             float attack = Pulse(attackAge, .35f);
             return new StrengthReactionPose(1 - .05f * attack, 1 + .12f * attack, 0);
+        }
+    }
+
+    // Per-character visual cursor. Old or paused events are consumed without
+    // restarting them when rendering resumes.
+    public sealed class StrengthReactionCursor
+    {
+        private int seenAttack = -1, seenDamage = -1;
+        private float attackStarted = -10, damageStarted = -10;
+        public StrengthReactionPose Observe(int tick, int attackTick, int damageTick, float now, bool paused, bool reduced)
+        {
+            void Update(int at, ref int seen, ref float started)
+            {
+                if (at < 0 || at == seen || at > tick) return;
+                seen = at;
+                if (!paused && tick - at <= 3) started = now;
+            }
+            Update(attackTick, ref seenAttack, ref attackStarted);
+            Update(damageTick, ref seenDamage, ref damageStarted);
+            return StrengthReaction.Sample(now - attackStarted, now - damageStarted, reduced);
         }
     }
 
