@@ -696,8 +696,9 @@ namespace SnakeClub
                 Vector2 projected = ToVirtual(point);
                 captureVisible = point.z > 0 && projected.x >= 0 && projected.x <= 1080 && projected.y >= 0 && projected.y <= 1920;
             }
+            string strengthNotice = StrengthContactNotice.Text(fixedPve, state != null ? state.tick : -1, out bool strengthWarning);
             string captureText = CaptureNotice.Text(state, playerId, captureVisible);
-            if (!string.IsNullOrEmpty(captureText))
+            if (string.IsNullOrEmpty(strengthNotice) && !string.IsNullOrEmpty(captureText))
                 Label(new Rect(240, 520, 600, 90), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
             string elimination = eliminationFeedback.Current(state);
             if (!string.IsNullOrEmpty(elimination))
@@ -705,12 +706,12 @@ namespace SnakeClub
                 Panel(new Rect(300, 1080, 480, 72), new Color(.035f, .09f, .13f, .86f));
                 Label(new Rect(315, 1085, 450, 62), elimination, 24, new Color(.94f, .96f, .78f), TextAnchor.MiddleCenter, true);
             }
-            if (fixedPve != null && fixedPve.StrengthPreview && fixedPve.LastPlayerBiteTick >= 0 && state.tick - fixedPve.LastPlayerBiteTick < 20)
-                Label(new Rect(240, 520, 600, 90), fixedPve.LastPlayerWasBitten ? "身体被吃掉 " + fixedPve.LastPlayerBiteCount + " 节" : "吃掉身体 " + fixedPve.LastPlayerBiteCount + " 节！", 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
-            else if (fixedPve != null && fixedPve.StrengthPreview && fixedPve.LastPlayerBlockedTick >= 0 && state.tick - fixedPve.LastPlayerBlockedTick < 20)
-                Label(new Rect(240, 520, 600, 90), "强度不足 · 试试更弱的部位", 29, new Color(1f, .88f, .65f), TextAnchor.MiddleCenter, true);
-            else if (fixedPve != null && fixedPve.StrengthPreview && fixedPve.LastPlayerHeadTieTick >= 0 && state.tick - fixedPve.LastPlayerHeadTieTick < 20)
-                Label(new Rect(240, 520, 600, 90), "势均力敌 · 双方弹开", 29, new Color(1f, .88f, .65f), TextAnchor.MiddleCenter, true);
+            if (!string.IsNullOrEmpty(strengthNotice))
+            {
+                Panel(new Rect(190, 520, 700, 90), new Color(.025f, .08f, .14f, .90f));
+                Label(new Rect(205, 520, 670, 90), strengthNotice, 29,
+                    strengthWarning ? new Color(1f, .88f, .65f) : new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
+            }
             if (StrengthIntroVisible())
             {
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
