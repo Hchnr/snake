@@ -111,6 +111,7 @@ var cases = new (string name, Action run)[]
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
     ("result celebration only follows a real win and respects reduced effects", ResultMotionCases),
     ("character motion follows real turns, boost and reduced effects", CharacterMotionCases),
+    ("original characters have bounded distinct idle motion", OriginalIdleMotionCases),
     ("strength appearance follows real defense and temporary effects", StrengthAppearanceCases),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("elimination feedback follows observed credited outcomes", EliminationFeedbackCases),
@@ -924,6 +925,25 @@ static void StrengthAppearanceCases()
         missing.BodyWidth == .8f && missing.HeadScale == 1f && missing.Glow == 0, "appearance escaped bounds or invented a buff");
 }
 
+static void OriginalIdleMotionCases()
+{
+    var poses = new List<OriginalIdlePose>();
+    foreach (int skin in new[] { 0, 1, 2, 3, 24 })
+    {
+        Check(OriginalIdleMotion.TrySample(skin, .7f, false, out var pose), "original identity lacks motion");
+        Check(Math.Abs(pose.Lift) <= .0651f && Math.Abs(pose.Tilt) <= 2.801f && pose.ScaleX >= .978f && pose.ScaleY <= 1.0221f,
+            "idle pose escaped its visual bounds");
+        Check(OriginalIdleMotion.TrySample(skin, .7f, true, out var reduced) && reduced.Lift == 0 && reduced.Tilt == 0 && reduced.ScaleX == 1 && reduced.ScaleY == 1,
+            "reduced effects did not suppress idle motion");
+        poses.Add(pose);
+    }
+    Check(poses.Select(p => p.Lift).Distinct().Count() == poses.Count, "original characters share one idle motion");
+    Check(!OriginalIdleMotion.TrySample(4, .7f, false, out _) && !OriginalIdleMotion.TrySample(-1, .7f, false, out _),
+        "internal reference or invalid identity was treated as an original");
+    Check(OriginalIdleMotion.TrySample(24, float.NaN, false, out var invalid) && invalid.ScaleX == 1 && invalid.Lift == 0,
+        "invalid time corrupted the idle pose");
+}
+
 static void CharacterMotionCases()
 {
     var motion = new CharacterMotion();
@@ -961,9 +981,16 @@ static void CharacterMotionCases()
     wrapped.Update(0, 3.13f, false, .05f, false, true);
     wrapped.Update(1, -3.13f, false, .05f, false, true);
     Check(wrapped.LeanDegrees < 0 && wrapped.LeanDegrees > -2, "angle wrapping generated a false large turn");
+    float pausedLean = wrapped.LeanDegrees, pausedScale = wrapped.Scale;
     wrapped.Update(2, 0, true, .05f, false, false);
     for (int i = 0; i < 30; i++) wrapped.Update(2, 0, true, .05f, false, false);
-    Check(Math.Abs(wrapped.LeanDegrees) < .01f && Math.Abs(wrapped.Scale - 1) < .001f, "paused motion did not settle");
+    Check(wrapped.LeanDegrees == pausedLean && wrapped.Scale == pausedScale, "paused motion did not freeze");
+    var boosted = new CharacterMotion(); boosted.Update(0, 0, false, .05f, false, true);
+    boosted.Update(1, .2f, true, .05f, false, true);
+    float frozenLean = boosted.LeanDegrees, frozenScale = boosted.Scale;
+    for (int i = 0; i < 30; i++) boosted.Update(1, .2f, true, .05f, false, false);
+    Check(frozenScale > 1 && boosted.Scale == frozenScale && boosted.LeanDegrees == frozenLean,
+        "paused boost or turn pose changed");
     wrapped.Update(0, 1, false, .05f, false, true);
     Check(wrapped.LeanDegrees == 0 && wrapped.Scale == 1, "previous match motion leaked after tick reset");
     wrapped.Update(1, float.NaN, true, .05f, false, true);

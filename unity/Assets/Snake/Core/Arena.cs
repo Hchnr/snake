@@ -453,6 +453,38 @@ namespace SnakeClub.Core
         }
     }
 
+    public readonly struct OriginalIdlePose
+    {
+        public readonly float Lift, Tilt, ScaleX, ScaleY;
+        public OriginalIdlePose(float lift, float tilt, float scaleX, float scaleY)
+        { Lift = lift; Tilt = tilt; ScaleX = scaleX; ScaleY = scaleY; }
+    }
+
+    // Gentle, identity-specific motion for original sprites. It is visual
+    // only; collider position, speed and strength remain simulation-owned.
+    public static class OriginalIdleMotion
+    {
+        public static bool TrySample(int skin, float time, bool reduced, out OriginalIdlePose pose)
+        {
+            pose = new OriginalIdlePose(0, 0, 1, 1);
+            float speed, lift, tilt, stretch;
+            switch (skin)
+            {
+                case 0: speed = 1.6f; lift = .045f; tilt = 1.3f; stretch = .012f; break;
+                case 1: speed = 2.8f; lift = .060f; tilt = 2.0f; stretch = .022f; break;
+                case 2: speed = 1.2f; lift = .065f; tilt = 1.5f; stretch = .010f; break;
+                case 3: speed = 1.9f; lift = .035f; tilt = 2.3f; stretch = .008f; break;
+                case 24: speed = 2.1f; lift = .050f; tilt = 2.8f; stretch = .018f; break;
+                default: return false;
+            }
+            if (reduced || float.IsNaN(time) || float.IsInfinity(time)) return true;
+            float wave = (float)Math.Sin(time * speed);
+            float sway = (float)Math.Sin(time * speed * .63f);
+            pose = new OriginalIdlePose(lift * wave, tilt * sway, 1f - stretch * wave, 1f + stretch * wave);
+            return true;
+        }
+    }
+
     // Visual state only: the simulation remains the source of angle and boost.
     // Uniform scaling preserves the source character's proportions.
     public sealed class CharacterMotion
@@ -479,7 +511,9 @@ namespace SnakeClub.Core
                 lastTick = tick; lastAngle = angle;
             }
             if (reduced) { targetLean = lean = boost = 0; return; }
-            if (!active) targetLean = 0;
+            // Preserve the visible pose while paused; rebaseline the next
+            // turn so background updates cannot generate a sudden lean.
+            if (!active) { targetLean = 0; return; }
             if (float.IsNaN(deltaTime) || float.IsInfinity(deltaTime)) deltaTime = 0;
             float dt = Math.Max(0, Math.Min(.1f, deltaTime));
             float blend = (float)(1 - Math.Exp(-10 * dt));
