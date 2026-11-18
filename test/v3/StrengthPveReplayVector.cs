@@ -59,6 +59,8 @@ namespace SnakeClub.Tests
                     Add(world.StrengthPickupVisible ? 1 : 0); Add(world.StrengthPickupPosition.x); Add(world.StrengthPickupPosition.y);
                     Add(world.LastPlayerAttackTick); Add(world.LastPlayerAttackCount); Add(world.LastPlayerDamageTick); Add(world.LastPlayerDamageCount);
                     Add(world.LastPlayerBlockedTick); Add(world.LastPlayerHeadTieTick);
+                    Add(world.LastPlayerAttackPoint.x); Add(world.LastPlayerAttackPoint.y);
+                    Add(world.LastPlayerDamagePoint.x); Add(world.LastPlayerDamagePoint.y);
                     if (world.StrengthPickupVisible) flags |= 1;
                     if (world.LastPlayerAttackTick >= 0 || world.LastPlayerDamageTick >= 0) flags |= 2;
                     foreach (var fighter in world.Fighters)

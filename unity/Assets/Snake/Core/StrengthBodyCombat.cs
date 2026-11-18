@@ -111,8 +111,9 @@ namespace SnakeClub.Core
     {
         public readonly string attacker, defender;
         public readonly int segment, removed, attack, defense;
-        public BodyBite(string attacker, string defender, int segment, int removed, int attack, int defense)
-        { this.attacker = attacker; this.defender = defender; this.segment = segment; this.removed = removed; this.attack = attack; this.defense = defense; }
+        public readonly CapturePoint point;
+        public BodyBite(string attacker, string defender, int segment, int removed, int attack, int defense, CapturePoint point = default)
+        { this.attacker = attacker; this.defender = defender; this.segment = segment; this.removed = removed; this.attack = attack; this.defense = defense; this.point = point; }
     }
 
     public readonly struct BlockedBodyContact
@@ -139,6 +140,7 @@ namespace SnakeClub.Core
         private sealed class Candidate
         {
             public int attacker, defender, segment, count, attack, defense;
+            public CapturePoint point;
             public long advantage;
         }
         private StrengthInputs[] powersBuffer = Array.Empty<StrengthInputs>();
@@ -232,7 +234,7 @@ namespace SnakeClub.Core
                         count++;
                     }
                     if (count > 0) candidates.Add(new Candidate { attacker = i, defender = j, segment = segment, count = count,
-                        attack = attackingPower.attack, defense = defendingPower.defense,
+                        attack = attackingPower.attack, defense = defendingPower.defense, point = defender.motion.Segments[segment],
                         advantage = (long)attackingPower.attack * 100 - (long)defendingPower.defense * 105 });
                 }
             }
@@ -258,7 +260,7 @@ namespace SnakeClub.Core
                 int removed = defender.motion.RemoveBodySegments(c.segment, c.count);
                 if (removed <= 0) continue;
                 nextHit[Key(attacker.id, defender.id)] = tick + CooldownTicks;
-                bites.Add(new BodyBite(attacker.id, defender.id, c.segment, removed, c.attack, c.defense));
+                bites.Add(new BodyBite(attacker.id, defender.id, c.segment, removed, c.attack, c.defense, c.point));
             }
             // Growth is applied after all body removals, preserving snapshot decisions.
             foreach (var bite in bites)

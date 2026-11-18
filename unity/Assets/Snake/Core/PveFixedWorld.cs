@@ -91,6 +91,8 @@ namespace SnakeClub.Core
         public int LastPlayerAttackCount { get; private set; }
         public int LastPlayerDamageTick { get; private set; } = -1;
         public int LastPlayerDamageCount { get; private set; }
+        public CapturePoint LastPlayerAttackPoint { get; private set; }
+        public CapturePoint LastPlayerDamagePoint { get; private set; }
         public int LastPlayerBlockedTick { get; private set; } = -1;
         public int LastPlayerHeadTieTick { get; private set; } = -1;
         private readonly int[] strengthBuffTicks = new int[8];
@@ -462,6 +464,10 @@ namespace SnakeClub.Core
                 }
             }
             for (int i = 0; i < fruit.Count; i++) { projection.fruits[i].position = ToPoint(fruit[i].position); projection.fruits[i].color = fruit[i].color; }
+            projection.strengthAttackTick = StrengthPreview ? LastPlayerAttackTick : -1;
+            projection.strengthDamageTick = StrengthPreview ? LastPlayerDamageTick : -1;
+            projection.strengthAttackPoint = ToPoint(LastPlayerAttackPoint);
+            projection.strengthDamagePoint = ToPoint(LastPlayerDamagePoint);
             projection.captureTick = lastCaptureTick; projection.captureCount = lastCaptureCount; projection.captureOwner = lastCaptureOwner;
             projection.capturePolygon.Clear();
             for (int i = 0; i < lastCapturePolygon.Count; i++) projection.capturePolygon.Add(ToPoint(lastCapturePolygon[i]));
@@ -668,8 +674,8 @@ namespace SnakeClub.Core
         private void RecordStrengthBite(BodyBite bite)
         {
             AwardStrengthExperience(bite.attacker, bite.removed * 2);
-            if (bite.attacker == "you") { LastPlayerAttackTick = Tick; LastPlayerAttackCount = bite.removed; }
-            if (bite.defender == "you") { LastPlayerDamageTick = Tick; LastPlayerDamageCount = bite.removed; }
+            if (bite.attacker == "you") { LastPlayerAttackTick = Tick; LastPlayerAttackCount = bite.removed; LastPlayerAttackPoint = bite.point; }
+            if (bite.defender == "you") { LastPlayerDamageTick = Tick; LastPlayerDamageCount = bite.removed; LastPlayerDamagePoint = bite.point; }
             if (bite.attacker == "you" || bite.defender == "you")
             { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
         }
