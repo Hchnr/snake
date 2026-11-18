@@ -107,6 +107,6 @@ internal static class FixedVectorDiagnostic {
                     print('First differing matrix case: .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: strength preview differs across runtimes; do not enable replay-based rewards.')
-        print('MATCH: 12 sampled strength-preview matches only; Douyin devices, hidden state, arbitrary inputs and production rewards remain unverified.')
+        print('MATCH: 12 sampled strength-preview matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

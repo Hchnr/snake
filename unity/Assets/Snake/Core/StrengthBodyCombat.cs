@@ -152,6 +152,17 @@ namespace SnakeClub.Core
         internal bool IsPairCoolingDown(long tick, string attacker, string defender)
             => nextHit.TryGetValue(Key(attacker, defender), out long allowed) && tick < allowed;
 
+        // Stable fighter order avoids depending on dictionary enumeration order.
+        internal void AppendReplayDiagnostics(PveFixedFighter[] fighters, Action<int> add)
+        {
+            add(unchecked((int)lastTick)); add(unchecked((int)(lastTick >> 32)));
+            foreach (var attacker in fighters) foreach (var defender in fighters)
+            {
+                bool found = nextHit.TryGetValue(Key(attacker.id, defender.id), out long allowed);
+                add(found ? 1 : 0); add(unchecked((int)allowed)); add(unchecked((int)(allowed >> 32)));
+            }
+        }
+
         // All contacts and powers are decided from the state at the start of
         // this call. Each attacker and each defender has at most one bite per
         // tick; competing bites use advantage, then stable IDs, never list order.
