@@ -110,6 +110,7 @@ var cases = new (string name, Action run)[]
     ("danger cue follows live, unshielded collision hazards", NearbyDanger),
     ("result celebration only follows a real win and respects reduced effects", ResultMotionCases),
     ("character motion follows real turns, boost and reduced effects", CharacterMotionCases),
+    ("strength appearance follows real defense and temporary effects", StrengthAppearanceCases),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("elimination feedback follows observed credited outcomes", EliminationFeedbackCases),
     ("kill feedback reflects observed growth and freezes with match ticks", KillFeedbackCases),
@@ -892,6 +893,19 @@ static void ResultMotionCases()
     Check(end.Lift == 0 && end.Tilt == 0, "celebration did not finish");
     var invalid = ResultMotion.Sample(true, false, float.NaN);
     Check(invalid.Lift == 0 && invalid.Tilt == 0, "invalid time produced a pose");
+}
+
+static void StrengthAppearanceCases()
+{
+    var neutral = StrengthAppearance.FromDefense(100, 55, 1000);
+    var stronger = StrengthAppearance.FromDefense(180, 99, 1000);
+    var buffed = StrengthAppearance.FromDefense(180, 99, 1120);
+    Check(stronger.BodyWidth > neutral.BodyWidth && stronger.HeadScale > neutral.HeadScale, "stronger defense did not increase visual size");
+    Check(Math.Abs(neutral.TailRatio - .55f) < .001f && buffed.Glow > neutral.Glow, "tail taper or temporary glow was not represented");
+    var max = StrengthAppearance.FromDefense(int.MaxValue, int.MaxValue, int.MaxValue);
+    var missing = StrengthAppearance.FromDefense(0, 0, 0);
+    Check(max.BodyWidth <= 1.35f && max.HeadScale <= 1.18f && max.TailRatio <= 1 && max.Glow <= 1 &&
+        missing.BodyWidth == .8f && missing.HeadScale == 1f && missing.Glow == 0, "appearance escaped bounds or invented a buff");
 }
 
 static void CharacterMotionCases()
@@ -1951,6 +1965,9 @@ static void StrengthHeadWarningCases()
     actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
     actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(5000, 0, 0, 40));
     for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+    Check(world.TryGetStrength("bot-1", out var power, out var tail) &&
+        world.RenderState().snakes[1].strengthHeadDefense == power.defense && world.RenderState().snakes[1].strengthTailDefense == tail,
+        "defense appearance did not use the actual body-strength values");
     Check(world.TryFindNearbyHeadThreat("you", out var id) && id == "bot-1", "nearby stronger opponent not reported");
     Check(world.RenderState().strengthHeadThreat == "bot-1", "actual threat not projected");
     actors[0].shieldTicks = 1;

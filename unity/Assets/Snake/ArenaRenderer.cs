@@ -47,6 +47,7 @@ namespace SnakeClub
         private int visualFrame = -1;
         private struct ExitPose { public Vector3 position, scale; }
         private readonly Dictionary<string, LineRenderer[]> characterTrails = new Dictionary<string, LineRenderer[]>();
+        private readonly Dictionary<string, int> characterTrailRatios = new Dictionary<string, int>();
         private readonly Dictionary<string, LineRenderer> opponentMarkers = new Dictionary<string, LineRenderer>();
         private readonly Dictionary<string, LineRenderer> protectionMarkers = new Dictionary<string, LineRenderer>();
         private readonly List<Transform> crystals = new List<Transform>();
@@ -483,6 +484,8 @@ namespace SnakeClub
                 int visualSkin = ResolveVisualSkin(snake, playerId, playerVisual);
                 Sprite characterSprite = characterMode && visualSkin >= 0 ? SkinVisual.Sprite(visualSkin) : null;
                 int color = PaletteIndex(snake, playerId, visualSkin, characterSprite != null);
+                var appearance = StrengthBodyVisual ? StrengthAppearance.FromDefense(snake.strengthHeadDefense, snake.strengthTailDefense, snake.strengthEffectFactor)
+                    : StrengthAppearance.FromDefense(0, 0, 0);
                 var list = bodies[color];
                 List<Vector3> positions;
                 if (!smoothed.TryGetValue(snake.id, out positions))
@@ -503,13 +506,18 @@ namespace SnakeClub
                     positions[i] = characterMode || Vector3.Distance(positions[i], target) > 8f ? target :
                         Vector3.Lerp(positions[i], target, 1f - Mathf.Exp(-16f * (MotionPaused ? 0f : Time.deltaTime)));
                     float taper = characterSprite != null ? .80f : i == 0 ? 1.65f : Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((snake.segments.Count - i) / 6f));
-                    if (characterSprite == null) list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * taper));
+                    if (characterSprite == null)
+                    {
+                        float part = i == 0 ? appearance.HeadScale : Mathf.Lerp(appearance.BodyWidth / .8f, appearance.BodyWidth / .8f * appearance.TailRatio,
+                            (float)i / Mathf.Max(1, snake.segments.Count - 1));
+                        list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * (taper * part)));
+                    }
                     else if (StrengthBodyVisual && i > 0)
                     {
                         // Mark actual body-segment centres; taper makes the
                         // weaker tail distinguishable without adding collision.
                         float progress = (float)i / Mathf.Max(1, snake.segments.Count - 1);
-                        float bead = Mathf.Lerp(.36f, .18f, progress);
+                        float bead = Mathf.Lerp(.36f, .18f, progress) * (appearance.BodyWidth / .8f);
                         Vector3 point = positions[i]; point.y = .38f;
                         scales.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * bead));
                     }
@@ -541,7 +549,11 @@ namespace SnakeClub
                     if (delta.sqrMagnitude < .0001f) continue;
                     float diameter = characterSprite != null ? .80f : Mathf.Lerp(.70f, 1.27f, Mathf.Clamp01((positions.Count - i) / 6f));
                     if (characterSprite == null)
-                        links[color].Add(Matrix4x4.TRS((positions[i - 1] + positions[i]) * .5f, Quaternion.FromToRotation(Vector3.up, delta), new Vector3(diameter, delta.magnitude * .5f, diameter)));
+                    {
+                        float part = Mathf.Lerp(appearance.BodyWidth / .8f, appearance.BodyWidth / .8f * appearance.TailRatio,
+                            (float)i / Mathf.Max(1, positions.Count - 1));
+                        links[color].Add(Matrix4x4.TRS((positions[i - 1] + positions[i]) * .5f, Quaternion.FromToRotation(Vector3.up, delta), new Vector3(diameter * part, delta.magnitude * .5f, diameter * part)));
+                    }
                 }
                 Vector3 forward = new Vector3(Mathf.Cos(snake.angle), 0, Mathf.Sin(snake.angle));
                 Vector3 side = new Vector3(-forward.z, 0, forward.x);
@@ -559,7 +571,7 @@ namespace SnakeClub
                 }
                 if (characterSprite != null)
                 {
-                    DrawCharacterTrail(snake.id, positions, Palette[color], StrengthBodyVisual ? 1 : 2);
+                    DrawCharacterTrail(snake.id, positions, Palette[color], StrengthBodyVisual ? 1 : 2, appearance, StrengthBodyVisual && snake.boosting);
                     if (!characters.TryGetValue(snake.id, out var character) || character == null)
                     {
                         var item = new GameObject("Full character " + snake.id); item.transform.SetParent(runtimeRoot, false);
@@ -591,7 +603,7 @@ namespace SnakeClub
                         characterMotions[snake.id] = motion = new CharacterMotion();
                     motion.Update(state.tick, snake.angle, snake.boosting, Time.deltaTime, ReducedEffects,
                         !MotionPaused && state.phase == "running");
-                    float characterScale = 1.35f * motion.Scale;
+                    float characterScale = 1.35f * motion.Scale * appearance.HeadScale;
                     var reaction = new StrengthReactionPose(1, 1, 0);
                     if (StrengthBodyVisual && state.phase == "running")
                     {
@@ -900,7 +912,7 @@ namespace SnakeClub
             PlaceRing(ring, center + Vector3.up * .03f, 1.12f);
         }
 
-        private void DrawCharacterTrail(string id, List<Vector3> positions, Color color, int firstSegment)
+        private void DrawCharacterTrail(string id, List<Vector3> positions, Color color, int firstSegment, StrengthAppearanceValues appearance, bool boosting)
         {
             // Old rules start body collision at segment 2; strength practice
             // includes segment 1. Segment 0 remains the character's head.
@@ -916,20 +928,28 @@ namespace SnakeClub
                     line.widthMultiplier = layer == 0 ? .80f : .25f; line.sortingOrder = layer;
                     line.shadowCastingMode = ShadowCastingMode.Off; lines[layer] = line;
                 }
-                characterTrails[id] = lines;
+                characterTrails[id] = lines; characterTrailRatios.Remove(id);
+            }
+            int ratio = Mathf.RoundToInt(appearance.TailRatio * 100);
+            if (!characterTrailRatios.TryGetValue(id, out int oldRatio) || ratio != oldRatio)
+            {
+                var widthCurve = AnimationCurve.Linear(0, 1, 1, ratio / 100f);
+                foreach (var line in lines) line.widthCurve = widthCurve;
+                characterTrailRatios[id] = ratio;
             }
             for (int layer = 0; layer < lines.Length; layer++)
             {
                 var line = lines[layer]; line.enabled = true; line.positionCount = positions.Count - firstSegment;
-                Color shade = layer == 0 ? color : Color.Lerp(color, Color.white, .78f);
-                float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(visualClock.Time * 4f);
+                line.widthMultiplier = appearance.BodyWidth * (layer == 0 ? 1f : .3125f);
+                Color shade = layer == 0 ? Color.Lerp(color, Color.white, appearance.Glow * .30f) : Color.Lerp(color, Color.white, .78f);
+                float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(visualClock.Time * (boosting ? 7f : 4f));
                 line.startColor = line.endColor = new Color(shade.r * pulse, shade.g * pulse, shade.b * pulse, 1f);
                 for (int i = firstSegment; i < positions.Count; i++) line.SetPosition(i - firstSegment, new Vector3(positions[i].x, .23f + layer * .02f, positions[i].z));
             }
             if (!ReducedEffects)
             {
                 // Moving highlights remain inside the real collidable path.
-                float phase = Mathf.Repeat(visualClock.Time * 3f, 5f);
+                float phase = Mathf.Repeat(visualClock.Time * (boosting ? 5f : 3f), 5f);
                 for (float sample = firstSegment + phase; sample < positions.Count - 1; sample += 5f)
                 {
                     int i = Mathf.FloorToInt(sample);

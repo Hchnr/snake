@@ -60,6 +60,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
                 TestStrengthImpactVisual();
+                TestStrengthAppearanceVisual();
                 TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
                 TestStrengthLevelVisual();
@@ -492,6 +493,37 @@ namespace SnakeClub.Tests.Editor
                 renderer.MotionPaused = false; renderer.Draw(pausedMatch.RenderState(), "you");
                 Require(!attack.enabled && !damage.enabled, "suspension replayed an old impact");
                 Debug.Log("PASS Unity strength impacts follow real bite positions");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestStrengthAppearanceVisual()
+        {
+            var root = new GameObject("Strength appearance regression");
+            try
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var renderer = root.AddComponent<ArenaRenderer>(); typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true;
+                var world = new PveFixedWorld(42, false, null, true);
+                var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+                actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+                actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(20000, 0, 0, 40));
+                for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+                renderer.Draw(world.RenderState(), "you");
+                var trails = (System.Collections.Generic.Dictionary<string, LineRenderer[]>)typeof(ArenaRenderer).GetField("characterTrails", flags).GetValue(renderer);
+                Require(trails["bot-1"][0].widthMultiplier > trails["you"][0].widthMultiplier &&
+                    trails["you"][0].widthCurve.Evaluate(1) < trails["you"][0].widthCurve.Evaluate(0),
+                    "stronger body width or weaker tail taper missing");
+                var before = trails["bot-1"][0].startColor;
+                ((int[])typeof(PveFixedWorld).GetField("strengthBuffTicks", flags).GetValue(world))[1] = 120;
+                renderer.ReducedEffects = true; renderer.Draw(world.RenderState(), "you");
+                var after = trails["bot-1"][0].startColor;
+                Require(after.r > before.r || after.g > before.g || after.b > before.b, "actual buff did not brighten the body");
+                renderer.StrengthBodyVisual = false; renderer.Draw(world.RenderState(), "you");
+                Require(Mathf.Abs(trails["you"][0].widthMultiplier - .8f) < .001f && Mathf.Abs(trails["you"][0].widthCurve.Evaluate(1) - 1f) < .001f,
+                    "strength visuals leaked into legacy mode");
+                Debug.Log("PASS Unity strength appearance follows actual body defense and effects");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

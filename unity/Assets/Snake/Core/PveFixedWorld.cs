@@ -443,6 +443,12 @@ namespace SnakeClub.Core
                 var source = fighters[i]; var target = projection.snakes[i];
                 target.strengthAttackTick = StrengthPreview ? strengthAttackTicks[i] : -1;
                 target.strengthDamageTick = StrengthPreview ? strengthDamageTicks[i] : -1;
+                target.strengthHeadDefense = target.strengthTailDefense = target.strengthEffectFactor = 0;
+                if (StrengthPreview && source.alive && TryGetStrength(source.id, out var appearancePower, out int appearanceTail))
+                {
+                    target.strengthHeadDefense = appearancePower.defense; target.strengthTailDefense = appearanceTail;
+                    target.strengthEffectFactor = appearancePower.effectFactor;
+                }
                 target.alive = source.alive; target.shield = source.shieldTicks / (float)TickRate;
                 target.kills = source.kills; target.starPoints = source.eventPoints;
                 target.eliminatedBy = source.eliminatedBy; target.eliminationReason = source.eliminationReason;
