@@ -732,7 +732,13 @@ namespace SnakeClub
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
                 Label(new Rect(125, 560, 830, 80), StrengthTutorialHints.Select(state.tick), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
-            if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.Find(state, playerId, out _))
+            bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && fixedPve.TryFindNearbyHeadThreat(playerId, out _);
+            if (strengthHeadWarning)
+            {
+                Panel(new Rect(250, 1635, 580, 74), new Color(.12f, .075f, .04f, .90f));
+                Label(new Rect(270, 1640, 540, 64), "附近有强敌 · 注意碰头", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
+            }
+            else if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
             else if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.FindBeforeProtectionEnds(state, playerId, out _))
                 Label(new Rect(230, 1640, 620, 64), "附近有对手 · 保护即将结束", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
@@ -746,6 +752,7 @@ namespace SnakeClub
             {
                 DrawNames(state);
                 edgeObstacles.Clear();
+                if (strengthHeadWarning) edgeObstacles.Add(new EdgeObstacle(250, 1635, 580, 74));
                 foreach (var entry in nameplateEntries)
                     edgeObstacles.Add(new EdgeObstacle(entry.box.x, entry.box.y, entry.box.width, entry.box.height));
                 bool hasObjectiveEdge = DrawEventTargetEdge(state, out Rect objectiveEdge);
@@ -926,6 +933,8 @@ namespace SnakeClub
         private void DrawNames(ArenaState world)
         {
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
+            if (!paused && fixedPve != null && fixedPve.StrengthPreview && fixedPve.TryFindNearbyHeadThreat(playerId, out _))
+                nameplates.Reserve(250, 1635, 580, 74);
             if (StrengthIntroVisible()) nameplates.Reserve(100, 550, 880, 100);
             else if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
             {

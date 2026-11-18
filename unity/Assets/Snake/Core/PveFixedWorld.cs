@@ -595,6 +595,32 @@ namespace SnakeClub.Core
             return false;
         }
 
+        // Presentation hint only: compare the same snapshot and tie band as
+        // head combat. It does not predict movement or guarantee an outcome.
+        public bool TryFindNearbyHeadThreat(string playerId, out string threatId)
+        {
+            threatId = "";
+            if (!StrengthPreview || Finished || !TryGetStrength(playerId, out var ownPower, out _)) return false;
+            PveFixedFighter player = null;
+            foreach (var fighter in fighters) if (fighter.id == playerId) { player = fighter; break; }
+            if (player == null || !player.alive || player.shieldTicks > 0) return false;
+            long closest = 6000L * 6000L + 1;
+            foreach (var other in fighters)
+            {
+                if (other == player || !other.alive || other.shieldTicks > 0 ||
+                    !TryGetStrength(other.id, out var otherPower, out _)) continue;
+                long dx = (long)player.motion.X - other.motion.X, dy = (long)player.motion.Y - other.motion.Y;
+                long distance = dx * dx + dy * dy;
+                if (distance > 6000L * 6000L) continue;
+                long incoming = (long)otherPower.attack * 100 - (long)ownPower.defense * 105;
+                long outgoing = (long)ownPower.attack * 100 - (long)otherPower.defense * 105;
+                if (incoming <= 0 || incoming <= outgoing) continue;
+                if (distance < closest || (distance == closest && string.CompareOrdinal(other.id, threatId) < 0))
+                { closest = distance; threatId = other.id; }
+            }
+            return threatId.Length > 0;
+        }
+
         private void RecordStrengthBite(BodyBite bite)
         {
             AwardStrengthExperience(bite.attacker, bite.removed * 2);
