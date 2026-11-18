@@ -780,12 +780,28 @@ namespace SnakeClub.Core
         private bool baseline = true;
         private int tick = -1;
         public bool PendingBaseline => baseline;
+        public int LastTick => tick;
         public void Suspend() => baseline = true;
         public bool Observe(int currentTick)
         {
             bool reset = baseline || currentTick < tick;
             baseline = false; tick = currentTick;
             return reset;
+        }
+    }
+
+    public enum StrengthSoundCue { None, Bite, Damage }
+    public static class StrengthSoundFeedback
+    {
+        // Only events since the previous observed simulation step are audible.
+        // When both happen at the same time, the warning takes precedence.
+        public static StrengthSoundCue Select(bool active, int previousTick, int currentTick, int attackTick, int damageTick)
+        {
+            if (!active || previousTick < 0 || currentTick <= previousTick) return StrengthSoundCue.None;
+            int attack = attackTick > previousTick && attackTick <= currentTick ? attackTick : -1;
+            int damage = damageTick > previousTick && damageTick <= currentTick ? damageTick : -1;
+            if (attack < 0 && damage < 0) return StrengthSoundCue.None;
+            return damage >= attack ? StrengthSoundCue.Damage : StrengthSoundCue.Bite;
         }
     }
 
