@@ -209,18 +209,23 @@ namespace SnakeClub
 
         private void BeginFixedPve() => BeginFixedPveWithRun(null);
 
-        private void BeginFixedPveWithRun(ApiReply run)
+        private void BeginFixedPveWithRun(ApiReply run) => BeginFixedPveCore(run, false);
+
+        private void BeginDefaultStrengthPractice() => BeginFixedPveCore(null, true);
+
+        private void BeginFixedPveCore(ApiReply run, bool defaultStrength)
         {
+            defaultStrengthPractice = defaultStrength;
             nameplates.ClearHistory(); opponentEdgeId = "";
             dragSteering.Reset(); connection.Close();
             online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = null; depthMode = false;
             bool strengthRun = run != null && run.mode == "strength-eval";
-            firstRun = run == null ? (api.Config.StrengthPvePreview ? !strengthPracticeTutorialComplete : !practiceProfile.tutorialComplete) :
+            firstRun = run == null ? ((defaultStrength || api.Config.StrengthPvePreview) ? !strengthPracticeTutorialComplete : !practiceProfile.tutorialComplete) :
                 strengthRun ? run.strengthStartConfig.firstRun : run.startConfig.firstRun;
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                strengthRun || (run == null && api.Config.StrengthRulesPreview), strengthRun ? run.strengthStartConfig : null);
+                strengthRun || (run == null && (defaultStrength || api.Config.StrengthRulesPreview)), strengthRun ? run.strengthStartConfig : null);
             state = fixedPve.RenderState();
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
@@ -309,6 +314,7 @@ namespace SnakeClub
             status = "";
             daily = null;
             fixedPve = null;
+            defaultStrengthPractice = false;
             activeRun = null;
             frontPage = api.Config.ComparisonPreview && comparisonVariant >= 0 ? "comparison" : "home";
             comparisonVariant = -1;
@@ -341,10 +347,10 @@ namespace SnakeClub
                 if (homeVisible || resultVisible)
                 {
                     homeScreen.SetPage(frontPage == "skins", resultVisible);
-                    bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
+                    bool trial = !DefaultStrengthMain && CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview, api.Config.StrengthPveServerPreview);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview || DefaultStrengthMain, api.Config.StrengthPveServerPreview);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
@@ -815,8 +821,7 @@ namespace SnakeClub
             if (Button(new Rect(230, 950, 620, 105), "再来一局", new Color(.10f, .60f, .49f)))
             {
                 if (online) { Send(new Request { type = "restart" }); status = ""; }
-                else if (comparison) BeginComparison(comparisonVariant);
-                else if (daily != null) RequestDaily(); else RequestPve();
+                else RetryMatch();
             }
             if (Button(new Rect(230, 1080, 620, 95), "返回菜单", new Color(.17f, .25f, .34f))) BackToMenu();
             DrawRewardOffer(new Rect(245, 1190, 590, 70));
