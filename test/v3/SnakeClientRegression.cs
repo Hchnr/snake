@@ -178,6 +178,11 @@ namespace SnakeClub.Tests.Editor
                 screen.SetResult("围猎结束", "最长 16 · 淘汰 0", "本局已出局", "离线练习 · 不计账号奖励", false, false, 0);
                 Require(FindText("Result details").text.Contains("不计账号奖励") && !FindButton("Result share").gameObject.activeSelf,
                     "practice results retained verified rewards or sharing");
+                screen.SetResult("吞食结束", "当前长度 80   ·   淘汰 7\n最长 80", "时间到 · 你的长度 80，第一名 80", "强弱吞食试玩 · 不计账号奖励或排行", false, false, 0);
+                Canvas.ForceUpdateCanvases();
+                var resultStats = FindText("Result stats"); var resultOutcome = FindText("Result outcome");
+                Require(resultStats.preferredHeight <= resultStats.rectTransform.rect.height && resultOutcome.preferredWidth <= resultOutcome.rectTransform.rect.width,
+                    "strength result explanation did not fit the result card");
                 screen.SetResult("挑战结束", "得分 100", "", "正在结算…", false, true, 0);
                 FindButton("Result retry").onClick.Invoke();
                 Require(retried == 1 && FindButton("Result share").gameObject.activeSelf, "result actions are not wired");

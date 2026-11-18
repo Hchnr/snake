@@ -351,7 +351,7 @@ namespace SnakeClub
                         string stats = comparisonVariant >= 0 && api.Config.ComparisonPreview ?
                             "最长 " + daily.PeakLength + "   ·   淘汰 " + (own != null ? own.kills : 0) :
                             daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
-                            own == null ? "" : "最长 " + matchHighlights.PeakLength + "   ·   淘汰 " + own.kills;
+                            own == null ? "" : fixedPve != null && fixedPve.StrengthPreview ? "当前长度 " + own.segments.Count + "   ·   淘汰 " + own.kills + "\n最长 " + matchHighlights.PeakLength : "最长 " + matchHighlights.PeakLength + "   ·   淘汰 " + own.kills;
                         if (own != null && (state.eventStatus == "active" || state.eventStatus == "ended") &&
                             (state.eventKind == "bounty" || state.eventKind == "star" || state.eventKind == "fruit"))
                             stats += "   ·   事件点 " + own.starPoints;
@@ -359,7 +359,7 @@ namespace SnakeClub
                             activeRun.date == api.Date && DailyMatch.SupportsFriendChallenge(activeRun.rules) && !string.IsNullOrEmpty(verifiedShareToken);
                         int adCoins = !string.IsNullOrEmpty(lastRewardId) && GamePlatform.HasRewardedAds(api) ? lastRewardCoins : 0;
                         string highlight = matchHighlights.BestCapture > 0 ? "最佳围猎 · 一次圈住 " + matchHighlights.BestCapture + " 个对手" : "";
-                        string outcome = MatchOutcome.Explain(state, playerId);
+                        string outcome = fixedPve != null && fixedPve.StrengthPreview ? StrengthMatchOutcome.Explain(state, playerId) : MatchOutcome.Explain(state, playerId);
                         homeScreen.SetResult(title, stats, outcome, resultNote, busy, share, adCoins, highlight, resultWon);
                     }
                 }
@@ -957,7 +957,7 @@ namespace SnakeClub
         }
 
         private bool StrengthIntroVisible() => fixedPve != null && fixedPve.StrengthPreview && state != null &&
-            state.phase == "running" && state.tick < 200 && !paused &&
+            state.phase == "running" && state.tick < 260 && !paused &&
             string.IsNullOrEmpty(StrengthContactNotice.Text(fixedPve, state.tick, out _));
 
         private void CollectNameplate(ArenaState world, SnakeState snake)
