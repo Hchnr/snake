@@ -135,6 +135,7 @@ var cases = new (string name, Action run)[]
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
+    ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1741,6 +1742,29 @@ static void StrengthBotHeadCases()
     Check(Heading(equal) == 128, "bot avoided an equally strong head as if it were lethal");
     var repeated = Match(true);
     Check(Heading(repeated) == away, "head avoidance was not deterministic");
+}
+
+static void StrengthHeadWarningCases()
+{
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var field = typeof(PveFixedWorld).GetField("fighters", BindingFlags.Instance | BindingFlags.NonPublic);
+    var actors = (PveFixedFighter[])field.GetValue(world);
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(5000, 0, 0, 40));
+    for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+    Check(world.TryFindNearbyHeadThreat("you", out var id) && id == "bot-1", "nearby stronger opponent not reported");
+    actors[0].shieldTicks = 1;
+    Check(!world.TryFindNearbyHeadThreat("you", out _), "warned while player protected");
+    actors[0].shieldTicks = 0; actors[1].shieldTicks = 1;
+    Check(!world.TryFindNearbyHeadThreat("you", out _), "warned about protected opponent");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(6001, 0, 0, 40));
+    Check(!world.TryFindNearbyHeadThreat("you", out _), "warned about distant opponent");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(5000, 0, 0, 16));
+    Check(!world.TryFindNearbyHeadThreat("you", out _), "warned about tied opponent");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(5000, 0, 0, 40));
+    actors[1].alive = false;
+    Check(!world.TryFindNearbyHeadThreat("you", out _), "warned about eliminated opponent");
+    Check(!new PveFixedWorld(42, false, null).TryFindNearbyHeadThreat("you", out _), "warning leaked into legacy rules");
 }
 
 static void StrengthWeakPointCases()
