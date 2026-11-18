@@ -1680,7 +1680,7 @@ static void StrengthGrowthCases()
 
 static void StrengthWeakPointCases()
 {
-    Check(StrengthTutorialHints.Select(0).Contains("升级") && StrengthTutorialHints.Select(80).Contains("金点") &&
+    Check(StrengthTutorialHints.Select(0).Contains("强度") && StrengthTutorialHints.Select(0).Contains("弹开") && StrengthTutorialHints.Select(80).Contains("金点") &&
         StrengthTutorialHints.Select(140).Contains("围住") && StrengthTutorialHints.Select(200) == "",
         "strength tutorial did not explain weak points after protection or complete on time");
     var flags = BindingFlags.Instance | BindingFlags.NonPublic;
