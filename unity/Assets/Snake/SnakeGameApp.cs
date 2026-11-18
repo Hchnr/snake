@@ -333,7 +333,7 @@ namespace SnakeClub
             if (inGame && !SimulationSuspended)
             {
                 feedback.RebaselineAfterSuspend(state, playerId);
-                killFeedback.Observe(state, playerId);
+                killFeedback.Observe(state, playerId, fixedPve != null && fixedPve.StrengthPreview);
             }
             bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;
             bool caveVisible = !inGame && frontPage == "caves" && !developerRooms;
@@ -461,7 +461,7 @@ namespace SnakeClub
                 fixedPve.Step(heading, pointerBoost);
                 runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                 state = fixedPve.RenderState();
-                matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId); killFeedback.Observe(state, playerId);
+                matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId); killFeedback.Observe(state, playerId, fixedPve.StrengthPreview);
                 stepTimer -= .05f;
             }
         }

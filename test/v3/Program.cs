@@ -523,6 +523,9 @@ static void EliminationFeedbackCases()
     feed.Reset(); other.alive = second.alive = true; state.tick++; feed.Observe(state, "you");
     other.alive = second.alive = false; second.eliminationReason = "trail"; state.tick++; feed.Observe(state, "you");
     Check(feed.Current(state) == "淘汰 · 2 个对手", "mixed elimination causes were incorrectly grouped as one action");
+    feed.Reset(); other.alive = true; state.tick++; feed.Observe(state, "you");
+    other.alive = false; other.eliminationReason = "strength_head"; state.tick++; feed.Observe(state, "you");
+    Check(feed.Current(state) == "正面胜出 · AI 1", "strength head elimination omitted from feedback");
 }
 
 static void KillFeedbackCases()
@@ -544,6 +547,11 @@ static void KillFeedbackCases()
     Check(feedback.Current(world) == "围猎成功！", "resuming replayed unseen background events");
     feedback.Reset(); feedback.Observe(world, "you");
     Check(feedback.Current(world) == "", "previous match cue leaked into a new match");
+    snake.kills++; world.tick++; feedback.Observe(world, "you", true);
+    Check(feedback.Current(world) == "正面胜出！", "strength head victory was described as capture");
+    feedback.Reset(); snake.segments.RemoveAt(snake.segments.Count - 1); feedback.Observe(world, "you", true);
+    snake.kills++; snake.segments.Add(new Point()); world.tick++; feedback.Observe(world, "you", true);
+    Check(feedback.Current(world) == "正面胜出  ·  变长！", "strength head growth cue missing");
 }
 
 static void RoundTimerCases()

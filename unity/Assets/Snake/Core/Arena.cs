@@ -490,7 +490,7 @@ namespace SnakeClub.Core
                 if (string.IsNullOrEmpty(snake.id)) continue;
                 if (snake.alive) { living.Add(snake.id); continue; }
                 if (!living.Remove(snake.id) || snake.id == playerId || snake.eliminatedBy != playerId || player == null || !player.alive) continue;
-                string action = snake.eliminationReason == "capture" ? "收圈捕获" : snake.eliminationReason == "trail" ? "轨迹拦截" : snake.eliminationReason == "head" ? "正面胜出" : "";
+                string action = snake.eliminationReason == "capture" ? "收圈捕获" : snake.eliminationReason == "trail" ? "轨迹拦截" : (snake.eliminationReason == "head" || snake.eliminationReason == "strength_head") ? "正面胜出" : "";
                 if (action.Length == 0) continue;
                 string name = string.IsNullOrEmpty(snake.name) ? "对手" : snake.name;
                 if (name.Length > 12) name = name.Substring(0, 12) + "…";
@@ -513,7 +513,7 @@ namespace SnakeClub.Core
         private bool baseline = true;
         public void Reset() { player = ""; message = ""; tick = -1; kills = length = 0; untilTick = -1; baseline = true; }
         public void Suspend() { baseline = true; }
-        public void Observe(ArenaState world, string playerId)
+        public void Observe(ArenaState world, string playerId, bool strengthMode = false)
         {
             if (world == null || string.IsNullOrEmpty(playerId)) return;
             var snake = world.snakes.Find(s => s.id == playerId);
@@ -521,7 +521,8 @@ namespace SnakeClub.Core
             if (world.tick < tick || player != playerId) Reset();
             if (!baseline && snake.kills > kills)
             {
-                message = snake.segments.Count > length ? "围猎成功  ·  变长！" : "围猎成功！";
+                message = strengthMode ? (snake.segments.Count > length ? "正面胜出  ·  变长！" : "正面胜出！") :
+                    (snake.segments.Count > length ? "围猎成功  ·  变长！" : "围猎成功！");
                 untilTick = world.tick + 22;
             }
             player = playerId; tick = world.tick; kills = snake.kills; length = snake.segments.Count; baseline = false;
