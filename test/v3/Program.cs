@@ -115,6 +115,7 @@ var cases = new (string name, Action run)[]
     ("strength practice uses neutral profiles and varied pickup anchors", StrengthFairnessCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
+    ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1624,6 +1625,48 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0, "ordinary bot became a designated hunter");
     hunter.id = "bot-0"; player.alive = false;
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
+}
+
+static void StrengthWeakPointCases()
+{
+    Check(StrengthTutorialHints.Select(0).Contains("升级") && StrengthTutorialHints.Select(80).Contains("金点") &&
+        StrengthTutorialHints.Select(140).Contains("围住") && StrengthTutorialHints.Select(200) == "",
+        "strength tutorial did not explain weak points after protection or complete on time");
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+    fighters[0] = new PveFixedFighter("you", new PveFixedMotion(-11700, 0, 0, 16));
+    fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 16));
+    for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+    ((List<PveFixedFruit>)world.Fruit).Clear();
+    var projection = world.RenderState();
+    Check(projection.snakes[0].strengthWeakSegments.All(value => !value) && projection.snakes[1].strengthWeakSegments.Count == 16 &&
+        !projection.snakes[1].strengthWeakSegments[0] && !projection.snakes[1].strengthWeakSegments[1] && projection.snakes[1].strengthWeakSegments[15],
+        "weak-point projection did not reflect the actual head-to-tail strength rule");
+    var energy = (int[])typeof(PveFixedWorld).GetField("strengthBuffTicks", flags).GetValue(world);
+    energy[0] = 120;
+    Check(world.RenderState().snakes[1].strengthWeakSegments[1], "attack buff did not update a real weak-point hint");
+    energy[0] = 0; fighters[1].shieldTicks = 1;
+    Check(world.RenderState().snakes[1].strengthWeakSegments.All(value => !value), "protected target was highlighted");
+    fighters[1].shieldTicks = 0; fighters[0].shieldTicks = 1;
+    Check(world.RenderState().snakes[1].strengthWeakSegments.All(value => !value), "protected attacker was offered a bite");
+    fighters[0].shieldTicks = 0; fighters[1].alive = false;
+    Check(world.RenderState().snakes[1].strengthWeakSegments.All(value => !value), "dead target was highlighted");
+    fighters[1].alive = true; fighters[0].alive = false;
+    Check(world.RenderState().snakes[1].strengthWeakSegments.All(value => !value), "dead viewer was offered a bite");
+    fighters[0].alive = true;
+    fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, PveFixedMotion.MinimumLength));
+    Check(world.RenderState().snakes[1].strengthWeakSegments.All(value => !value), "minimum-length target was highlighted");
+    fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 16));
+    world.Step(0, false);
+    Check(world.LastPlayerAttackTick == 1 && world.RenderState().snakes[1].strengthWeakSegments.All(value => !value),
+        "a real bite did not temporarily hide the pair's cooling-down hints");
+    var combat = (StrengthBodyCombat)typeof(PveFixedWorld).GetField("strengthCombat", flags).GetValue(world);
+    var cooldown = (Dictionary<string, long>)typeof(StrengthBodyCombat).GetField("nextHit", flags).GetValue(combat);
+    cooldown["you\0bot-1"] = world.Tick + 1;
+    Check(world.RenderState().snakes[1].strengthWeakSegments.Any(value => value), "hints did not return when the next tick becomes eligible");
+    var legacy = new PveFixedWorld(42, false, null);
+    Check(legacy.RenderState().snakes.All(snake => snake.strengthWeakSegments.Count == 0), "weak-point hints leaked into legacy rules");
 }
 
 static void StrengthRecordingCases()

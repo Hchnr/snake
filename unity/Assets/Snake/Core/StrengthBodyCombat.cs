@@ -135,6 +135,8 @@ namespace SnakeClub.Core
         private static long DistanceSquared(CapturePoint a, CapturePoint b)
         { long x = (long)a.x - b.x, y = (long)a.y - b.y; return x * x + y * y; }
         private static string Key(string attacker, string defender) => attacker + "\0" + defender;
+        internal bool IsPairCoolingDown(long tick, string attacker, string defender)
+            => nextHit.TryGetValue(Key(attacker, defender), out long allowed) && tick < allowed;
 
         // All contacts and powers are decided from the state at the start of
         // this call. Each attacker and each defender has at most one bite per
@@ -164,7 +166,7 @@ namespace SnakeClub.Core
                 {
                     var defender = fighters[j];
                     if (i == j || !defender.alive || defender.shieldTicks > 0 || defender.motion.Length <= PveFixedMotion.MinimumLength) continue;
-                    if (nextHit.TryGetValue(Key(attacker.id, defender.id), out long allowed) && tick < allowed) continue;
+                    if (IsPairCoolingDown(tick, attacker.id, defender.id)) continue;
                     if (DistanceSquared(attacker.motion.Segments[0], defender.motion.Segments[0]) < HeadRadiusSquared) continue;
                     int segment = -1; long nearest = BodyRadiusSquared;
                     for (int k = 1; k < defender.motion.Length; k++)

@@ -729,7 +729,7 @@ namespace SnakeClub
             if (StrengthIntroVisible())
             {
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 560, 830, 80), state.tick < 80 ? "吃果实和身体升级 · 攻超防 5% 可吃" : "围住对手可获得短时强化", 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(125, 560, 830, 80), StrengthTutorialHints.Select(state.tick), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
@@ -956,7 +956,7 @@ namespace SnakeClub
         }
 
         private bool StrengthIntroVisible() => fixedPve != null && fixedPve.StrengthPreview && state != null &&
-            state.phase == "running" && state.tick < 160 && !paused &&
+            state.phase == "running" && state.tick < 200 && !paused &&
             string.IsNullOrEmpty(StrengthContactNotice.Text(fixedPve, state.tick, out _));
 
         private void CollectNameplate(ArenaState world, SnakeState snake)

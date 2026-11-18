@@ -43,6 +43,8 @@ namespace SnakeClub.Core
         public float bossWindup;
         public Point bossAim;
         public List<Point> segments = new List<Point>();
+        // Local strength-preview hints, aligned with segments; not an online snapshot field.
+        internal readonly List<bool> strengthWeakSegments = new List<bool>();
     }
 
     [Serializable]
@@ -198,6 +200,16 @@ namespace SnakeClub.Core
 
     // Short first-run prompts follow observed actions rather than completing
     // automatically as the timer advances. They do not affect input or rules.
+    public static class StrengthTutorialHints
+    {
+        public static string Select(int tick)
+        {
+            if (tick < 0 || tick >= 200) return "";
+            if (tick < 60) return "吃果实和身体可以升级";
+            return tick < 140 ? "金点较弱 · 靠近可尝试吞食" : "围住对手可获得短时强化";
+        }
+    }
+
     public static class FirstRunHints
     {
         // Presentation only: show a hint when the head is approaching a

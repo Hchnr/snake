@@ -146,7 +146,7 @@ SNAKE_PREVIEW_ROOT=dist/my-webgl npm run preview:unity
 
 只需手机浏览器临时试玩时，可为隔离构建添加 `--offline-practice`：构建副本会关闭开发登录、服务端地址和参考角色，不改变工作区配置；成绩和进度不会同步账号。需要试玩实验性整数 PvE 时，可在该离线构建额外添加 `--fixed-pve-preview`；本机 WebGL 构建可再添加 `--no-graphics`，通过 Unity 无图形批处理构建，目标平台兼容性以实际结果为准。也可给下方抖音离线预览构建添加相同参数。该开关只有在两个服务地址为空且开发登录关闭时生效，首页和局内会标明试玩，结果不提交、不发账号奖励。它尚未完成画面、手感和性能验收，不是发布版本。手机浏览器版是兼容性预览，不是抖音小游戏包。可用 `SNAKE_PREVIEW_ROOT` 指定构建目录，并用 `SNAKE_PREVIEW_PREFIX=/随机字符串/` 为预览增加难以猜测的访问路径。预览服务只监听本机；若通过隧道分享，拿到链接的人均可访问，链接和构建应仅用于授权范围内的测试。
 
-试玩新的强弱吃身体原型，可使用 `python3 scripts/build-unity-isolated.py webgl --offline-practice --strength-pve-preview --no-graphics --output /tmp/snake-strength-preview`；抖音隔离预览构建也支持 `--strength-pve-preview`。该模式仅供离线试玩：攻击力足够时吃接触到的身体段，弱者碰身体不会直接出局；头碰头、AI、数值和视觉仍是待验证原型。它不登录、不入榜、不发奖，也不会修改旧版日榜。
+试玩新的强弱吃身体原型，可使用 `python3 scripts/build-unity-isolated.py webgl --offline-practice --strength-pve-preview --no-graphics --output /tmp/snake-strength-preview`；抖音隔离预览构建也支持 `--strength-pve-preview`。该模式仅供离线试玩：攻击力足够时吃接触到的身体段，弱者碰身体不会直接出局；对手身体上的金点提示按当前攻防比较较弱的部位，不保证下一步命中。头碰头、AI、数值和视觉仍是待验证原型。它不登录、不入榜、不发奖，也不会修改旧版日榜。
 
 本机这次测试另生成了 `dist/unity-v0.0.3-mac/Snake Club.app`，不覆盖旧版构建。桌面大厅可按回车开始普通对局，按 D 开始每日挑战；对局中使用 WASD 或方向键转向、空格加速。测试产物不纳入版本管理。
 
