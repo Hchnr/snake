@@ -61,6 +61,7 @@ namespace SnakeClub.Tests
                     Add(world.LastPlayerAttackTick); Add(world.LastPlayerAttackCount); Add(world.LastPlayerDamageTick); Add(world.LastPlayerDamageCount);
                     Add(world.LastPlayerBlockedTick); Add(world.LastPlayerHeadTieTick);
                     Add(world.LastPlayerLevelUpTick); Add(world.LastPlayerLevelUp);
+                    Add(world.PlayerSegmentsEaten); Add(world.PlayerSegmentsLostToBites);
                     Add(world.LastPlayerAttackPoint.x); Add(world.LastPlayerAttackPoint.y);
                     Add(world.LastPlayerDamagePoint.x); Add(world.LastPlayerDamagePoint.y);
                     if (world.StrengthPickupVisible) flags |= 1;

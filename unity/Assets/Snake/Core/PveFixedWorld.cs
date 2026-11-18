@@ -92,6 +92,8 @@ namespace SnakeClub.Core
         public int LastPlayerAttackCount { get; private set; }
         public int LastPlayerDamageTick { get; private set; } = -1;
         public int LastPlayerDamageCount { get; private set; }
+        public int PlayerSegmentsEaten { get; private set; }
+        public int PlayerSegmentsLostToBites { get; private set; }
         public CapturePoint LastPlayerAttackPoint { get; private set; }
         public CapturePoint LastPlayerDamagePoint { get; private set; }
         public int LastPlayerBlockedTick { get; private set; } = -1;
@@ -692,8 +694,10 @@ namespace SnakeClub.Core
         private void RecordStrengthBite(BodyBite bite)
         {
             AwardStrengthExperience(bite.attacker, bite.removed * 2);
-            if (bite.attacker == "you") { LastPlayerAttackTick = Tick; LastPlayerAttackCount = bite.removed; LastPlayerAttackPoint = bite.point; }
-            if (bite.defender == "you") { LastPlayerDamageTick = Tick; LastPlayerDamageCount = bite.removed; LastPlayerDamagePoint = bite.point; }
+            if (bite.attacker == "you")
+            { LastPlayerAttackTick = Tick; LastPlayerAttackCount = bite.removed; LastPlayerAttackPoint = bite.point; PlayerSegmentsEaten += bite.removed; }
+            if (bite.defender == "you")
+            { LastPlayerDamageTick = Tick; LastPlayerDamageCount = bite.removed; LastPlayerDamagePoint = bite.point; PlayerSegmentsLostToBites += bite.removed; }
             if (bite.attacker == "you" || bite.defender == "you")
             { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
         }
@@ -815,6 +819,16 @@ namespace SnakeClub.Core
             }
             foreach (var fruit in world.Fruit) { AddInt(fruit.position.x); AddInt(fruit.position.y); AddInt(fruit.color); }
             return "s1-" + hash.ToString("x16");
+        }
+    }
+
+    // Match summaries report only actual body bites, not boost consumption.
+    public static class StrengthMatchSummary
+    {
+        public static string Text(PveFixedWorld world)
+        {
+            if (world == null || !world.StrengthPreview || !world.Finished) return "";
+            return "吃到 " + world.PlayerSegmentsEaten + " 节 · 被吃 " + world.PlayerSegmentsLostToBites + " 节";
         }
     }
 
