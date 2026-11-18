@@ -1689,12 +1689,49 @@ static void StrengthPracticeWorldCases()
     weak = Fighter("weak", 0); strong = Fighter("strong", 0);
     StrengthHeadCombat.Resolve(new[] { weak, strong }, new[] { Power(), Power() });
     Check(weak.alive && strong.alive, "equal heads were eliminated");
+    var ties = new List<HeadTieContact>();
+    var equal = new[] { weak, strong };
+    StrengthHeadCombat.Resolve(equal, new[] { Power(), Power() }, ties: ties);
+    var separated = StrengthHeadCombat.SeparateTies(equal, ties, new List<BodyBite>());
+    long headDx = (long)weak.motion.X - strong.motion.X, headDy = (long)weak.motion.Y - strong.motion.Y;
+    Check(separated[0] && separated[1] && headDx * headDx + headDy * headDy >= 1440L * 1440L,
+        "equal overlapping heads did not separate");
+    var reversedWeak = Fighter("weak", 0); var reversedStrong = Fighter("strong", 0);
+    var reversed = new[] { reversedStrong, reversedWeak };
+    StrengthHeadCombat.Resolve(reversed, new[] { Power(), Power() }, ties: ties);
+    StrengthHeadCombat.SeparateTies(reversed, ties, new List<BodyBite>());
+    Check(weak.motion.X == reversedWeak.motion.X && weak.motion.Y == reversedWeak.motion.Y &&
+        strong.motion.X == reversedStrong.motion.X && strong.motion.Y == reversedStrong.motion.Y,
+        "head tie depends on fighter array order");
+    weak = Fighter("weak", 0); strong = Fighter("strong", 0); equal = new[] { weak, strong };
+    StrengthHeadCombat.Resolve(equal, new[] { Power(), Power() }, ties: ties);
+    separated = StrengthHeadCombat.SeparateTies(equal, ties, new List<BodyBite> { new BodyBite("weak", "other", 1, 1, 100, 80) });
+    Check(!separated[0] && !separated[1] && weak.motion.X == 0 && strong.motion.X == 0,
+        "head separation overrode a same-step body bite");
+    var edgeA = new PveFixedFighter("a", new PveFixedMotion(PveFixedMotion.Edge, PveFixedMotion.Edge, 0, 16));
+    var edgeB = new PveFixedFighter("b", new PveFixedMotion(PveFixedMotion.Edge, PveFixedMotion.Edge, 0, 16));
+    var edgePair = new[] { edgeA, edgeB };
+    StrengthHeadCombat.Resolve(edgePair, new[] { Power(), Power() }, ties: ties);
+    StrengthHeadCombat.SeparateTies(edgePair, ties, new List<BodyBite>());
+    Check(Math.Abs(edgeA.motion.X) <= PveFixedMotion.Edge && Math.Abs(edgeB.motion.X) <= PveFixedMotion.Edge &&
+        Math.Abs(edgeA.motion.X - edgeB.motion.X) >= 1440, "head tie separation failed at map corner");
+    weak = Fighter("weak", 0); strong = Fighter("strong", 0);
     weak.shieldTicks = 1;
     StrengthHeadCombat.Resolve(new[] { weak, strong }, new[] { Power(), Power(130) });
     Check(weak.alive && strong.alive, "head collision ignored protection");
 
-    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var tiedWorld = new PveFixedWorld(42, false, null, strengthPreview: true);
     var field = typeof(PveFixedWorld).GetField("fighters", BindingFlags.Instance | BindingFlags.NonPublic);
+    var tiedFighters = (PveFixedFighter[])field.GetValue(tiedWorld);
+    tiedFighters[0] = Fighter("you", 0); tiedFighters[1] = Fighter("bot-1", 0);
+    for (int i = 2; i < tiedFighters.Length; i++) tiedFighters[i].alive = false;
+    tiedWorld.Step(0, false);
+    long worldDx = (long)tiedFighters[0].motion.X - tiedFighters[1].motion.X;
+    long worldDy = (long)tiedFighters[0].motion.Y - tiedFighters[1].motion.Y;
+    Check(tiedWorld.LastPlayerHeadTieTick == 1 && tiedFighters[0].alive && tiedFighters[1].alive &&
+        worldDx * worldDx + worldDy * worldDy >= 1440L * 1440L, "world did not apply and report head tie separation");
+
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
     var actors = (PveFixedFighter[])field.GetValue(world);
     actors[0] = Fighter("you", -11700); actors[1] = Fighter("bot-1", 0);
     for (int i = 2; i < actors.Length; i++) actors[i].alive = false;

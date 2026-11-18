@@ -120,7 +120,11 @@ namespace SnakeClub.Core
             long otherDistance = (long)(otherX - point.x) * (otherX - point.x) + (long)(otherY - point.y) * (otherY - point.y);
             if (currentDistance < 1116L * 1116L && otherDistance > currentDistance)
             { x = otherX; y = otherY; dx = -dx; dy = -dy; }
-            X = x; Y = y;
+            PlaceSeparatedHead(x, y, dx, dy);
+        }
+        internal void PlaceSeparatedHead(int x, int y, int dx, int dy)
+        {
+            X = Clamp(x, -Edge, Edge); Y = Clamp(y, -Edge, Edge);
             segments[0] = new CapturePoint(X, Y);
             for (int i = 1; i < segments.Count; i++)
             {
