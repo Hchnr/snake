@@ -48,7 +48,9 @@ namespace SnakeClub.Editor
                 var importer = AssetImporter.GetAtPath(target) as TextureImporter;
                 if (importer == null) throw new InvalidOperationException("Could not configure reference layer: " + target);
                 importer.npotScale = TextureImporterNPOTScale.None; importer.mipmapEnabled = false;
-                importer.alphaIsTransparency = true; importer.maxTextureSize = 1024; importer.SaveAndReimport();
+                importer.alphaIsTransparency = true;
+                importer.maxTextureSize = target.EndsWith("/raddy_layers/body.png", StringComparison.OrdinalIgnoreCase) ? 512 : 1024;
+                importer.SaveAndReimport();
             }
         }
 

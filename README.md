@@ -165,7 +165,7 @@ SNAKE_PREVIEW_ROOT=dist/my-webgl npm run preview:unity
 python3 scripts/build-douyin-preview.py --appid '你的小游戏AppID' --output 'dist/my-douyin-preview'
 ```
 
-该脚本默认使用 Unity `-batchmode -nographics`，避免构建时显示游戏或抢占桌面焦点；本机 TTSDK 6.9.7 已完成无图形离线转换。其他 SDK 版本的兼容性以实际构建为准；只有明确需要图形环境时才使用 `--graphics`。
+该脚本默认使用 Unity `-batchmode -nographics`，避免构建时显示游戏或抢占桌面焦点；本机 TTSDK 6.9.7 已完成无图形离线转换。失败或超时时会把可用的 Unity 日志保存在本机临时目录并打印路径；重试应使用新的输出目录。其他 SDK 版本的兼容性以实际构建为准；只有明确需要图形环境时才使用 `--graphics`。
 
 仅为经授权的小范围内部审阅，且本机已准备参考素材时，可显式加上 `--include-reference-skins`；该选项会将参考图放入测试包，不代表正式联动或已获商业使用权。构建完成后可将输出的 `tt-minigame` 目录导入抖音开发者工具生成预览码：预览时产物会交给抖音处理，并不等同于上传测试通道或更新已发布的版本。构建副本启用 `SNAKE_DOUYIN_TTSDK` 编译开关；离线预览会初始化 SDK，但不会请求抖音登录或连接账号服务。此前生成的预览包没有自动启用该开关，需重新构建才能验证这些平台适配代码。本离线练习包不使用本机游戏服务器，手机需要能够访问抖音获取预览内容。抖音账号登录、分享和广告需要另行配置与真机验证；普通 WebGL 构建或旧版 `dist/douyin` 都不是本 Unity 版本的抖音发布包。
 

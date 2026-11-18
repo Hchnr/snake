@@ -482,7 +482,8 @@ namespace SnakeClub.Tests.Editor
                 available[i] = SkinVisual.TryReferenceLayers(ids[i], out bodies[i], out headSprites[i], out necks[i]);
                 Require(available[i] == local, "reference layers did not load or fall back: " + names[i]);
                 if (local) Require(bodies[i] != null && headSprites[i] != null && bodies[i] != headSprites[i] &&
-                    bodies[i].rect.size == headSprites[i].rect.size, "reference layers did not align: " + names[i]);
+                    Mathf.Abs(bodies[i].bounds.size.x - headSprites[i].bounds.size.x) < .013f &&
+                    Mathf.Abs(bodies[i].bounds.size.y - headSprites[i].bounds.size.y) < .001f, "reference layers did not align: " + names[i]);
             }
             const string staging = "Assets/Resources/ReferenceSkins";
             if ((available[0] || available[1]) && !AssetDatabase.IsValidFolder(staging))
@@ -495,10 +496,14 @@ namespace SnakeClub.Tests.Editor
                     {
                         string path = "ReferenceSkins/" + names[i] + "_layers/";
                         var stagedHead = Resources.Load<Texture2D>(path + "head"); var stagedBody = Resources.Load<Texture2D>(path + "body");
-                        var importer = AssetImporter.GetAtPath("Assets/Resources/" + path + "head.png") as TextureImporter;
-                        Require(stagedHead != null && stagedBody != null && stagedHead.width == stagedBody.width && stagedHead.height == stagedBody.height &&
-                            importer != null && !importer.mipmapEnabled && importer.maxTextureSize == 1024 && importer.npotScale == TextureImporterNPOTScale.None,
-                            "reference layers not staged with bounded matching dimensions: " + names[i]);
+                        var headImporter = AssetImporter.GetAtPath("Assets/Resources/" + path + "head.png") as TextureImporter;
+                        var bodyImporter = AssetImporter.GetAtPath("Assets/Resources/" + path + "body.png") as TextureImporter;
+                        Require(stagedHead != null && stagedBody != null && headImporter != null && bodyImporter != null &&
+                            !headImporter.mipmapEnabled && !bodyImporter.mipmapEnabled && headImporter.maxTextureSize == 1024 && bodyImporter.maxTextureSize == (names[i] == "raddy" ? 512 : 1024) &&
+                            headImporter.npotScale == TextureImporterNPOTScale.None && bodyImporter.npotScale == TextureImporterNPOTScale.None &&
+                            stagedHead.height <= 1024 && stagedBody.height <= (names[i] == "raddy" ? 512 : 1024) &&
+                            Mathf.Abs((float)stagedHead.width / stagedHead.height - (float)stagedBody.width / stagedBody.height) < .003f,
+                            "reference layers not staged with bounded aligned sizes: " + names[i]);
                     }
                 }
                 finally { if (AssetDatabase.IsValidFolder(staging)) AssetDatabase.DeleteAsset(staging); }
