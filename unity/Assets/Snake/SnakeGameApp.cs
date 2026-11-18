@@ -216,7 +216,8 @@ namespace SnakeClub
             online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = null; depthMode = false;
             bool strengthRun = run != null && run.mode == "strength-eval";
-            firstRun = run == null ? !practiceProfile.tutorialComplete : strengthRun ? run.strengthStartConfig.firstRun : run.startConfig.firstRun;
+            firstRun = run == null ? (api.Config.StrengthPvePreview ? !strengthPracticeTutorialComplete : !practiceProfile.tutorialComplete) :
+                strengthRun ? run.strengthStartConfig.firstRun : run.startConfig.firstRun;
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
                 strengthRun || (run == null && api.Config.StrengthRulesPreview), strengthRun ? run.strengthStartConfig : null);
