@@ -133,6 +133,7 @@ var cases = new (string name, Action run)[]
     ("strength bots promptly avoid lethal heads but not protected or equal heads", StrengthBotHeadCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
+    ("strength replay diagnostics detect hidden-state divergence", StrengthHiddenDiagnosticsCases),
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
@@ -1743,6 +1744,30 @@ static void StrengthBotHeadCases()
     Check(Heading(equal) == 128, "bot avoided an equally strong head as if it were lethal");
     var repeated = Match(true);
     Check(Heading(repeated) == away, "head avoidance was not deterministic");
+}
+
+static void StrengthHiddenDiagnosticsCases()
+{
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    string Fingerprint() => SnakeClub.Tests.StrengthPveReplayVector.HiddenFingerprint(world);
+    string baseline = Fingerprint();
+    Check(baseline == SnakeClub.Tests.StrengthPveReplayVector.HiddenFingerprint(new PveFixedWorld(42, false, null, true)), "identical initial state differs");
+    var random = typeof(PveFixedWorld).GetField("random", flags);
+    uint original = (uint)random.GetValue(world); random.SetValue(world, original ^ 1u);
+    Check(Fingerprint() != baseline, "random state was omitted"); random.SetValue(world, original);
+    var timers = (int[])typeof(PveFixedWorld).GetField("botTimer", flags).GetValue(world);
+    timers[1]++; Check(Fingerprint() != baseline, "AI timer was omitted"); timers[1]--;
+    var motion = world.Fighters[0].motion;
+    var debt = typeof(PveFixedMotion).GetField("boostDebt", flags);
+    debt.SetValue(motion, 1L); Check(Fingerprint() != baseline, "boost debt was omitted"); debt.SetValue(motion, 0L);
+    var combat = typeof(PveFixedWorld).GetField("strengthCombat", flags).GetValue(world);
+    var cooldowns = (Dictionary<(string attacker, string defender), long>)typeof(StrengthBodyCombat).GetField("nextHit", flags).GetValue(combat);
+    cooldowns[("bot-1", "you")] = 9;
+    Check(Fingerprint() != baseline, "body cooldown was omitted"); cooldowns.Clear();
+    var loops = (int[])typeof(PveFixedWorld).GetField("strengthLoopCooldown", flags).GetValue(world);
+    loops[0]++; Check(Fingerprint() != baseline, "loop cooldown was omitted"); loops[0]--;
+    Check(Fingerprint() == baseline, "restored hidden state produced a different fingerprint");
 }
 
 static void StrengthBodyThreatCases()

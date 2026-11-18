@@ -5,8 +5,8 @@ using SnakeClub.Core;
 namespace SnakeClub.Tests
 {
     // Mutable, non-authoritative prototype diagnostic, not a release ruleset.
-    // Hashes observable integer state on every step; hidden state and arbitrary
-    // seeds/inputs still require independent verification before any rewards.
+    // Hashes observable state and selected hidden simulation state every step;
+    // arbitrary seeds, inputs and platforms still need independent verification.
     public static class StrengthPveReplayVector
     {
         private static ulong hash;
@@ -18,6 +18,13 @@ namespace SnakeClub.Tests
         {
             if (value == null) { Add(-1); return; }
             Add(value.Length); foreach (char c in value) Add(c);
+        }
+        // Test helper for detecting changes in the diagnostic's hidden inputs.
+        public static string HiddenFingerprint(PveFixedWorld world)
+        {
+            hash = 14695981039346656037UL;
+            world.AppendReplayDiagnostics(Add);
+            return hash.ToString("x16");
         }
         // Fingerprint of observable terminal state only, used by diagnostics.
         public static string Terminal(PveFixedWorld world) => StrengthStateDigest.Compute(world);
@@ -47,6 +54,7 @@ namespace SnakeClub.Tests
                     byte heading = pattern == 0 ? (byte)0 : pattern == 1 ? (byte)(tick / 53 * 37 + seed) : (byte)(tick * 17);
                     bool boost = pattern == 1 ? tick % 120 >= 95 : pattern == 2 && tick % 30 < 15;
                     world.Step(heading, boost);
+                    world.AppendReplayDiagnostics(Add);
                     Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
                     Add(world.StrengthPickupVisible ? 1 : 0); Add(world.StrengthPickupPosition.x); Add(world.StrengthPickupPosition.y);
                     Add(world.LastPlayerAttackTick); Add(world.LastPlayerAttackCount); Add(world.LastPlayerDamageTick); Add(world.LastPlayerDamageCount);

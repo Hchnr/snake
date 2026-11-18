@@ -28,6 +28,13 @@ namespace SnakeClub.Core
         public int ReboundCooldown { get; private set; }
         public bool Boosting { get; private set; }
         private long boostDebt;
+        // Diagnostic only; does not participate in simulation or rewards.
+        internal void AppendReplayDiagnostics(Action<int> add)
+        {
+            add(PreviousHead.x); add(PreviousHead.y);
+            add(unchecked((int)boostDebt)); add(unchecked((int)(boostDebt >> 32)));
+        }
+
         public PveFixedMotion(int x, int y, int angle, int length)
         {
             X = Clamp(x, -Edge, Edge); Y = Clamp(y, -Edge, Edge);

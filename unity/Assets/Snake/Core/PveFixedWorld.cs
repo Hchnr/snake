@@ -605,6 +605,26 @@ namespace SnakeClub.Core
             StrengthPickupVisible = false; nextStrengthPickupTick = Tick + 160 + Next(81);
         }
 
+        // Additional internal state for development-only cross-runtime vectors.
+        // Scratch buffers and renderer projections are deliberately excluded.
+        internal void AppendReplayDiagnostics(Action<int> add)
+        {
+            add(unchecked((int)random)); add(maxTicks); add(eventType);
+            add(eventTarget); add(starHolder); add(starTicks);
+            add(eventCenter.x); add(eventCenter.y); add(star.x); add(star.y);
+            add(eventActive ? 1 : 0); add(eventDone ? 1 : 0);
+            add(nextStrengthPickupTick); add(strengthPickupExpires);
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                add(botTimer[i]); add(botDirection[i]); add(botBoost[i] ? 1 : 0);
+                add(previouslyAlive[i] ? 1 : 0); add(strengthExperience[i]);
+                add(strengthBuffTicks[i]); add(strengthLoopTicks[i]); add(strengthLoopCooldown[i]);
+                add(fighters[i].captureCooldown); add(fighters[i].eventPoints); add(fighters[i].credited ? 1 : 0);
+                fighters[i].motion.AppendReplayDiagnostics(add);
+            }
+            strengthCombat.AppendReplayDiagnostics(fighters, add);
+        }
+
         public bool TryGetStrength(string id, out StrengthValues head, out int tailDefense)
         {
             head = default; tailDefense = 0;
