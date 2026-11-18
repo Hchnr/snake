@@ -205,7 +205,7 @@ namespace SnakeClub.Core
         public static string Select(int tick)
         {
             if (tick < 0 || tick >= 200) return "";
-            if (tick < 60) return "吃果实和身体可以升级";
+            if (tick < 60) return "强度足够才能吃身体 · 较弱会弹开";
             return tick < 140 ? "金点较弱 · 靠近可尝试吞食" : "围住对手可获得短时强化";
         }
     }
