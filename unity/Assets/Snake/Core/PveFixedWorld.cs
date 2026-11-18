@@ -100,6 +100,7 @@ namespace SnakeClub.Core
         public CapturePoint LastPlayerDamagePoint { get; private set; }
         public int LastPlayerBlockedTick { get; private set; } = -1;
         public int LastPlayerHeadTieTick { get; private set; } = -1;
+        public int LastPlayerPickupTick { get; private set; } = -1;
         public int LastPlayerLevelUpTick { get; private set; } = -1;
         public int LastPlayerLevelUp { get; private set; }
         private readonly int[] strengthBuffTicks = new int[8];
@@ -638,6 +639,7 @@ namespace SnakeClub.Core
             }
             if (winner < 0) return;
             strengthBuffTicks[winner] = 120; // Six seconds; refresh, do not stack.
+            if (fighters[winner].id == "you") LastPlayerPickupTick = Tick;
             StrengthPickupVisible = false; nextStrengthPickupTick = Tick + 160 + Next(81);
         }
 
