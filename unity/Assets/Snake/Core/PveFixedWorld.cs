@@ -67,6 +67,9 @@ namespace SnakeClub.Core
         public int LastPlayerBlockedTick { get; private set; } = -1;
         public int LastPlayerHeadTieTick { get; private set; } = -1;
         private readonly int[] strengthBuffTicks = new int[8];
+        private readonly int[] strengthLoopTicks = new int[8], strengthLoopCooldown = new int[8];
+        private readonly CaptureLoop[] strengthLoops = new CaptureLoop[8];
+        private readonly int[] strengthLoopTargets = new int[8];
         private int nextStrengthPickupTick, strengthPickupExpires;
         public bool StrengthPickupVisible { get; private set; }
         public CapturePoint StrengthPickupPosition { get; private set; }
@@ -363,7 +366,8 @@ namespace SnakeClub.Core
             basePower = 100, length = fighter.motion.Length, hardness = 0, matchLevel = 0,
             speed = fighter.motion.Boosting ? 495 : fighter.motion.ReboundTicks > 0 ? 345 : 300,
             baseSpeed = 300, boosting = fighter.motion.Boosting,
-            randomFactor = StrengthBuffTicks(fighter.id) > 0 ? 1120 : 1000, operationFactor = 1000
+            randomFactor = StrengthBuffTicks(fighter.id) > 0 ? 1120 : 1000,
+            operationFactor = StrengthLoopTicks(fighter.id) > 0 ? 1100 : 1000
         };
 
         public int StrengthBuffTicks(string id)
@@ -372,6 +376,58 @@ namespace SnakeClub.Core
             for (int i = 0; i < fighters.Length; i++)
                 if (fighters[i].id == id && fighters[i].alive) return strengthBuffTicks[i];
             return 0;
+        }
+
+        public int StrengthLoopTicks(string id)
+        {
+            if (!StrengthPreview || string.IsNullOrEmpty(id)) return 0;
+            for (int i = 0; i < fighters.Length; i++)
+                if (fighters[i].id == id && fighters[i].alive) return strengthLoopTicks[i];
+            return 0;
+        }
+
+        // Detect closures against a shared post-movement snapshot. A closed
+        // loop only qualifies when it encloses another unprotected live head.
+        private void DetectStrengthLoops()
+        {
+            Array.Clear(strengthLoops, 0, strengthLoops.Length);
+            Array.Clear(strengthLoopTargets, 0, strengthLoopTargets.Length);
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                var owner = fighters[i];
+                if (!owner.alive || owner.shieldTicks > 0 || strengthLoopCooldown[i] > 0 || !owner.motion.TryCapture(out var loop)) continue;
+                for (int j = 0; j < fighters.Length; j++)
+                    if (i != j && fighters[j].alive && fighters[j].shieldTicks == 0 && CaptureGeometry.Contains(loop.polygon, fighters[j].motion.Segments[0]))
+                        strengthLoopTargets[i] |= 1 << j;
+                if (strengthLoopTargets[i] != 0) strengthLoops[i] = loop;
+            }
+        }
+
+        // Applied after this tick's combat: no closure can change the combat
+        // that created it, and eliminated owners or targets do not award it.
+        private void ApplyStrengthLoops()
+        {
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                if (strengthLoopTicks[i] > 0) strengthLoopTicks[i]--;
+                if (strengthLoopCooldown[i] > 0) strengthLoopCooldown[i]--;
+            }
+            int shown = -1;
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                if (!fighters[i].alive || strengthLoops[i] == null) continue;
+                bool targetAlive = false;
+                for (int j = 0; j < fighters.Length; j++)
+                    if ((strengthLoopTargets[i] & (1 << j)) != 0 && fighters[j].alive) { targetAlive = true; break; }
+                if (!targetAlive) continue;
+                strengthLoopTicks[i] = 80; strengthLoopCooldown[i] = 200;
+                if (shown < 0 || fighters[i].id == "you" || (fighters[shown].id != "you" && string.CompareOrdinal(fighters[i].id, fighters[shown].id) < 0)) shown = i;
+            }
+            if (shown >= 0)
+            {
+                lastCaptureTick = Tick; lastCaptureOwner = fighters[shown].id; lastCaptureCount = 0;
+                lastCapturePolygon.Clear(); lastCapturePolygon.AddRange(strengthLoops[shown].polygon);
+            }
         }
 
         private void UpdateStrengthPickupBeforeMovement()
@@ -436,10 +492,12 @@ namespace SnakeClub.Core
             if (StrengthPreview)
             {
                 CollectStrengthPickup();
+                DetectStrengthLoops();
                 for (int i = 0; i < fighters.Length; i++) strengthInputs[i] = StrengthFor(fighters[i]);
                 var headGrowth = StrengthHeadCombat.Resolve(fighters, strengthInputs, deferGrowth: true, ties: strengthHeadTies);
                 var bites = strengthCombat.Resolve(Tick, fighters, strengthInputs);
                 for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) fighters[i].motion.Grow(headGrowth[i]);
+                ApplyStrengthLoops();
                 var separatedHeads = StrengthHeadCombat.SeparateTies(fighters, strengthHeadTies, bites);
                 if (separatedHeads[0]) LastPlayerHeadTieTick = Tick;
                 foreach (var contact in strengthCombat.BlockedContacts)

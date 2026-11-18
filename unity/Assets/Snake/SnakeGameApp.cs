@@ -642,9 +642,12 @@ namespace SnakeClub
             if (state != null) DrawMiniMap(state);
             string depthHint = depthMode ? DepthChallenge.ObjectiveHint(depthRoom, state, playerId) : "";
             int strengthBuff = fixedPve != null && fixedPve.StrengthPreview ? fixedPve.StrengthBuffTicks(playerId) : 0;
-            if (fixedPve != null && fixedPve.StrengthPreview && (strengthBuff > 0 || state.strengthPickupVisible))
+            int loopBuff = fixedPve != null && fixedPve.StrengthPreview ? fixedPve.StrengthLoopTicks(playerId) : 0;
+            if (fixedPve != null && fixedPve.StrengthPreview && (strengthBuff > 0 || loopBuff > 0 || state.strengthPickupVisible))
             {
-                string powerHint = strengthBuff > 0 ? "能量强化 · 攻防 +12% · " + Mathf.CeilToInt(strengthBuff / 20f) + "秒" : "能量出现 · 拾取后攻防强化";
+                string powerHint = strengthBuff > 0 ? "能量 +12% " + Mathf.CeilToInt(strengthBuff / 20f) + "秒" : "";
+                if (loopBuff > 0) powerHint += (powerHint.Length > 0 ? " · " : "") + "围猎 +10% " + Mathf.CeilToInt(loopBuff / 20f) + "秒";
+                if (powerHint.Length == 0) powerHint = "能量出现 · 拾取后攻防强化";
                 Panel(new Rect(275, 285, 490, 96), new Color(.15f, .12f, .19f, .87f));
                 Label(new Rect(285, 292, 470, 82), powerHint, 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
             }
@@ -709,7 +712,7 @@ namespace SnakeClub
             if (StrengthIntroVisible())
             {
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 560, 830, 80), "拖动靠近 · 攻高于尾防 5% 可吃", 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(125, 560, 830, 80), "攻超防 5% 可吃 · 围住对手获强化", 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
@@ -951,7 +954,7 @@ namespace SnakeClub
             string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
             if (fixedPve != null && fixedPve.TryGetStrength(snake.id, out var power, out int tailDefense))
                 label = (snake.id == playerId ? "你 · 攻" + power.attack : (snake.bot ? "AI" : "玩家") + " · 尾" + tailDefense) +
-                    (fixedPve.StrengthBuffTicks(snake.id) > 0 ? "+" : "");
+                    (fixedPve.StrengthBuffTicks(snake.id) > 0 || fixedPve.StrengthLoopTicks(snake.id) > 0 ? "+" : "");
             if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
             if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
             if (snake.shield > 0) label += " · 保护";
