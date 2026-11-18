@@ -2158,6 +2158,18 @@ static void StrengthPracticeWorldCases()
     separate.Invoke(edge, new object[] { new CapturePoint(PveFixedMotion.Edge, PveFixedMotion.Edge), new CapturePoint(1800, 0) });
     Check(Math.Abs(edge.X) <= PveFixedMotion.Edge && Math.Abs(edge.Y) <= PveFixedMotion.Edge &&
         Math.Abs(edge.Y - PveFixedMotion.Edge) >= 1116, "separation failed at the world boundary");
+    foreach (int sx in new[] { -1, 1 }) foreach (int sy in new[] { -1, 1 })
+    {
+        var point = new CapturePoint(sx * PveFixedMotion.Edge, sy * PveFixedMotion.Edge);
+        var tangent = new CapturePoint(sx * 1800, sy * 1800);
+        var a = new PveFixedMotion(point.x, point.y, 0, 16);
+        var b = new PveFixedMotion(point.x, point.y, 0, 16);
+        separate.Invoke(a, new object[] { point, tangent });
+        separate.Invoke(b, new object[] { point, tangent });
+        long dx = (long)a.X - point.x, dy = (long)a.Y - point.y;
+        Check(dx * dx + dy * dy >= 1116L * 1116L && Math.Abs(a.X) <= PveFixedMotion.Edge && Math.Abs(a.Y) <= PveFixedMotion.Edge &&
+            a.X == b.X && a.Y == b.Y && a.Angle == b.Angle, "diagonal corner contact was not separated deterministically");
+    }
     var first = new PveFixedWorld(73, true, null, true); var second = new PveFixedWorld(73, true, null, true);
     for (int i = 0; i < 600 && !first.Finished; i++)
     {

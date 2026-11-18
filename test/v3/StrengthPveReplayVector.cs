@@ -51,6 +51,15 @@ namespace SnakeClub.Tests
             for (int pattern = 0; pattern < 3; pattern++)
             {
                 hash = 14695981039346656037UL;
+                // Include the clipped-normal corner case in both runtimes,
+                // independently of whether these sampled matches reach a wall.
+                foreach (int sx in new[] { -1, 1 }) foreach (int sy in new[] { -1, 1 })
+                {
+                    var corner = new CapturePoint(sx * PveFixedMotion.Edge, sy * PveFixedMotion.Edge);
+                    var motion = new PveFixedMotion(corner.x, corner.y, 0, 16);
+                    motion.SeparateFrom(corner, new CapturePoint(sx * 1800, sy * 1800));
+                    Add(motion.X); Add(motion.Y); Add(motion.Angle);
+                }
                 var snapshot = pattern == 2 ? StrengthEvalStartConfig.Capture(new PlayerProgress { experience = 700, tutorialComplete = !first }) : null;
                 var world = new PveFixedWorld(seed, first, null, strengthPreview: true, strengthSnapshot: snapshot);
                 int flags = 0;
