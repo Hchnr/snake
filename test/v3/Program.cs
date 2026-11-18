@@ -1769,9 +1769,13 @@ static void StrengthHeadWarningCases()
 
 static void StrengthWeakPointCases()
 {
-    Check(StrengthTutorialHints.Select(0).Contains("强度") && StrengthTutorialHints.Select(0).Contains("弹开") && StrengthTutorialHints.Select(80).Contains("金点") &&
-        StrengthTutorialHints.Select(140).Contains("围住") && StrengthTutorialHints.Select(200).Contains("当前长度") && StrengthTutorialHints.Select(260) == "",
-        "strength tutorial did not explain weak points after protection or complete on time");
+    Check(StrengthTutorialHints.Select(0, false, false).Contains("全屏拖动") && StrengthTutorialHints.Select(0, false, false).Contains("弹开") &&
+        !StrengthTutorialHints.Select(0, true, false).Contains("全屏拖动"), "strength tutorial did not follow steering");
+    Check(StrengthTutorialHints.Select(80, false, false).Contains("全屏拖动") && StrengthTutorialHints.Select(80, true, false).Contains("第二根手指") &&
+        !StrengthTutorialHints.Select(80, true, true).Contains("第二根手指") && StrengthTutorialHints.Select(80, true, true).Contains("金点"),
+        "strength tutorial did not follow actual steering and boost");
+    Check(StrengthTutorialHints.Select(140, true, true).Contains("围住") && StrengthTutorialHints.Select(200, true, true).Contains("当前长度") &&
+        StrengthTutorialHints.Select(260, false, false) == "", "strength tutorial did not complete on time");
     var flags = BindingFlags.Instance | BindingFlags.NonPublic;
     var world = new PveFixedWorld(42, false, null, strengthPreview: true);
     var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);

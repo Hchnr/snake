@@ -730,7 +730,7 @@ namespace SnakeClub
             if (StrengthIntroVisible())
             {
                 Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 560, 830, 80), StrengthTutorialHints.Select(state.tick), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(125, 560, 830, 80), StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && fixedPve.TryFindNearbyHeadThreat(playerId, out _);
             if (strengthHeadWarning)
