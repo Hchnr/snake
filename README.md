@@ -76,6 +76,8 @@ npm run test:unity:play
 
 WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定可执行文件；它们在临时工程中编译并用静音无头浏览器运行，可能耗时数分钟。强弱试玩可运行 `python3 scripts/test-strength-pve-webgl.py`，对 12 局完整对局的逐步可观察状态进行 .NET / WebGL 指纹对照；该脚本和 `TryReplayStrength` 仅用于研发，不能验证所有隐藏状态、任意输入或抖音设备，也不能用于正式奖励。客户端检查还会启动临时本机服务并按真实时间完成一局。指纹一致只覆盖脚本样本，不代表抖音手机、所有输入或可信发奖已通过。
 
+运行 `python3 scripts/evaluate-strength-ai.py` 可对 100 局固定输入统计强弱试玩对抗结果；它适合比较规则改动，不等于真人玩法或难度评估。
+
 运行 `python3 scripts/benchmark-fixed-pve.py --strength` 可测桌面 .NET 强弱模拟的托管分配；不带参数测旧整数 PvE。结果包含开局、不包含 Unity 渲染，不能替代抖音手机上的帧时间与内存测量。
 
 全屏触摸脚本使用隔离构建和静音无头浏览器，临时延长角色保护以完成输入测试；它不是抖音真机或锁屏恢复验收。
