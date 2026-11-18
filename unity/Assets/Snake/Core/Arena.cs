@@ -691,20 +691,23 @@ namespace SnakeClub.Core
             new Point(-150, 0), new Point(150, 0), new Point(-150, -60), new Point(150, -60),
             new Point(-150, 60), new Point(150, 60), new Point(0, -180), new Point(0, 180)
         };
-        public static bool TryPlace(Point edge, IReadOnlyList<EdgeObstacle> obstacles, out Point origin)
+        public const float DefaultWidth = 140f, ObjectiveWidth = 200f;
+        public static bool TryPlace(Point edge, IReadOnlyList<EdgeObstacle> obstacles, out Point origin, float width = DefaultWidth)
         {
             origin = default;
-            if (float.IsNaN(edge.x) || float.IsNaN(edge.y) || float.IsInfinity(edge.x) || float.IsInfinity(edge.y)) return false;
-            Point initial = OpponentEdgeIndicator.BoxOrigin(edge);
+            if (float.IsNaN(edge.x) || float.IsNaN(edge.y) || float.IsInfinity(edge.x) || float.IsInfinity(edge.y) ||
+                float.IsNaN(width) || float.IsInfinity(width) || width <= 0 || width > 1020) return false;
+            Point baseOrigin = OpponentEdgeIndicator.BoxOrigin(edge);
+            float initialX = Math.Max(30, Math.Min(1050 - width, baseOrigin.x + (DefaultWidth - width) / 2));
             foreach (Point offset in Offsets)
             {
-                float x = initial.x + offset.x, y = initial.y + offset.y;
-                if (x < 30 || x > 910 || y < 383 || y > 1450) continue;
-                if (x + 140 > 760 && y < 545) continue; // minimap
-                if (y < 656 && y + 54 > 544 && x + 140 > 94 && x < 986) continue; // tutorial
+                float x = initialX + offset.x, y = baseOrigin.y + offset.y;
+                if (x < 30 || x > 1050 - width || y < 383 || y > 1450) continue;
+                if (x + width > 760 && y < 545) continue; // minimap
+                if (y < 656 && y + 54 > 544 && x + width > 94 && x < 986) continue; // tutorial
                 bool blocked = false;
                 if (obstacles != null) foreach (var rect in obstacles)
-                    if (x < rect.x + rect.width && x + 140 > rect.x && y < rect.y + rect.height && y + 54 > rect.y)
+                    if (x < rect.x + rect.width && x + width > rect.x && y < rect.y + rect.height && y + 54 > rect.y)
                     { blocked = true; break; }
                 if (!blocked) { origin = new Point(x, y); return true; }
             }
