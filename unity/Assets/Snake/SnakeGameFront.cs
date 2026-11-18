@@ -330,7 +330,7 @@ namespace SnakeClub
             var world = fixedPve;
             var run = activeRun;
             if (run == null || !api.Config.FixedPveServerPreview || !api.Connected || api.Profile.playerId != activePlayerId)
-            { resultNote = "整数规则试玩 · 不计账号奖励或排行"; return; }
+            { resultNote = world != null && world.StrengthPreview ? "强弱吞食试玩 · 不计账号奖励或排行" : "整数规则试玩 · 不计账号奖励或排行"; return; }
             string player = activePlayerId;
             resultNote = "正在验证本机回放 · 不计奖励或排行";
             api.Post("internal/fixed-pve/verify", new ApiRequest { runId = run.runId, token = run.token,

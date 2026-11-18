@@ -17,6 +17,7 @@ parser.add_argument('--appid', required=True, help='Douyin mini-game AppID')
 parser.add_argument('--output', required=True, help='new TTSDK build output directory')
 parser.add_argument('--include-reference-skins', action='store_true', help='include local reference art for internal testing only')
 parser.add_argument('--fixed-pve-preview', action='store_true', help='enable experimental integer PvE in this offline preview')
+parser.add_argument('--strength-pve-preview', action='store_true', help='enable experimental strength body-eating in this offline preview')
 graphics = parser.add_mutually_exclusive_group()
 graphics.add_argument('--no-graphics', dest='no_graphics', action='store_true', help='run Unity without graphics (default)')
 graphics.add_argument('--graphics', dest='no_graphics', action='store_false', help='allow graphics if the installed TTSDK needs them')
@@ -50,7 +51,9 @@ with tempfile.TemporaryDirectory(prefix='snake-douyin-preview-') as directory:
         sys.exit(f'Cannot configure Douyin SDK in the isolated project: {error}')
     config_path = project / 'Assets/Resources/GameConfig.json'
     config = json.loads(config_path.read_text())
-    config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=args.include_reference_skins, experimentalFixedPve=args.fixed_pve_preview)
+    config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=args.include_reference_skins,
+                  experimentalFixedPve=args.fixed_pve_preview or args.strength_pve_preview, experimentalStrengthPve=args.strength_pve_preview,
+                  experimentalFixedPveServer=False, experimentalComparison=False)
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     shutil.copy2(root / 'scripts/DouyinPreviewBuild.cs', project / 'Assets/Snake/Editor/DouyinPreviewBuild.cs')
     log = Path(directory) / 'build.log'

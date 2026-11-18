@@ -216,7 +216,8 @@ namespace SnakeClub
             playerId = "you"; arena = null; daily = null; depthMode = false;
             firstRun = run != null ? run.startConfig.firstRun : !practiceProfile.tutorialComplete;
             var profile = run != null ? run.startConfig.MatchProfile() : practiceProfile;
-            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile);
+            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
+                run == null && api.Config.StrengthPvePreview);
             state = fixedPve.RenderState();
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
@@ -226,7 +227,7 @@ namespace SnakeClub
             activeRun = run; activePlayerId = run != null && api.Profile != null ? api.Profile.playerId : "";
             activePracticeAccount = ""; lastRewardId = ""; resultRecorded = false; runInputs.Clear();
             verifiedDaily = false; verifiedShareToken = "";
-            resultNote = "整数规则试玩 · 不计账号奖励或排行";
+            resultNote = fixedPve.StrengthPreview ? "强弱吞食试玩 · 不计账号奖励或排行" : "整数规则试玩 · 不计账号奖励或排行";
             arenaRenderer.SelectedSkin = run != null ? run.startConfig.skin : EffectiveSkin;
         }
 
@@ -340,11 +341,11 @@ namespace SnakeClub
                     bool trial = CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthPvePreview);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
-                        string title = comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : state.winner == playerId ? "围猎胜利" : "围猎结束";
+                        string title = comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照 " + (char)('A' + comparisonVariant) + " · 结束" : daily != null ? "挑战结束" : fixedPve != null && fixedPve.StrengthPreview ? (state.winner == playerId ? "吞食胜利" : "吞食结束") : state.winner == playerId ? "围猎胜利" : "围猎结束";
                         string stats = comparisonVariant >= 0 && api.Config.ComparisonPreview ?
                             "最长 " + daily.PeakLength + "   ·   淘汰 " + (own != null ? own.kills : 0) :
                             daily != null ? "挑战得分 " + daily.Score + "   ·   淘汰 " + (own != null ? own.kills : 0) + "\n最长 " + daily.PeakLength :
@@ -433,6 +434,8 @@ namespace SnakeClub
                 (!homeVisible || (renderWardrobePreview && arenaRenderer.PreviewTexture != null));
             if (homeScreen != null) homeScreen.SetArenaPreview(renderWardrobePreview ? arenaRenderer.PreviewTexture : null);
             arenaRenderer.ReducedEffects = reducedEffects;
+            arenaRenderer.LegacyDangerWarning = fixedPve == null || !fixedPve.StrengthPreview;
+            arenaRenderer.StrengthBodyVisual = fixedPve != null && fixedPve.StrengthPreview;
             arenaRenderer.MotionPaused = SimulationSuspended;
             if (arenaRenderer.Visible) arenaRenderer.Draw(state, wardrobePreview ? "demo-0" : playerId);
         }
@@ -624,7 +627,7 @@ namespace SnakeClub
         {
             Panel(new Rect(48, 50, 984, 188), new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
-            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? "整数规则试玩" : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
+            Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
             else Label(new Rect(88, 135, 410, 52), comparisonVariant >= 0 && api.Config.ComparisonPreview ? "试玩 · 不计奖励或排行" : depthMode ? "练习 · " + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             bool urgent = RoundTimerPresentation.IsUrgent(state);
@@ -632,7 +635,7 @@ namespace SnakeClub
             Color timerColor = urgent ? new Color(1f, .76f, .40f) : Color.white;
             Label(new Rect(530, 70, 185, 58), state == null ? "--:--" : FormatTime(state.remaining), timerSize, timerColor, TextAnchor.MiddleCenter, true);
             Label(new Rect(720, 70, 250, 58), me == null ? "--" : daily != null && !(comparisonVariant >= 0 && api.Config.ComparisonPreview) ? "分数 " + daily.Score : "长度 " + me.segments.Count, 30, Color.white, TextAnchor.MiddleRight, true);
-            Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + (depthMode ? "  星核 " : "  事件 ") + me.starPoints, 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
+            Label(new Rect(720, 135, 250, 52), me == null ? "" : "淘汰 " + me.kills + (fixedPve != null && fixedPve.StrengthPreview ? "" : (depthMode ? "  星核 " : "  事件 ") + me.starPoints), 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleRight);
 
             if (arenaRenderer.VisualFallback)
                 Label(new Rect(300, 235, 500, 45), "造型素材不可用 · 备用显示", 19, new Color(.9f, .92f, .84f), TextAnchor.MiddleCenter);
@@ -690,9 +693,18 @@ namespace SnakeClub
                 Panel(new Rect(300, 1080, 480, 72), new Color(.035f, .09f, .13f, .86f));
                 Label(new Rect(315, 1085, 450, 62), elimination, 24, new Color(.94f, .96f, .78f), TextAnchor.MiddleCenter, true);
             }
-            if (!paused && DangerProbe.Find(state, playerId, out _))
+            if (fixedPve != null && fixedPve.StrengthPreview && fixedPve.LastPlayerBiteTick >= 0 && state.tick - fixedPve.LastPlayerBiteTick < 20)
+                Label(new Rect(240, 520, 600, 90), fixedPve.LastPlayerWasBitten ? "身体被吃掉 " + fixedPve.LastPlayerBiteCount + " 节" : "吃掉身体 " + fixedPve.LastPlayerBiteCount + " 节！", 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
+            else if (fixedPve != null && fixedPve.StrengthPreview && fixedPve.LastPlayerBlockedTick >= 0 && state.tick - fixedPve.LastPlayerBlockedTick < 20)
+                Label(new Rect(240, 520, 600, 90), "强度不足 · 试试更弱的部位", 29, new Color(1f, .88f, .65f), TextAnchor.MiddleCenter, true);
+            if (StrengthIntroVisible())
+            {
+                Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
+                Label(new Rect(125, 560, 830, 80), "拖动靠近 · 攻高于尾防 5% 可吃", 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+            }
+            if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.Find(state, playerId, out _))
                 Label(new Rect(270, 1640, 540, 64), "附近有危险 · 留意方向标记", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
-            else if (!paused && DangerProbe.FindBeforeProtectionEnds(state, playerId, out _))
+            else if (!paused && !(fixedPve != null && fixedPve.StrengthPreview) && DangerProbe.FindBeforeProtectionEnds(state, playerId, out _))
                 Label(new Rect(230, 1640, 620, 64), "附近有对手 · 保护即将结束", 23, new Color(1f, .89f, .65f), TextAnchor.MiddleCenter, true);
             string boostHint = depthMode && !paused ? DepthChallenge.ReboundBoostHint(me) : "";
             if (!string.IsNullOrEmpty(boostHint))
@@ -710,7 +722,7 @@ namespace SnakeClub
                 if (hasObjectiveEdge) edgeObstacles.Add(new EdgeObstacle(objectiveEdge.x, objectiveEdge.y, objectiveEdge.width, objectiveEdge.height));
                 DrawOpponentEdge(state);
             }
-            if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
+            if (firstRun && tutorialHints && !online && !paused && !(fixedPve != null && fixedPve.StrengthPreview) && CanControlPlayer())
             {
                 string hint = FirstRunHints.Select(state.tick, hasSteered, tutorialClosedLoop, tutorialRebounded, me == null ? 0 : me.kills, FirstRunHints.ApproachingOwnTrail(me), tutorialBoosted);
                 if (!string.IsNullOrEmpty(hint))
@@ -884,7 +896,8 @@ namespace SnakeClub
         private void DrawNames(ArenaState world)
         {
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
-            if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
+            if (StrengthIntroVisible()) nameplates.Reserve(100, 550, 880, 100);
+            else if (firstRun && tutorialHints && !online && !paused && CanControlPlayer())
             {
                 var own = world.snakes.Find(s => s.id == playerId);
                 string hint = FirstRunHints.Select(world.tick, hasSteered, tutorialClosedLoop, tutorialRebounded,
@@ -913,6 +926,11 @@ namespace SnakeClub
             foreach (var entry in nameplateEntries) DrawNameplate(entry);
         }
 
+        private bool StrengthIntroVisible() => fixedPve != null && fixedPve.StrengthPreview && state != null &&
+            state.phase == "running" && state.tick < 160 && !paused &&
+            (fixedPve.LastPlayerBiteTick < 0 || state.tick - fixedPve.LastPlayerBiteTick >= 20) &&
+            (fixedPve.LastPlayerBlockedTick < 0 || state.tick - fixedPve.LastPlayerBlockedTick >= 20);
+
         private void CollectNameplate(ArenaState world, SnakeState snake)
         {
             if (!snake.alive || snake.segments.Count == 0) return;
@@ -921,6 +939,8 @@ namespace SnakeClub
             Vector2 position = ToVirtual(projected);
             if (!nameplates.TryPlace(snake.id, new Point(position.x, position.y), out var placed)) return;
             string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
+            if (fixedPve != null && fixedPve.TryGetStrength(snake.id, out var power, out int tailDefense))
+                label = snake.id == playerId ? "你 · 攻" + power.attack : (snake.bot ? "AI" : "玩家") + " · 尾" + tailDefense;
             if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
             if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
             if (snake.shield > 0) label += " · 保护";

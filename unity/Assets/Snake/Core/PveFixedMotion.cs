@@ -84,7 +84,20 @@ namespace SnakeClub.Core
         {
             if (start < 1 || start >= Length || count <= 0) return 0;
             int removed = Math.Min(Math.Min(count, Length - start), Length - MinimumLength);
-            if (removed > 0) segments.RemoveRange(start, removed);
+            if (removed > 0)
+            {
+                segments.RemoveRange(start, removed);
+                // Close the gap immediately so the rendered connection never
+                // leaves an extended non-collidable bridge after a middle bite.
+                for (int i = start; i < Length; i++)
+                {
+                    var a = segments[i - 1]; var b = segments[i];
+                    int dx = a.x - b.x, dy = a.y - b.y, distance = Distance(dx, dy);
+                    if (distance > Spacing)
+                        segments[i] = new CapturePoint(a.x - (int)((long)dx * Spacing / distance),
+                            a.y - (int)((long)dy * Spacing / distance));
+                }
+            }
             return removed;
         }
         // Detects geometry only: cooldowns, immunity and victim resolution

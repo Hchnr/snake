@@ -57,6 +57,13 @@ namespace SnakeClub.Core
         private readonly PveFixedBonuses playerBonuses;
         private readonly PveFixedFighter[] fighters = new PveFixedFighter[8];
         private readonly PveFixedCombatWorkspace combatWorkspace = new PveFixedCombatWorkspace(8);
+        private readonly StrengthBodyCombat strengthCombat = new StrengthBodyCombat();
+        private readonly StrengthInputs[] strengthInputs = new StrengthInputs[8];
+        public bool StrengthPreview { get; }
+        public int LastPlayerBiteTick { get; private set; } = -1;
+        public int LastPlayerBiteCount { get; private set; }
+        public bool LastPlayerWasBitten { get; private set; }
+        public int LastPlayerBlockedTick { get; private set; } = -1;
         private readonly int[] botTimer = new int[8];
         private readonly byte[] botDirection = new byte[8];
         private readonly bool[] botBoost = new bool[8];
@@ -71,8 +78,9 @@ namespace SnakeClub.Core
         public int Tick { get; private set; }
         public bool Finished { get; private set; }
         public string Winner { get; private set; } = "";
-        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile)
+        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false)
         {
+            StrengthPreview = strengthPreview;
             random = unchecked((uint)seed); if (random == 0) random = 0x6d2b79f5;
             maxTicks = (firstRun ? 60 : 90) * TickRate;
             uint selection = unchecked((uint)seed); eventType = (int)((selection ^ (selection >> 16)) % 3);
@@ -163,14 +171,34 @@ namespace SnakeClub.Core
                 if (distance < closest) { closest = distance; nearest = i; }
             }
             long vx = 0, vy = 0;
-            if (nearest >= 0)
+            if (nearest >= 0 && !StrengthPreview)
             {
                 int sign = self.motion.Length >= fighters[nearest].motion.Length || closest > 12000L * 12000L ? 1 : -1;
                 vx += (long)(fighters[nearest].motion.X - self.motion.X) * sign;
                 vy += (long)(fighters[nearest].motion.Y - self.motion.Y) * sign;
             }
-            AccumulateTrailAvoidance(self, fighters, ref vx, ref vy);
-            AccumulateHeadAvoidance(self, fighters, ref vx, ref vy);
+            if (StrengthPreview)
+            {
+                // Aim for the nearest currently edible body segment; do not
+                // treat every opponent body as a lethal trail.
+                var own = StrengthFor(self); BodyStrength.TryCalculate(own, 0, out var attack);
+                long bestTarget = 18000L * 18000L;
+                foreach (var other in fighters)
+                {
+                    if (other == self || !other.alive || other.shieldTicks > 0 || other.motion.Length <= PveFixedMotion.MinimumLength) continue;
+                    var defense = StrengthFor(other);
+                    for (int part = 1; part < other.motion.Length; part++)
+                    {
+                        var p = other.motion.Segments[part];
+                        long dx = (long)p.x - self.motion.X, dy = (long)p.y - self.motion.Y, distance = dx * dx + dy * dy;
+                        if (distance >= bestTarget) continue;
+                        BodyStrength.TryCalculate(defense, part, out var body);
+                        if (!BodyStrength.CanEat(attack.attack, body.defense)) continue;
+                        bestTarget = distance; vx = dx * 2; vy = dy * 2;
+                    }
+                }
+            }
+            else { AccumulateTrailAvoidance(self, fighters, ref vx, ref vy); AccumulateHeadAvoidance(self, fighters, ref vx, ref vy); }
             if (nearest < 0 || closest > 10000L * 10000L)
             {
                 long closestFruit = 18000L * 18000L; int fruitIndex = -1;
@@ -185,7 +213,7 @@ namespace SnakeClub.Core
             botBoost[index] = nearest >= 0 && closest < 15000L * 15000L && self.motion.Length > fighters[nearest].motion.Length + 3;
             // Two hunters favor the actual player, using only present position.
             // Their ordinary boost costs length and remains optional for the bot.
-            if (index <= 2 && fighters[0].alive && !(eventActive && eventType == 1))
+            if (!StrengthPreview && index <= 2 && fighters[0].alive && !(eventActive && eventType == 1))
             {
                 long dx = (long)fighters[0].motion.X - self.motion.X, dy = (long)fighters[0].motion.Y - self.motion.Y;
                 long distance = dx * dx + dy * dy;
@@ -317,11 +345,31 @@ namespace SnakeClub.Core
         }
         private static Point ToPoint(CapturePoint point) => new Point(point.x / 1000f, point.y / 1000f);
 
+        private static StrengthInputs StrengthFor(PveFixedFighter fighter) => new StrengthInputs {
+            basePower = 100, length = fighter.motion.Length, hardness = 0, matchLevel = 0,
+            speed = fighter.motion.Boosting ? 495 : fighter.motion.ReboundTicks > 0 ? 345 : 300,
+            baseSpeed = 300, boosting = fighter.motion.Boosting, randomFactor = 1000, operationFactor = 1000
+        };
+
+        public bool TryGetStrength(string id, out StrengthValues head, out int tailDefense)
+        {
+            head = default; tailDefense = 0;
+            if (!StrengthPreview || string.IsNullOrEmpty(id)) return false;
+            foreach (var fighter in fighters)
+            {
+                if (fighter.id != id || !fighter.alive) continue;
+                var input = StrengthFor(fighter);
+                if (!BodyStrength.TryCalculate(input, 0, out head) || !BodyStrength.TryCalculate(input, input.length - 1, out var tail)) return false;
+                tailDefense = tail.defense; return true;
+            }
+            return false;
+        }
+
         public void Step(byte heading, bool boost)
         {
             if (Finished) return;
             Tick++;
-            if (Tick == 15 * TickRate && !eventDone) StartEvent();
+            if (!StrengthPreview && Tick == 15 * TickRate && !eventDone) StartEvent();
             for (int i = 0; i < fighters.Length; i++) previouslyAlive[i] = fighters[i].alive;
             for (int i = 0; i < fighters.Length; i++)
             {
@@ -330,8 +378,19 @@ namespace SnakeClub.Core
                 fighter.motion.Step(i == 0 ? heading : BotHeading(i), i == 0 ? boost : botBoost[i],
                     i == 0 ? playerBonuses : new PveFixedBonuses());
             }
-            PveFixedCombat.Resolve(fighters, combatWorkspace);
-            if (combatWorkspace.captureOwner.Length != 0)
+            if (StrengthPreview)
+            {
+                for (int i = 0; i < fighters.Length; i++) strengthInputs[i] = StrengthFor(fighters[i]);
+                var headGrowth = StrengthHeadCombat.Resolve(fighters, strengthInputs, deferGrowth: true);
+                var bites = strengthCombat.Resolve(Tick, fighters, strengthInputs);
+                for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) fighters[i].motion.Grow(headGrowth[i]);
+                foreach (var blocked in strengthCombat.BlockedAttackers) if (blocked == "you") LastPlayerBlockedTick = Tick;
+                foreach (var bite in bites)
+                    if (bite.attacker == "you" || bite.defender == "you")
+                    { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
+            }
+            else PveFixedCombat.Resolve(fighters, combatWorkspace);
+            if (!StrengthPreview && combatWorkspace.captureOwner.Length != 0)
             {
                 lastCaptureTick = Tick; lastCaptureCount = combatWorkspace.captureCount; lastCaptureOwner = combatWorkspace.captureOwner;
                 lastCapturePolygon.Clear(); lastCapturePolygon.AddRange(combatWorkspace.capturePolygon);

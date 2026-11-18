@@ -20,6 +20,7 @@ namespace SnakeClub
         public bool allowDevLogin;
         public bool allowReferenceSkinPreview;
         public bool experimentalFixedPve;
+        public bool experimentalStrengthPve;
         public bool experimentalFixedPveServer;
         public bool experimentalComparison;
         public bool ComparisonPreview => experimentalComparison && !allowDevLogin && !experimentalFixedPve && !experimentalFixedPveServer &&
@@ -42,6 +43,7 @@ namespace SnakeClub
         // Preview is allowed only in a deliberately isolated offline build.
         public bool FixedPvePreview => experimentalFixedPve && !allowDevLogin &&
             string.IsNullOrWhiteSpace(apiUrl) && string.IsNullOrWhiteSpace(serverUrl);
+        public bool StrengthPvePreview => experimentalStrengthPve && FixedPvePreview && !experimentalFixedPveServer && !experimentalComparison;
     }
 
     [Serializable] public sealed class LeaderboardRow

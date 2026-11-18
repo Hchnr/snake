@@ -3,6 +3,54 @@ using System.Collections.Generic;
 
 namespace SnakeClub.Core
 {
+    // Head-to-head is resolved before body bites from a shared snapshot.
+    // Near-equal or mutually tied strength causes no elimination in the preview.
+    public static class StrengthHeadCombat
+    {
+        public static int[] Resolve(PveFixedFighter[] fighters, StrengthInputs[] inputs, bool deferGrowth = false)
+        {
+            if (fighters == null || inputs == null || fighters.Length != inputs.Length) throw new ArgumentException("Invalid head combat inputs");
+            var values = new StrengthValues[fighters.Length];
+            for (int i = 0; i < fighters.Length; i++)
+            {
+                if (fighters[i] == null) throw new ArgumentException("Invalid fighter");
+                for (int j = 0; j < i; j++) if (fighters[i].id == fighters[j].id) throw new ArgumentException("Duplicate fighter ID");
+                var power = inputs[i]; power.length = fighters[i].motion.Length;
+                if (!BodyStrength.TryCalculate(power, 0, out values[i])) throw new ArgumentException("Invalid strength input");
+            }
+            var winner = new int[fighters.Length]; var advantage = new long[fighters.Length];
+            for (int i = 0; i < winner.Length; i++) winner[i] = -1;
+            for (int i = 0; i < fighters.Length; i++) for (int j = i + 1; j < fighters.Length; j++)
+            {
+                var a = fighters[i]; var b = fighters[j];
+                if (!a.alive || !b.alive || a.shieldTicks > 0 || b.shieldTicks > 0) continue;
+                long dx = (long)a.motion.X - b.motion.X, dy = (long)a.motion.Y - b.motion.Y;
+                if (dx * dx + dy * dy >= 1440L * 1440L) continue;
+                long ab = (long)values[i].attack * 100 - (long)values[j].defense * 105;
+                long ba = (long)values[j].attack * 100 - (long)values[i].defense * 105;
+                if (ab > 0 && ab > ba) Claim(j, i, ab);
+                else if (ba > 0 && ba > ab) Claim(i, j, ba);
+            }
+            void Claim(int victim, int attacker, long margin)
+            {
+                int prior = winner[victim];
+                if (prior < 0 || margin > advantage[victim] || (margin == advantage[victim] &&
+                    string.CompareOrdinal(fighters[attacker].id, fighters[prior].id) < 0))
+                { winner[victim] = attacker; advantage[victim] = margin; }
+            }
+            for (int i = 0; i < fighters.Length; i++) if (winner[i] >= 0)
+            { fighters[i].alive = false; fighters[i].eliminatedBy = fighters[winner[i]].id; fighters[i].eliminationReason = "strength_head"; }
+            var growth = new int[fighters.Length];
+            for (int i = 0; i < fighters.Length; i++) if (winner[i] >= 0 && fighters[winner[i]].alive)
+            {
+                fighters[i].credited = true; fighters[winner[i]].kills++;
+                growth[winner[i]] += Math.Max(1, fighters[i].motion.Length / 2);
+            }
+            if (!deferGrowth) for (int i = 0; i < fighters.Length; i++) fighters[i].motion.Grow(growth[i]);
+            return growth;
+        }
+    }
+
     public readonly struct BodyBite
     {
         public readonly string attacker, defender;
@@ -19,6 +67,8 @@ namespace SnakeClub.Core
         private const int CooldownTicks = 8;
         private readonly Dictionary<string, long> nextHit = new Dictionary<string, long>();
         private long lastTick = -1;
+        private readonly List<string> blockedAttackers = new List<string>();
+        public IReadOnlyList<string> BlockedAttackers => blockedAttackers;
         private sealed class Candidate
         {
             public int attacker, defender, segment, count, attack, defense;
@@ -45,6 +95,7 @@ namespace SnakeClub.Core
                 if (!BodyStrength.TryCalculate(powers[i], 0, out _)) throw new ArgumentException("Invalid strength input");
             }
             lastTick = tick;
+            blockedAttackers.Clear();
             var candidates = new List<Candidate>();
             for (int i = 0; i < fighters.Length; i++)
             {
@@ -64,7 +115,11 @@ namespace SnakeClub.Core
                     }
                     if (segment < 0) continue;
                     BodyStrength.TryCalculate(powers[j], segment, out var defendingPower);
-                    if (!BodyStrength.CanEat(attackingPower.attack, defendingPower.defense)) continue;
+                    if (!BodyStrength.CanEat(attackingPower.attack, defendingPower.defense))
+                    {
+                        if (!blockedAttackers.Contains(attacker.id)) blockedAttackers.Add(attacker.id);
+                        continue;
+                    }
                     int count = 0, max = Math.Min(3, defender.motion.Length - PveFixedMotion.MinimumLength);
                     for (int k = segment; k < defender.motion.Length && count < max; k++)
                     {

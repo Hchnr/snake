@@ -93,6 +93,7 @@ var cases = new (string name, Action run)[]
     ("PvE input tape replays bounded actual controls locally", PveRecordingCases),
     ("experimental body strength is bounded and weakens toward the tail", BodyStrengthCases),
     ("experimental strength combat bites real body segments deterministically", StrengthBodyCombatCases),
+    ("strength practice world uses new body and head combat", StrengthPracticeWorldCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),
     ("PvE starting configuration freezes trial skin and talents", PveConfigCases),
     ("integer PvE movement preserves steering, bounce and bonuses", PveFixedMotionCases),
@@ -1594,6 +1595,63 @@ static void ArenaBotEncounterCases()
     Check(Arena.PlayerPursuit(hunter, player, false).Length == 0 && Arena.HeadAvoidance(hunter, player).Length == 0, "dead player affected bot behavior");
 }
 
+static void StrengthPracticeWorldCases()
+{
+    StrengthInputs Power(int value = 100) => new() { basePower = value, speed = 300, baseSpeed = 300,
+        randomFactor = 1000, operationFactor = 1000 };
+    PveFixedFighter Fighter(string id, int x) => new(id, new PveFixedMotion(x, 0, 0, 16));
+    var weak = Fighter("weak", 0); var strong = Fighter("strong", 0);
+    StrengthHeadCombat.Resolve(new[] { weak, strong }, new[] { Power(), Power(130) });
+    Check(!weak.alive && strong.alive && weak.eliminationReason == "strength_head" && weak.eliminatedBy == "strong" && strong.kills == 1,
+        "stronger head did not win the real head collision");
+    weak = Fighter("weak", 0); strong = Fighter("strong", 0);
+    int[] deferred = StrengthHeadCombat.Resolve(new[] { weak, strong }, new[] { Power(), Power(130) }, deferGrowth: true);
+    Check(!weak.alive && strong.motion.Length == 16 && deferred[1] == 8, "head growth was not deferred until body decisions completed");
+    weak = Fighter("weak", 0); strong = Fighter("strong", 0);
+    StrengthHeadCombat.Resolve(new[] { weak, strong }, new[] { Power(), Power() });
+    Check(weak.alive && strong.alive, "equal heads were eliminated");
+    weak.shieldTicks = 1;
+    StrengthHeadCombat.Resolve(new[] { weak, strong }, new[] { Power(), Power(130) });
+    Check(weak.alive && strong.alive, "head collision ignored protection");
+
+    var world = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var field = typeof(PveFixedWorld).GetField("fighters", BindingFlags.Instance | BindingFlags.NonPublic);
+    var actors = (PveFixedFighter[])field.GetValue(world);
+    actors[0] = Fighter("you", -11700); actors[1] = Fighter("bot-1", 0);
+    for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+    world.Step(0, false);
+    Check(world.StrengthPreview && !world.Finished && actors[0].alive && actors[1].alive &&
+        actors[0].motion.Length > 16 && actors[1].motion.Length < 16 && world.LastPlayerBiteTick == 1 &&
+        !world.LastPlayerWasBitten && world.LastPlayerBiteCount > 0,
+        "practice world did not apply and report a real body bite");
+    var projected = world.RenderState();
+    Check(projected.snakes[0].segments.Count == actors[0].motion.Length && projected.snakes[1].segments.Count == actors[1].motion.Length,
+        "practice rendering did not reflect the actual body lengths");
+    Check(world.TryGetStrength("you", out var shownAttack, out _) && world.TryGetStrength("bot-1", out _, out int shownTail) &&
+        shownAttack.attack > shownTail && !world.TryGetStrength("missing", out _, out _), "preview displayed invalid strength values");
+    var blockedWorld = new PveFixedWorld(42, false, null, strengthPreview: true);
+    var blockedActors = (PveFixedFighter[])field.GetValue(blockedWorld);
+    blockedActors[0] = new PveFixedFighter("you", new PveFixedMotion(-71100, 0, 0, 5));
+    blockedActors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 80));
+    for (int i = 2; i < blockedActors.Length; i++) blockedActors[i].alive = false;
+    blockedWorld.Step(0, false);
+    Check(blockedWorld.LastPlayerBlockedTick == 1 && blockedActors[0].alive && blockedActors[1].motion.Length == 80,
+        "weak contact did not report insufficient strength without eliminating the player");
+    var first = new PveFixedWorld(73, true, null, true); var second = new PveFixedWorld(73, true, null, true);
+    for (int i = 0; i < 600 && !first.Finished; i++)
+    {
+        first.Step((byte)(i * 13), i % 30 > 20); second.Step((byte)(i * 13), i % 30 > 20);
+        Check(first.Tick == second.Tick && first.Finished == second.Finished && first.Winner == second.Winner, "strength preview diverged for identical input");
+        for (int j = 0; j < first.Fighters.Count; j++)
+        {
+            var a = first.Fighters[j]; var b = second.Fighters[j];
+            Check(a.alive == b.alive && a.kills == b.kills && a.motion.Length == b.motion.Length && a.motion.X == b.motion.X && a.motion.Y == b.motion.Y,
+                "strength preview fighter diverged for identical input");
+        }
+        Check(first.EventStatus == "", "old event leaked into strength practice");
+    }
+}
+
 static void StrengthBodyCombatCases()
 {
     PveFixedFighter Fighter(string id, int x, int y = 0, int length = 16) => new(id, new PveFixedMotion(x, y, 0, length));
@@ -1608,13 +1666,24 @@ static void StrengthBodyCombatCases()
     Check(combat.Resolve(1, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "pair cooldown did not prevent repeat bites");
     bites = combat.Resolve(8, new[] { attacker, defender }, new[] { Power(), Power() });
     Check(bites.Count == 1 && bites[0].removed == 1 && defender.motion.Length == 12, "bite did not recover after cooldown");
+    attacker = Fighter("attacker", -4500); defender = Fighter("defender", 0);
+    bites = new StrengthBodyCombat().Resolve(0, new[] { attacker, defender }, new[] { Power(300), Power() });
+    Check(bites.Count == 1 && bites[0].segment == 5 && bites[0].removed == 3, "middle-body bite did not remove contacted segments");
+    for (int i = 1; i < defender.motion.Length; i++)
+    {
+        long dx = (long)defender.motion.Segments[i - 1].x - defender.motion.Segments[i].x;
+        long dy = (long)defender.motion.Segments[i - 1].y - defender.motion.Segments[i].y;
+        Check(dx * dx + dy * dy <= 902L * 902L, "middle bite left a long non-collidable body gap");
+    }
 
     attacker = Fighter("attacker", -11700); defender = Fighter("defender", 0);
     combat = new StrengthBodyCombat();
     Check(combat.Resolve(0, new[] { attacker, defender }, new[] { Power(), Power(300, 300) }).Count == 0 && attacker.alive && defender.alive,
         "weaker head consumed a stronger body or died merely from touching it");
+    Check(combat.BlockedAttackers.Contains("attacker"), "a real failed bite did not produce a strength feedback signal");
     defender.shieldTicks = 1;
     Check(combat.Resolve(1, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "protected body was eaten");
+    Check(!combat.BlockedAttackers.Contains("attacker"), "protected contact was incorrectly reported as insufficient strength");
     defender.shieldTicks = 0; attacker.shieldTicks = 1;
     Check(combat.Resolve(2, new[] { attacker, defender }, new[] { Power(), Power() }).Count == 0, "protected attacker ate a body");
     attacker.shieldTicks = 0; defender.alive = false;
