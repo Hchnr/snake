@@ -242,7 +242,7 @@ namespace SnakeClub
                 localAdvantage: localStrength, localOpeningFood: localStrength, localOpeningEncounter: localStrength,
                 localRecoverySupply: localStrength, localSafeRecovery: localStrength, localAlignedStart: localStrength,
                 localCappedStart: localStrength, localStableBlocked: localStrength, localRecoveryPriority: localStrength,
-                localSqueezeEscape: localStrength, localMultiBite: localStrength, localHeadTieAfterBite: localStrength);
+                localSqueezeEscape: localStrength, localMultiBite: localStrength, localHeadTieAfterBite: localStrength, localOpeningBoost: localStrength);
             state = fixedPve.RenderState();
             strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
@@ -465,6 +465,7 @@ namespace SnakeClub
             arenaRenderer.ReducedEffects = reducedEffects;
             arenaRenderer.LegacyDangerWarning = fixedPve == null || !fixedPve.StrengthPreview;
             arenaRenderer.StrengthBodyVisual = fixedPve != null && fixedPve.StrengthPreview;
+            arenaRenderer.OpeningBoostVisual = fixedPve != null && fixedPve.OpeningBoostRemaining > 0;
             arenaRenderer.ViewPreference = viewPreference;
             arenaRenderer.MotionPaused = SimulationSuspended;
             if (arenaRenderer.Visible) arenaRenderer.Draw(state, wardrobePreview ? "demo-0" : playerId);
@@ -816,8 +817,15 @@ namespace SnakeClub
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
+            else if (fixedPve != null && fixedPve.LocalOpeningBoost && state != null && (state.phase == "ended" || (me != null && !me.alive)))
+                Label(new Rect(88, 135, 580, 52), state.phase == "ended" ? "本局已结束" : "已淘汰 · 观战中", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             else if (fixedPve != null && fixedPve.TryGetStrengthLevelProgress(playerId, out int matchLevel, out int matchXp, out int nextXp))
-                Label(new Rect(88, 135, 410, 52), activeRun != null && activeRun.mode == "strength-eval" ? "底力 " + fixedPve.StrengthBasePower + " · 硬度 " + (fixedPve.StrengthHardness / 10f).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "% · 升级 " + (nextXp > 0 ? matchXp + "/" + nextXp : "满级") : (fixedPve.LocalStrengthAdvantage ? "玩家攻防优势 · " : "试玩 · ") + "升级 " + (nextXp > 0 ? matchXp + "/" + nextXp : "已满级"), 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
+            {
+                string opening = OpeningBoostNotice.Text(fixedPve);
+                string progress = nextXp > 0 ? matchXp + "/" + nextXp : "已满级";
+                string detail = activeRun != null && activeRun.mode == "strength-eval" ? "底力 " + fixedPve.StrengthBasePower + " · 硬度 " + (fixedPve.StrengthHardness / 10f).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + "% · 升级 " + (nextXp > 0 ? progress : "满级") : !string.IsNullOrEmpty(opening) ? opening + " · 升级 " + progress : (fixedPve.LocalStrengthAdvantage ? "玩家攻防优势 · " : "试玩 · ") + "升级 " + progress;
+                Label(new Rect(88, 135, 580, 52), detail, !string.IsNullOrEmpty(opening) ? 29 : 24, !string.IsNullOrEmpty(opening) ? new Color(1f, .80f, .38f) : new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft, !string.IsNullOrEmpty(opening));
+            }
             else Label(new Rect(88, 135, 410, 52), comparisonVariant >= 0 && api.Config.ComparisonPreview ? "试玩 · 不计奖励或排行" : depthMode ? "练习 · " + DepthGoalText() : daily != null ? (activeRun == null ? "练习局 · 不计排行" : "统一规则 · 真人排行") : activeRun == null ? "练习局 · 不计账号奖励" : activeRun.trialSkin > 0 ? "皮肤试穿中 · 本局有效" : "击败对手，生存到最后", 24, new Color(.60f, .72f, .79f), TextAnchor.MiddleLeft);
             bool urgent = RoundTimerPresentation.IsUrgent(state);
             int timerSize = urgent ? (reducedEffects ? 44 : Mathf.RoundToInt(42 + 2 * Mathf.Sin(state.remaining * Mathf.PI * 2))) : 40;
@@ -981,7 +989,7 @@ namespace SnakeClub
                 if (strengthGuide)
                 {
                     Label(new Rect(180, 730, 720, 260),
-                        (fixedPve.LocalStrengthAdvantage ? "本局玩家自带攻防优势\n" : "") + "任意位置拖动转向 · 第二指按住加速\n强度足够才能吃身体，不足时弹开\n金点可尝试吞食 · 红叉提示身体危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
+                        (fixedPve.LocalOpeningBoost ? "开局15秒攻防额外强化（含出生保护）\n" : fixedPve.LocalStrengthAdvantage ? "本局玩家自带攻防优势\n" : "") + "任意位置拖动转向 · 第二指按住加速\n强度足够才能吃身体，不足时弹开\n金点可尝试吞食 · 红叉提示身体危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
                         27, new Color(.76f, .92f, .90f), TextAnchor.MiddleCenter);
                 }
                 if (Button(strengthGuide ? new Rect(265, 1010, 550, 90) : new Rect(265, 825, 550, 90), "继续对战", new Color(.10f, .60f, .49f))) paused = false;
