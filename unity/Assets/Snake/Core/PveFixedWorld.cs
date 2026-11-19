@@ -21,14 +21,16 @@ namespace SnakeClub.Core
         public const string PreviousExperimentalStrengthRules = "strength-pve-dev-2";
         public const string PriorExperimentalStrengthRules = "strength-pve-dev-3";
         public const string ExperimentalStrengthRules = "strength-pve-dev-4";
+        // Offline-only practice variant; never accepted as a server reward rule.
+        public const string LocalStrengthAdvantageRules = "strength-local-advantage-1";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
 
         // Diagnostic only: this mutable prototype is not a versioned ruleset
         // and must not be used to verify accounts, rankings, or rewards.
-        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result)
-            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result);
+        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result, bool localAdvantage = false)
+            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result, localAdvantage);
 
         public static bool TryReplayStrength(int seed, StrengthEvalStartConfig snapshot, byte[] inputs, out PveFixedWorld result)
         {
@@ -37,13 +39,13 @@ namespace SnakeClub.Core
             return TryReplayInternal(seed, snapshot.firstRun, null, inputs, true, snapshot, out result);
         }
 
-        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result)
+        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result, bool localAdvantage = false)
         {
             result = null;
             int limit = (firstRun ? 60 : 90) * PveFixedWorld.TickRate;
             if (inputs == null || inputs.Length == 0 || inputs.Length % 2 != 0 || inputs.Length > limit * 2) return false;
             for (int i = 1; i < inputs.Length; i += 2) if (inputs[i] > 1) return false;
-            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot);
+            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot, localAdvantage: localAdvantage);
             for (int i = 0; i < inputs.Length; i += 2)
             {
                 if (world.Finished) return false;
@@ -85,6 +87,9 @@ namespace SnakeClub.Core
         private readonly bool[] strengthSeparatedHeads = new bool[8];
         private readonly List<HeadTieContact> strengthHeadTies = new List<HeadTieContact>();
         public bool StrengthPreview { get; }
+        public bool LocalStrengthAdvantage { get; }
+        public string RulesVersion => !StrengthPreview ? PveFixedRecording.ExperimentalRules :
+            LocalStrengthAdvantage ? PveFixedRecording.LocalStrengthAdvantageRules : PveFixedRecording.ExperimentalStrengthRules;
         public int StrengthBasePower { get; }
         public int StrengthHardness { get; }
         public int LastPlayerBiteTick { get; private set; } = -1;
@@ -129,19 +134,22 @@ namespace SnakeClub.Core
         public int Tick { get; private set; }
         public bool Finished { get; private set; }
         public string Winner { get; private set; } = "";
-        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null)
+        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null, bool localAdvantage = false)
         {
             if (strengthSnapshot != null && (!strengthPreview || !strengthSnapshot.Supported || strengthSnapshot.firstRun != firstRun))
                 throw new ArgumentException("Invalid strength snapshot", nameof(strengthSnapshot));
+            if (localAdvantage && (!strengthPreview || strengthSnapshot != null))
+                throw new ArgumentException("Local advantage is available only in offline strength practice", nameof(localAdvantage));
             for (int i = 0; i < fighters.Length; i++) strengthAttackTicks[i] = strengthDamageTicks[i] = -1;
             StrengthPreview = strengthPreview;
-            StrengthBasePower = strengthSnapshot != null ? strengthSnapshot.EffectivePower : 100;
-            StrengthHardness = strengthSnapshot != null ? strengthSnapshot.EffectiveHardness : 0;
+            LocalStrengthAdvantage = localAdvantage;
+            StrengthBasePower = strengthSnapshot != null ? strengthSnapshot.EffectivePower : localAdvantage ? 120 : 100;
+            StrengthHardness = strengthSnapshot != null ? strengthSnapshot.EffectiveHardness : localAdvantage ? 80 : 0;
             random = unchecked((uint)seed); if (random == 0) random = 0x6d2b79f5;
             maxTicks = (firstRun ? 60 : 90) * TickRate;
             uint selection = unchecked((uint)seed); eventType = (int)((selection ^ (selection >> 16)) % 3);
-            // Movement remains neutral; only the isolated server snapshot can
-            // supply candidate player strength. Talents and skins do not apply.
+            // Movement remains neutral. Local advantage and the isolated server
+            // snapshot are separate; talents and skins do not apply here.
             playerBonuses = StrengthPreview ? new PveFixedBonuses() : PveFixedBonuses.From(profile);
             for (int i = 0; i < Arena.FruitCount; i++) fruit.Add(NewFruit());
             for (int i = 0; i < fighters.Length; i++)

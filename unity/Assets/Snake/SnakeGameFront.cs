@@ -630,7 +630,7 @@ namespace SnakeClub
         private void DrawSkins()
         {
             PlayerProgress p = CurrentProfile;
-            FrontHeader("灵蛇衣橱", api.Config.StrengthPveServerPreview ? "本机成长实验 · 皮肤仅改变外观" : (api.Config.StrengthRulesPreview || DefaultStrengthMain) ? "强弱试玩属性统一 · 皮肤仅改变外观" : "收集外观与小幅属性 · 每日挑战使用统一属性");
+            FrontHeader("灵蛇衣橱", api.Config.StrengthPveServerPreview ? "本机成长实验 · 皮肤仅改变外观" : (api.Config.StrengthRulesPreview || DefaultStrengthMain) ? "玩家有攻防优势 · 皮肤仅改变外观" : "收集外观与小幅属性 · 每日挑战使用统一属性");
             if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(185, 280, 710, 600), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
             Label(new Rect(180, 815, 720, 70), Progression.SkinNames[previewSkin] + "  ·  " + (OfflineCosmeticPreview && !p.ownedSkins.Contains(previewSkin) && SkinCatalog.IsOwnedSkin(previewSkin) ? "试玩仅改变外观" : Progression.SkinDescriptions[previewSkin]), 32, Color.white, TextAnchor.MiddleCenter, true);
             int count = api.Config.allowReferenceSkinPreview ? SkinCatalog.All.Length : SkinCatalog.OwnedSkinCount;
@@ -663,19 +663,19 @@ namespace SnakeClub
         private void DrawMore()
         {
             FrontHeader("更多玩法", "成长、挑战与排行");
-            if (Button(new Rect(130, 390, 820, 140), api.Config.StrengthPveServerPreview ? "强弱吞食  ·  成长实验" : api.Config.StrengthRulesPreview ? "强弱吞食  ·  统一属性" : "旧版围猎  ·  属性生效", new Color(.10f, .55f, .46f))) RequestPve();
+            if (Button(new Rect(130, 390, 820, 140), api.Config.StrengthPveServerPreview ? "强弱吞食  ·  成长实验" : api.Config.StrengthRulesPreview ? "强弱吞食  ·  玩家优势" : "旧版围猎  ·  属性生效", new Color(.10f, .55f, .46f))) RequestPve();
             if (Button(new Rect(130, 570, 820, 140), (!string.IsNullOrEmpty(friendDate) && friendDate == api.Date ? "旧版好友挑战  ·  60 秒" : "旧版每日挑战  ·  60 秒"), new Color(.20f, .38f, .69f))) RequestDaily();
             if (Button(new Rect(130, 750, 820, 140), "旧版每日排行榜", new Color(.34f, .31f, .62f))) OpenBoard();
             if (Button(new Rect(130, 930, 820, 140), "灵蛇天赋", new Color(.30f, .30f, .56f))) frontPage = "talents";
             int completed = DepthChallenge.CompletedMatches(CurrentProfile);
             if (Button(new Rect(130, 1110, 820, 140), completed >= 3 ? "秘境深潜  ·  三重挑战" : "秘境深潜  ·  " + completed + "/3 场", new Color(.42f, .28f, .57f))) StartDepth();
-            Label(new Rect(150, 1300, 780, 120), string.IsNullOrEmpty(frontNotice) ? (api.Config.StrengthPveServerPreview ? "本机实验使用账号成长\n皮肤和天赋不影响本局" : api.Config.StrengthRulesPreview ? "强弱吞食试玩采用统一属性\n皮肤和天赋不影响本局" : "旧版对局沿用身体碰撞规则\n强弱吞食试玩不计账号奖励") : frontNotice, 25, new Color(.84f, .96f, .94f), TextAnchor.MiddleCenter);
+            Label(new Rect(150, 1300, 780, 120), string.IsNullOrEmpty(frontNotice) ? (api.Config.StrengthPveServerPreview ? "本机实验使用账号成长\n皮肤和天赋不影响本局" : api.Config.StrengthRulesPreview ? "强弱试玩玩家有攻防优势\n皮肤和天赋不影响本局" : "旧版对局沿用身体碰撞规则\n强弱吞食试玩不计账号奖励") : frontNotice, 25, new Color(.84f, .96f, .94f), TextAnchor.MiddleCenter);
         }
 
         private void DrawTalents()
         {
             PlayerProgress p = CurrentProfile;
-            FrontHeader("灵蛇天赋", api.Config.StrengthPveServerPreview ? "本机实验的攻防取决于账号成长；天赋不影响" : (api.Config.StrengthRulesPreview || DefaultStrengthMain) ? "强弱试玩属性统一，天赋不影响本局" : "自由搭配，可免费重置；每日榜不应用属性");
+            FrontHeader("灵蛇天赋", api.Config.StrengthPveServerPreview ? "本机实验的攻防取决于账号成长；天赋不影响" : (api.Config.StrengthRulesPreview || DefaultStrengthMain) ? "强弱试玩玩家有攻防优势，天赋不影响本局" : "自由搭配，可免费重置；每日榜不应用属性");
             Panel(new Rect(75, 310, 930, 150), new Color(.025f, .08f, .14f, .91f));
             Label(new Rect(100, 330, 880, 55), "成长等级 " + Progression.Level(p.experience) + "     可用点数 " + Progression.AvailablePoints(p), 32, Color.white, TextAnchor.MiddleCenter, true);
             int next = Progression.ExperienceForLevel(Progression.Level(p.experience) + 1);
