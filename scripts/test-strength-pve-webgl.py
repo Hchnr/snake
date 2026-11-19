@@ -26,6 +26,7 @@ pattern = re.compile(r'strength=([0-9a-f:,]+)')
 recovery_pattern = re.compile(r'(?<![a-z-])recovery=([0-9a-f:,]+)')
 safe_recovery_pattern = re.compile(r'safe-recovery=([0-9a-f:,]+)')
 aligned_start_pattern = re.compile(r'aligned-start=([0-9a-f:,]+)')
+capped_start_pattern = re.compile(r'capped-start=([0-9a-f:,]+)')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
                            text=True, capture_output=True, check=True, timeout=180).stdout
@@ -104,6 +105,21 @@ aligned_match = aligned_start_pattern.search(aligned_reference)
 if not aligned_match or len(aligned_match.group(1).split(',')) != 40:
     sys.exit('Desktop aligned-start matrix is incomplete.')
 expected_aligned = aligned_match.group(1)
+# Captured from the v6 main-branch implementation before v7 was introduced.
+v6_golden = (
+    '2:0:0:1800:3:d8e2da8f4b75086b,2:0:1:1800:0:af6e451dd029cf2f,2:0:2:1800:0:a241bebc22b4522b,2:0:3:1800:0:00c1b7ecb820cd6e,'
+    '2:1:0:1200:0:c09041fa9fb89b58,2:1:1:1200:0:6fdf436316f99443,2:1:2:1200:0:af0aaea7a5ee0575,2:1:3:1200:0:9502927b285977a0,'
+    '68:0:0:1800:7:f50af9c22b924061,68:0:1:1800:0:bfbe22b8dbd879bb,68:0:2:1800:0:a5344776d8be1d40,68:0:3:1800:0:dfcf3a6daaafcf34,'
+    '68:1:0:1200:0:564603937d101c33,68:1:1:1200:0:9c69cfa6f5ffeb7b,68:1:2:1200:0:0d57a99a69282a63,68:1:3:1200:0:1533a647170b2402,'
+    '92:0:0:1800:7:4c09a863075694a4,92:0:1:1800:3:bdd4440596c9add8,92:0:2:1800:0:95c015abca746945,92:0:3:1800:11:59958fc01f52f25c,'
+    '92:1:0:1200:3:1cd2a1eaea003ab1,92:1:1:1200:7:fce20006b9a7b598,92:1:2:1200:0:3a3a102981fb3d47,92:1:3:1200:0:36d6f7725dc6dc92,'
+    '105:0:0:1800:0:5c3169b7c05ae7c4,105:0:1:1800:0:cd0b722ae4d0a932,105:0:2:1800:0:abd888bfa0fd0b41,105:0:3:1800:0:6e12909b538bc7e8,'
+    '105:1:0:1200:0:62b67eb11acf0ada,105:1:1:1200:0:a77fbf17c2dcf47d,105:1:2:1200:0:eb7fffdf85972f79,105:1:3:1200:0:0b55180bb41d5e77,'
+    '192:0:0:1800:7:4f75282e5f395c16,192:0:1:1800:0:7a00a9c4766d9d2d,192:0:2:1800:5:bb94bf8f8238da61,192:0:3:1800:7:7d979f9354b5ee2c,'
+    '192:1:0:1200:3:5211e7f59e3ef025,192:1:1:1200:0:92bf24e44aed57da,192:1:2:220:0:76394c4c1429c526,192:1:3:1200:0:ea03cc61d111064b'
+)
+if expected_aligned != v6_golden:
+    sys.exit('MISMATCH: v6 aligned-start fingerprints changed from the preserved reference.')
 aligned_coverage = 0
 for case in expected_aligned.split(','):
     fields = case.split(':')
@@ -112,6 +128,22 @@ for case in expected_aligned.split(','):
     aligned_coverage |= int(fields[4])
 if aligned_coverage != 15:
     sys.exit('Desktop aligned-start matrix did not observe activation, player/AI pickup, and a second activation.')
+capped_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-capped-start-vector'],
+                                  text=True, capture_output=True, check=True, timeout=180).stdout
+capped_match = capped_start_pattern.search(capped_reference)
+if not capped_match or len(capped_match.group(1).split(',')) != 70:
+    sys.exit('Desktop capped-start matrix is incomplete.')
+expected_capped = capped_match.group(1)
+capped_coverage = 0
+for case in expected_capped.split(','):
+    fields = case.split(':')
+    if len(fields) != 6:
+        sys.exit('Desktop capped-start matrix case is malformed.')
+    flags = int(fields[4]); capped_coverage |= flags
+    if int(fields[2]) in (4, 5, 6) and not flags & 16:
+        sys.exit('Capped-start reversal did not exercise the actual opening assist.')
+if capped_coverage != 31:
+    sys.exit('Desktop capped-start matrix did not observe steering assist, recovery, player/AI pickup and second activation.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -143,7 +175,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart()); }
+    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -184,6 +216,10 @@ internal static class FixedVectorDiagnostic {
         if not actual_aligned_match or len(actual_aligned_match.group(1).split(',')) != 40:
             sys.exit('WebGL aligned-start matrix is incomplete.')
         actual_aligned = actual_aligned_match.group(1)
+        actual_capped_match = capped_start_pattern.search(result.stdout)
+        if not actual_capped_match or len(actual_capped_match.group(1).split(',')) != 70:
+            sys.exit('WebGL capped-start matrix is incomplete.')
+        actual_capped = actual_capped_match.group(1)
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -212,6 +248,13 @@ internal static class FixedVectorDiagnostic {
                     print('First differing aligned-start case: .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: local aligned-start simulation differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5 and 40 v6 matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
+        print('.NET capped start:  ' + expected_capped + '\nWebGL capped start: ' + actual_capped)
+        if actual_capped != expected_capped:
+            for desktop, webgl in zip(expected_capped.split(','), actual_capped.split(',')):
+                if desktop != webgl:
+                    print('First differing capped-start case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: local capped-start simulation differs across runtimes.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6 and 70 v7 matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

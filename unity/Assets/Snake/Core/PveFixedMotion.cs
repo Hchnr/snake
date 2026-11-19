@@ -168,11 +168,13 @@ namespace SnakeClub.Core
         // One offline opening assist: keep the body and position intact and
         // align the head only when normal steering could not reach the target
         // in this step. Caller owns the time window and one-use limit.
-        internal bool TryAlignOpeningTurn(byte target)
+        internal bool TryAlignOpeningTurn(byte target, bool capped = false)
         {
             int delta = ((target * 256 - Angle + 98304) & 65535) - 32768;
             if (Math.Abs(delta) <= TurnStep) return false;
-            Angle = target * 256;
+            // v7 limits this extra turn; the usual Step turn still follows.
+            // v6 keeps its exact historical full alignment.
+            Angle = capped ? (Angle + Clamp(delta, -16384, 16384)) & 65535 : target * 256;
             return true;
         }
 

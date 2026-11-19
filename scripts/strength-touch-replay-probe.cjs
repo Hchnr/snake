@@ -3,6 +3,11 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+// Keep existing probe callers on the original upward drag unless opted in.
+const openingLeft = process.env.SNAKE_STRENGTH_OPENING_LEFT === '1';
+// Default remains strict: recovery must occur in this natural round.
+const requireRecovery = process.env.SNAKE_STRENGTH_REQUIRE_RECOVERY !== '0';
+const requireProtectionCue = process.env.SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE !== '0';
 const matchTimeoutSeconds = Number(process.argv[4] || 600);
 if (!Number.isInteger(matchTimeoutSeconds) || matchTimeoutSeconds < 60 || matchTimeoutSeconds > 900) {
   throw Error('Match timeout must be an integer from 60 to 900 seconds');
@@ -95,17 +100,36 @@ async function main() {
   let index = events.length;
   // The explanation is not a control pad: drag from inside it.
   await touch('touchStart', [point(250, 680, 1)]); await delay(100);
-  await touch('touchMove', [point(250, 600, 1)]);
-  await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ 64 0(?:\s|$)/.test(e)), 'actual steering');
+  const steeredPoint = openingLeft ? point(170, 680, 1) : point(250, 600, 1);
+  await touch('touchMove', [steeredPoint]);
+  const expectedHeading = openingLeft ? 128 : 64;
+  await waitFor(() => events.slice(index).some(e => new RegExp(`SNAKE_TOUCH_TICK \\d+ ${expectedHeading} 0(?:\\s|$)`).test(e)), 'actual steering');
+  if (openingLeft) {
+    const line = await waitFor(() => events.slice(index).find(e => /SNAKE_TOUCH_OPENING \d+ 128 1 \d+/.test(e)), 'actual capped opening assist');
+    const m = line.match(/SNAKE_TOUCH_OPENING (\d+) 128 1 (\d+)/);
+    const tick = Number(m[1]), angle = Number(m[2]);
+    const remaining = Math.abs(((128 * 256 - angle + 98304) & 65535) - 32768);
+    if (tick > 40 || remaining < 10000 || remaining > 16384)
+      throw Error('First left input did not retain the capped opening turn: ' + line);
+    console.log('PASS actual left drag triggered the capped opening turn');
+  }
   index = events.length;
-  await touch('touchStart', [point(250, 600, 1), point(350, 500, 2)]);
+  await touch('touchStart', [steeredPoint, point(350, 500, 2)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)), 'actual boost');
   await touch('touchEnd', [point(350, 500, 2)]); await delay(150); await touch('touchEnd', []);
   await capture('protection'); await capture('battle');
-  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 60000);
-  await capture('protection-ended');
-  await waitFor(() => events.some(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 120000);
-  await capture('recovery-supply');
+  if (!requireProtectionCue) {
+    console.log('SKIP protection-expiry text assertion (explicit opt-out)');
+  } else {
+    await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 60000);
+    await capture('protection-ended');
+  }
+  if (requireRecovery) {
+    await waitFor(() => events.some(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 120000);
+    await capture('recovery-supply');
+  } else {
+    console.log('SKIP recovery assertion: this run verifies steering and replay only');
+  }
   await waitFor(() => hasSince(0, 'SNAKE_STRENGTH_E2E '), 'complete actual-touch match and local replay', matchTimeoutSeconds * 1000);
   await delay(1000); await capture('result');
   const line = events.find(e => e.includes('SNAKE_STRENGTH_E2E '));

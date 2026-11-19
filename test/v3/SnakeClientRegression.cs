@@ -1161,7 +1161,7 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "account tutorial changed local first run");
                 var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
@@ -1171,11 +1171,15 @@ namespace SnakeClub.Tests.Editor
                 Field("hasSteered").SetValue(app, true); Field("direction").SetValue(app, new Point(-1, 0));
                 Field("paused").SetValue(app, true); Call("AdvanceFixedPve", 1f);
                 Require(world.Tick == 1 && tape.Count == 2 && !world.OpeningSteeringSeen, "pause consumed the opening steering window");
+                var motion = world.Fighters[0].motion; int beforeX = motion.X, beforeY = motion.Y;
                 Field("paused").SetValue(app, false); Call("AdvanceFixedPve", .05f);
+                const int cappedLeftAngle = 65536 - 16384 - 1982;
                 Require(world.Tick == 2 && tape.Count == 4 && tape[3] == 2 && world.OpeningSteeringSeen && world.OpeningTurnAssistUsed &&
-                    world.Fighters[0].motion.Angle == 32768, "resumed actual steering was not recorded or assisted");
+                    motion.Angle == cappedLeftAngle && motion.X < beforeX && motion.Y < beforeY,
+                    "resumed steering did not record input and turn left with the bounded assist");
                 Field("pointerBoost").SetValue(app, true); Call("AdvanceFixedPve", .05f);
-                Require(world.Tick == 3 && tape.Count == 6 && tape[5] == 3, "boost and persistent steering were not independently recorded");
+                Require(world.Tick == 3 && tape.Count == 6 && tape[5] == 3 && motion.Angle == cappedLeftAngle - 1982,
+                    "boost, steering recording or one-time capped turn was wrong");
                 world.Fighters[0].alive = false; world.Step(0, false); Field("controlActions").SetValue(app, 1); Call("RecordResult");
                 Require(account.coins == 123 && account.experience == 200 && account.completedMatches == 0 &&
                     PlayerPrefs.GetString("snake.v3.pending", "") == pending && PlayerPrefs.GetInt(key, 0) == 1,
@@ -1184,7 +1188,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");
