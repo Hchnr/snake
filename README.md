@@ -76,11 +76,15 @@ python3 scripts/test-strength-pve-client-e2e.py
 npm run test:unity:play
 ```
 
-WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定可执行文件；它们在临时工程中编译并用静音无头浏览器运行，可能耗时数分钟。强弱试玩可运行 `python3 scripts/test-strength-pve-webgl.py`，对 18 局服务端实验、16 局 v4、24 局 v5 及 40 局 v6 的逐步可观察状态及部分内部状态进行 .NET / WebGL 指纹对照；该脚本和 `TryReplayStrength` 仅用于研发，不能验证所有隐藏状态、任意输入或抖音设备，也不能用于正式奖励。客户端检查还会启动临时本机服务并按真实时间完成一局。指纹一致只覆盖脚本样本，不代表抖音手机、所有输入或可信发奖已通过。
+WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定可执行文件；它们在临时工程中编译并用静音无头浏览器运行，可能耗时数分钟。强弱试玩可运行 `python3 scripts/test-strength-pve-webgl.py`，对 18 局服务端实验、16 局 v4、24 局 v5、40 局 v6 及 70 局 v7 的逐步可观察状态及部分内部状态进行 .NET / WebGL 指纹对照；该脚本和 `TryReplayStrength` 仅用于研发，不能验证所有隐藏状态、任意输入或抖音设备，也不能用于正式奖励。客户端检查还会启动临时本机服务并按真实时间完成一局。指纹一致只覆盖脚本样本，不代表抖音手机、所有输入或可信发奖已通过。
 
 强弱触摸回放测试等待终局的默认上限为 600 秒，可通过 `SNAKE_STRENGTH_MATCH_TIMEOUT_SECONDS` 设置 60～900 秒；上限仅控制等待，不改变游戏速度或成功条件。负载较高时，静音无头浏览器可能比实时模拟慢，超时不能作为回放通过。
 
+`python3 scripts/test-strength-touch-replay-webgl.py` 默认严格要求自然对局出现保护结束提示和回追；触摸时序会变化，回追未发生时测试会失败。若只验证左拖限角及完整跨端回放，可显式运行 `SNAKE_STRENGTH_OPENING_LEFT=1 SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=0 SNAKE_STRENGTH_REQUIRE_RECOVERY=0 python3 scripts/test-strength-touch-replay-webgl.py`；输出会标明跳过的两项，不能把它当作回追或提示验收。确定性回追覆盖由上面的逐步指纹测试另行检查。
+
 运行 `python3 scripts/evaluate-aligned-start.py --seeds 100` 可比较开局方向和首次转向辅助的脚本样本；结果不能代替真人手感或平衡测试。
+
+运行 `python3 scripts/evaluate-opening-turn-cap.py --seeds 100` 可比较首次急转限角前后的脚本样本；身体近邻不是伤害判定，结果不能代表真人体验。
 
 运行 `python3 scripts/evaluate-strength-ai.py` 可统计两组各 50 局固定输入及一组 50 局由同一 AI 策略控制玩家的强弱试玩结果；它适合辅助比较规则改动，不等于真人玩法或难度评估。
 

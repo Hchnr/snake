@@ -97,21 +97,27 @@ namespace SnakeClub.Tests
 
         public static string ComputeAlignedStart() => ComputeRecovery(true, true);
 
-        private static string ComputeRecovery(bool safe, bool aligned = false)
+        public static string ComputeCappedStart() => ComputeRecovery(true, true, true);
+
+        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false)
         {
-            string prefix = aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
+            string prefix = capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
             var result = new StringBuilder(prefix);
             foreach (int seed in aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
-            for (int pattern = 0; pattern < (aligned ? 4 : safe ? 3 : 2); pattern++)
+            for (int pattern = 0; pattern < (capped ? 7 : aligned ? 4 : safe ? 3 : 2); pattern++)
             {
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
-                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned);
+                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned,
+                    localCappedStart: capped);
                 int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
                     if (pattern == 3) heading = world.Tick < 10 ? (byte)0 : (byte)64;
+                    if (capped && pattern == 4) heading = 128;
+                    if (capped && pattern == 5) heading = world.Tick < 30 ? (byte)0 : (byte)128;
+                    if (capped && pattern == 6) heading = world.Tick < 35 ? (byte)129 : (byte)32;
                     if (pattern == 2 && world.Tick % 8 == 0)
                     {
                         var player = world.Fighters[0].motion;
@@ -135,7 +141,8 @@ namespace SnakeClub.Tests
                     }
                     // v6 includes actual steering intent in the local tape;
                     // exercise no input, an immediate turn and a later turn.
-                    bool steered = aligned && (pattern == 1 || pattern == 3 || (pattern == 2 && world.Tick >= 6));
+                    bool steered = aligned && (pattern == 1 || pattern == 3 || (pattern == 2 && world.Tick >= 6) ||
+                        (capped && (pattern == 4 || pattern == 6 || (pattern == 5 && world.Tick >= 30))));
                     world.Step(heading, false, steered);
                     world.AppendReplayDiagnostics(Add);
                     Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
@@ -151,6 +158,7 @@ namespace SnakeClub.Tests
                     if (world.RecoverySupplyCollectedByPlayer > 0) flags |= 2;
                     if (world.RecoverySupplyCollectedByOpponents > 0) flags |= 4;
                     if (world.RecoverySuppliesUsed > 1) flags |= 8;
+                    if (capped && world.OpeningTurnAssistUsed) flags |= 16;
                 }
                 if (result.Length > prefix.Length) result.Append(',');
                 result.Append(seed).Append(':').Append(first ? 1 : 0).Append(':').Append(pattern).Append(':')

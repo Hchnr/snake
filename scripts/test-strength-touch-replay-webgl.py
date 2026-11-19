@@ -2,7 +2,8 @@
 """Replay a real touch-controlled strength match across WebGL and desktop .NET.
 
 Temporary instrumentation records actual simulation inputs in a disposable build.
-An offline v6 seed of 39 is used to exercise protection and recovery.
+By default an upward first drag and a v7 seed exercise recovery. Set
+SNAKE_STRENGTH_OPENING_LEFT=1 to check the capped leftward opening.
 This does not replace device, Douyin or multitouch hardware validation.
 """
 from functools import partial
@@ -27,6 +28,15 @@ except ValueError:
     sys.exit('SNAKE_STRENGTH_MATCH_TIMEOUT_SECONDS must be an integer from 60 to 900.')
 if not 60 <= match_timeout <= 900:
     sys.exit('SNAKE_STRENGTH_MATCH_TIMEOUT_SECONDS must be an integer from 60 to 900.')
+opening_left = os.environ.get('SNAKE_STRENGTH_OPENING_LEFT', '0')
+if opening_left not in ('0', '1'):
+    sys.exit('SNAKE_STRENGTH_OPENING_LEFT must be 0 or 1.')
+require_recovery = os.environ.get('SNAKE_STRENGTH_REQUIRE_RECOVERY', '1')
+if require_recovery not in ('0', '1'):
+    sys.exit('SNAKE_STRENGTH_REQUIRE_RECOVERY must be 0 or 1.')
+require_protection_cue = os.environ.get('SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE', '1')
+if require_protection_cue not in ('0', '1'):
+    sys.exit('SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE must be 0 or 1.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -68,11 +78,14 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     after = '        private int strengthDiagnosticSeed;\n' + before
     code = inject_once(code, before, after)
     before = '        [NonSerialized] private bool initializedInDomain;'
+    after = '        private bool strengthDiagnosticOpeningLogged;\n' + before
+    code = inject_once(code, before, after)
+    before = '        [NonSerialized] private bool initializedInDomain;'
     after = '        private string strengthDiagnosticCue, strengthDiagnosticRecovery;\n' + before
     code = inject_once(code, before, after)
     before = '            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,'
     try:
-        diagnostic_seed = int(os.environ.get('SNAKE_STRENGTH_SEED', '39'))
+        diagnostic_seed = int(os.environ.get('SNAKE_STRENGTH_SEED', '58' if opening_left == '1' else '39'))
     except ValueError:
         sys.exit('SNAKE_STRENGTH_SEED must be an integer.')
     if not -(2 ** 31) <= diagnostic_seed < 2 ** 31:
@@ -83,7 +96,13 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     after = before + '\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
     before = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                runInputs.Add(heading);'
-    after = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'
+    after = '''                fixedPve.Step(heading, pointerBoost, recordedSteering);
+                if (recordedSteering && !strengthDiagnosticOpeningLogged) {
+                    strengthDiagnosticOpeningLogged = true;
+                    Debug.Log("SNAKE_TOUCH_OPENING " + fixedPve.Tick + " " + heading + " " + (fixedPve.OpeningTurnAssistUsed ? 1 : 0) + " " + fixedPve.Fighters[0].motion.Angle);
+                }
+                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));
+                runInputs.Add(heading);'''
     code = inject_once(code, before, after)
     before = '            if (showProtection || showRecovery || showStrengthIntro)\n'
     after = '''            string visibleProtectionCue = showProtection ? protectionText : "";
@@ -112,7 +131,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             {
                 byte[] tape = runInputs.ToArray();
                 string live = SnakeClub.Tests.StrengthPveReplayVector.Terminal(fixedPve);
-                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart);
+                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart, fixedPve.LocalCappedStart);
                 bool match = valid && SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) == live;
                 Debug.Log("SNAKE_STRENGTH_E2E " + (match ? "MATCH" : "FAIL") + " " + strengthDiagnosticSeed + " " +
                     (firstRun ? 1 : 0) + " " + fixedPve.Tick + " " + live + " " + Convert.ToBase64String(tape));
@@ -144,9 +163,23 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
         print('Playing a complete strength preview using muted headless Chrome...', flush=True)
         result = subprocess.run(['node', str(root / 'scripts/strength-touch-replay-probe.cjs'), str(chrome),
                                  'http://127.0.0.1:' + str(server.server_port) + '/', str(match_timeout)],
+                                env=dict(os.environ, SNAKE_STRENGTH_OPENING_LEFT=opening_left, SNAKE_STRENGTH_REQUIRE_RECOVERY=require_recovery,
+                                         SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=require_protection_cue),
                                 capture_output=True, text=True, timeout=match_timeout + 300, check=False)
         if result.returncode:
             sys.exit('Touch replay diagnostic failed:\n' + result.stdout[-2000:] + result.stderr[-4000:])
+        if opening_left == '1':
+            if 'PASS actual left drag triggered the capped opening turn' not in result.stdout:
+                sys.exit('Missing evidence of an actual capped leftward turn.')
+            print('PASS actual left drag triggered the capped opening turn.', flush=True)
+        if require_recovery == '0':
+            if 'SKIP recovery assertion:' not in result.stdout:
+                sys.exit('Recovery opt-out was not acknowledged by the probe.')
+            print('SKIP recovery assertion: this run verifies steering and replay only.', flush=True)
+        if require_protection_cue == '0':
+            if 'SKIP protection-expiry text assertion (explicit opt-out)' not in result.stdout:
+                sys.exit('Protection cue opt-out was not acknowledged by the probe.')
+            print('SKIP protection-expiry text assertion (explicit opt-out).', flush=True)
         lines = [line for line in result.stdout.splitlines() if line.startswith('SNAKE_STRENGTH_E2E ')]
         if len(lines) != 1:
             sys.exit('Missing or duplicate real-input replay result.')
@@ -163,7 +196,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             sys.exit('Recording did not include valid persistent steering and boost input.')
         print('Replaying the actual recorded inputs in desktop .NET...', flush=True)
         ref = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--',
-                              'strength-aligned-start-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
+                              'strength-capped-start-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
         try:
             terminal = json.loads(ref.stdout.strip().splitlines()[-1])
         except (IndexError, json.JSONDecodeError):
