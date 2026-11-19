@@ -63,11 +63,25 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
     code = inject_once(code, before, after)
     before = '                fixedPve.Step(heading, pointerBoost);\n                runInputs.Add(heading);'
     after = '                fixedPve.Step(heading, pointerBoost);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'
+    if os.environ.get('SNAKE_GROWTH_CAPTURE_DIR'):
+        after = after.replace('                runInputs.Add(heading);', '''                if (fixedPve.Tick == 40) { fixedPve.Fighters[0].motion.Grow(32); Debug.Log("SNAKE_TOUCH_GROWN"); }
+                if (fixedPve.Tick == 1 || fixedPve.Tick == 100) Debug.Log("SNAKE_TOUCH_GROWTH_ZOOM " + fixedPve.Tick + " " + Camera.main.orthographicSize.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));
+                runInputs.Add(heading);''')
     code = inject_once(code, before, after)
     before = '                else { paused = !paused; if (paused) feedback.SuspendAudio(); }'
     after = '                else { paused = !paused; Debug.Log("SNAKE_TOUCH_PAUSED " + (paused ? 1 : 0)); if (paused) feedback.SuspendAudio(); }'
     code = inject_once(code, before, after)
     app_path.write_text(code)
+    front_path = project / 'Assets/Snake/SnakeGameFront.cs'
+    front = front_path.read_text()
+    before = '            viewPreference = GrowthView.NextPreference(viewPreference);'
+    after = before + '\n            Debug.Log("SNAKE_TOUCH_VIEW " + viewPreference);'
+    front_path.write_text(inject_once(front, before, after))
+    renderer_path = project / 'Assets/Snake/ArenaRenderer.cs'
+    renderer = renderer_path.read_text()
+    before = '                view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));'
+    after = before + '\n                if (MotionPaused && adjustingPausedView) Debug.Log("SNAKE_TOUCH_ZOOM " + view.orthographicSize.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));'
+    renderer_path.write_text(inject_once(renderer, before, after))
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
     env = dict(os.environ, SNAKE_BUILD_OUTPUT=str(output), SNAKE_BUILD_STAMP=str(stamp), SNAKE_INCLUDE_REFERENCE_ASSETS='0')
     command = [str(editor), '-batchmode', '-nographics', '-quit', '-projectPath', str(project), '-buildTarget', 'WebGL',

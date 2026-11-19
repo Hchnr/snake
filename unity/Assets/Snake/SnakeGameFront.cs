@@ -72,7 +72,7 @@ namespace SnakeClub
                 () => feedback.MusicEnabled = !feedback.MusicEnabled,
                 () => feedback.MusicVolume = AudioLevels.Next(feedback.MusicVolume),
                 () => feedback.EffectsVolume = AudioLevels.Next(feedback.EffectsVolume),
-                () => SetTutorialHints(!tutorialHints));
+                () => SetTutorialHints(!tutorialHints), CycleViewPreference);
             homeScreen.SetupResults(
                 RetryMatch, BackToMenu,
                 ShareCurrentChallenge,
@@ -142,7 +142,15 @@ namespace SnakeClub
         {
             reducedEffects = PlayerPrefs.GetInt("snake.v031.reducedEffects", 0) != 0;
             tutorialHints = PlayerPrefs.GetInt("snake.v031.tutorialHints", 1) != 0;
+            viewPreference = GrowthView.NormalizePreference(PlayerPrefs.GetInt("snake.v034.viewPreference", 0));
             strengthPracticeTutorialComplete = PlayerPrefs.GetInt(StrengthPracticeTutorialKey, 0) != 0;
+        }
+
+        private void CycleViewPreference()
+        {
+            viewPreference = GrowthView.NextPreference(viewPreference);
+            PlayerPrefs.SetInt("snake.v034.viewPreference", viewPreference);
+            PlayerPrefs.Save();
         }
 
         private void SetTutorialHints(bool enabled)
