@@ -514,6 +514,14 @@ namespace SnakeClub.Tests.Editor
                 if (Screen.width > 0 && Screen.height > 0)
                     Require(renderer.TryCharacterScreenBounds("you", out Rect spriteBounds) && spriteBounds.width > 0 && spriteBounds.height > 0,
                         "rendered sprite did not expose screen bounds for minimap avoidance");
+                if (Screen.width > 0 && Screen.height > 0 && renderer.TryCharacterScreenBounds("you", out Rect labelBounds))
+                {
+                    var labelAnchor = renderer.NameplateAnchor("you", new Point(0, 0));
+                    Require(Mathf.Abs(labelAnchor.x - labelBounds.center.x) < .01f && Mathf.Abs(labelAnchor.y - labelBounds.yMax) < .01f,
+                        "nameplate anchor did not follow the actual sprite bounds");
+                    Require(renderer.NameplateAnchor("absent", new Point(0, 0)) == renderer.WorldToScreen(new Point(0, 0)),
+                        "missing sprite did not fall back to the procedural head anchor");
+                }
                 if (Screen.width > 0 && Screen.height > 0)
                     Require(renderer.TryFallbackHeadScreenBounds(new Point(0, 0), out Rect fallbackBounds) && fallbackBounds.width > 0 && fallbackBounds.height > 0,
                         "procedural fallback did not expose approximate screen bounds");

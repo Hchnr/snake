@@ -747,8 +747,8 @@ namespace SnakeClub
             }
             if (StrengthIntroVisible())
             {
-                Panel(new Rect(100, 550, 880, 100), new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 560, 830, 80), StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Panel(new Rect(100, 1320, 880, 100), new Color(.025f, .08f, .14f, .90f));
+                Label(new Rect(125, 1330, 830, 80), StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && state != null && !string.IsNullOrEmpty(state.strengthHeadThreat);
             if (strengthHeadWarning)
@@ -1006,7 +1006,7 @@ namespace SnakeClub
                 nameplates.Reserve(220, 1715, 640, 70);
             if (!paused && string.IsNullOrEmpty(killFeedback.Current(world)) && !string.IsNullOrEmpty(StrengthLevelNotice.Text(fixedPve, world.tick)))
                 nameplates.Reserve(250, 430, 580, 110);
-            if (StrengthIntroVisible()) nameplates.Reserve(100, 550, 880, 100);
+            if (StrengthIntroVisible()) nameplates.Reserve(100, 1320, 880, 100);
             else if (firstRun && tutorialHints && !online && !paused && !(fixedPve != null && fixedPve.StrengthPreview) && CanControlPlayer())
             {
                 var own = world.snakes.Find(s => s.id == playerId);
@@ -1017,7 +1017,7 @@ namespace SnakeClub
             foreach (var snake in world.snakes)
             {
                 if (!snake.alive || snake.segments.Count == 0) continue;
-                Vector3 screen = arenaRenderer.WorldToScreen(snake.segments[0]);
+                Vector3 screen = arenaRenderer.NameplateAnchor(snake.id, snake.segments[0]);
                 if (screen.z <= 0) continue;
                 Vector2 anchor = ToVirtual(screen);
                 nameplates.AddAnchor(new Point(anchor.x, anchor.y));
@@ -1044,7 +1044,7 @@ namespace SnakeClub
         private void CollectNameplate(ArenaState world, SnakeState snake)
         {
             if (!snake.alive || snake.segments.Count == 0) return;
-            Vector3 projected = arenaRenderer.WorldToScreen(snake.segments[0]);
+            Vector3 projected = arenaRenderer.NameplateAnchor(snake.id, snake.segments[0]);
             if (projected.z <= 0) return;
             Vector2 position = ToVirtual(projected);
             if (!nameplates.TryPlace(snake.id, new Point(position.x, position.y), out var placed)) return;

@@ -1030,6 +1030,13 @@ namespace SnakeClub
         }
 
         public Vector3 WorldToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y) + view.transform.up * 5.7f);
+        public Vector3 NameplateAnchor(string id, Point head)
+        {
+            Vector3 fallback = WorldToScreen(head);
+            if (TryCharacterScreenBounds(id, out Rect bounds))
+                return new Vector3(bounds.center.x, bounds.yMax, fallback.z);
+            return fallback;
+        }
         public Vector3 HeadToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y));
 
         private void DrawBatch(List<Matrix4x4> matrices, Material material, Mesh mesh = null)

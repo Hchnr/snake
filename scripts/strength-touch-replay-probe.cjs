@@ -30,6 +30,13 @@ function point(x, y, id = 1) { return { x, y, id }; }
 async function tap(x, y) {
   await touch('touchStart', [point(x, y)]); await delay(120); await touch('touchEnd', []);
 }
+async function capture(name) {
+  const directory = process.env.SNAKE_STRENGTH_CAPTURE_DIR;
+  if (!directory) return;
+  fs.mkdirSync(directory, { recursive: true });
+  const result = await call('Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync(path.join(directory, name + '.png'), Buffer.from(result.data, 'base64'));
+}
 async function drag(label, x, y, endX, endY, expected) {
   const index = events.length;
   await touch('touchStart', [point(x, y)]);
@@ -75,7 +82,7 @@ async function main() {
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `for (const type of ['touchstart','touchend','touchcancel']) document.addEventListener(type, e => console.log('SNAKE_TOUCH_DOM ' + type + ' ' + [...e.changedTouches].map(t => t.identifier).join(',') + ' ' + [...e.touches].map(t => t.identifier).join(',')), true);` });
   await call('Page.navigate', { url: process.argv[3] });
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_HOME'), 'Unity home', 50000);
-  await delay(600); await tap(270, 640);
+  await delay(600); await capture('home'); await tap(270, 640);
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_READY'), 'start match');
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
   let index = events.length;
@@ -85,8 +92,10 @@ async function main() {
   index = events.length;
   await touch('touchStart', [point(250, 420, 1), point(350, 500, 2)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)), 'actual boost');
+  await capture('battle');
   await touch('touchEnd', [point(350, 500, 2)]); await delay(150); await touch('touchEnd', []);
   await waitFor(() => hasSince(0, 'SNAKE_STRENGTH_E2E '), 'complete actual-touch match and local replay', 180000);
+  await delay(1000); await capture('result');
   const line = events.find(e => e.includes('SNAKE_STRENGTH_E2E '));
   const match = line.match(/SNAKE_STRENGTH_E2E (?:MATCH|FAIL) -?\d+ [01] \d+ s1-[0-9a-f]{16} [A-Za-z0-9+/=]+/);
   if (!match) throw Error('Malformed strength replay result');
