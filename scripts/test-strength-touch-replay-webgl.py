@@ -94,7 +94,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     after = '            strengthDiagnosticSeed = run != null ? run.seed : ' + str(diagnostic_seed) + ';\n            fixedPve = new PveFixedWorld(strengthDiagnosticSeed, firstRun, profile,'
     code = inject_once(code, before, after)
     before = '            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
-    after = before + '\n            if (fixedPve.RulesVersion != PveFixedRecording.LocalStrengthHeadTieRules) throw new InvalidOperationException("Expected v12 strength practice");\n            Debug.Log("SNAKE_TOUCH_READY");'
+    after = before + '\n            if (fixedPve.RulesVersion != PveFixedRecording.LocalStrengthOpeningBoostRules) throw new InvalidOperationException("Expected v13 strength practice");\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
     before = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                runInputs.Add(heading);'
     after = '''                fixedPve.Step(heading, pointerBoost, recordedSteering);
@@ -132,7 +132,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             {
                 byte[] tape = runInputs.ToArray();
                 string live = SnakeClub.Tests.StrengthPveReplayVector.Terminal(fixedPve);
-                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart, fixedPve.LocalCappedStart, fixedPve.LocalStableBlocked, fixedPve.LocalRecoveryPriority, fixedPve.LocalSqueezeEscape, fixedPve.LocalMultiBite, fixedPve.LocalHeadTieAfterBite);
+                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart, fixedPve.LocalCappedStart, fixedPve.LocalStableBlocked, fixedPve.LocalRecoveryPriority, fixedPve.LocalSqueezeEscape, fixedPve.LocalMultiBite, fixedPve.LocalHeadTieAfterBite, fixedPve.LocalOpeningBoost);
                 bool match = valid && SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) == live;
                 Debug.Log("SNAKE_STRENGTH_E2E " + (match ? "MATCH" : "FAIL") + " " + strengthDiagnosticSeed + " " +
                     (firstRun ? 1 : 0) + " " + fixedPve.Tick + " " + live + " " + Convert.ToBase64String(tape));
@@ -197,7 +197,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             sys.exit('Recording did not include valid persistent steering and boost input.')
         print('Replaying the actual recorded inputs in desktop .NET...', flush=True)
         ref = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--',
-                              'strength-headtie-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
+                              'strength-opening-boost-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
         try:
             terminal = json.loads(ref.stdout.strip().splitlines()[-1])
         except (IndexError, json.JSONDecodeError):

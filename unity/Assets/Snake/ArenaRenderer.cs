@@ -105,6 +105,7 @@ namespace SnakeClub
         public bool ReducedEffects { get; set; }
         public bool LegacyDangerWarning { get; set; } = true;
         private bool strengthBodyVisual, hiddenStrengthCamera;
+        public bool OpeningBoostVisual { get; set; }
         public bool StrengthBodyVisual
         {
             get => strengthBodyVisual;
@@ -632,7 +633,7 @@ namespace SnakeClub
                 }
                 if (characterSprite != null)
                 {
-                    DrawCharacterTrail(snake.id, positions, Palette[color], StrengthBodyVisual ? 1 : 2, appearance, StrengthBodyVisual && snake.boosting);
+                    DrawCharacterTrail(snake.id, positions, Palette[color], StrengthBodyVisual ? 1 : 2, appearance, StrengthBodyVisual && snake.boosting, snake.id == playerId && OpeningBoostVisual);
                     if (!characters.TryGetValue(snake.id, out var character) || character == null)
                     {
                         var item = new GameObject("Full character " + snake.id); item.transform.SetParent(runtimeRoot, false);
@@ -1002,7 +1003,7 @@ namespace SnakeClub
             PlaceRing(ring, center + Vector3.up * .03f, 1.12f);
         }
 
-        private void DrawCharacterTrail(string id, List<Vector3> positions, Color color, int firstSegment, StrengthAppearanceValues appearance, bool boosting)
+        private void DrawCharacterTrail(string id, List<Vector3> positions, Color color, int firstSegment, StrengthAppearanceValues appearance, bool boosting, bool openingBoost)
         {
             // Old rules start body collision at segment 2; strength practice
             // includes segment 1. Segment 0 remains the character's head.
@@ -1045,7 +1046,7 @@ namespace SnakeClub
             {
                 var line = lines[layer]; line.enabled = true; line.positionCount = vertexCount;
                 line.widthMultiplier = appearance.BodyWidth * (layer == 0 ? 1f : .3125f);
-                Color shade = layer == 0 ? Color.Lerp(color, Color.white, appearance.Glow * .30f) : Color.Lerp(color, Color.white, .78f);
+                Color shade = layer == 0 ? Color.Lerp(color, Color.white, appearance.Glow * .30f) : openingBoost ? new Color(1f, .72f, .20f) : Color.Lerp(color, Color.white, .78f);
                 float pulse = ReducedEffects ? 1f : .88f + .12f * Mathf.Sin(visualClock.Time * (boosting ? 7f : 4f));
                 line.startColor = line.endColor = new Color(shade.r * pulse, shade.g * pulse, shade.b * pulse, 1f);
                 line.SetPositions(vertices[layer]);
