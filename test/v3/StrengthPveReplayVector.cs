@@ -106,9 +106,11 @@ namespace SnakeClub.Tests
 
         public static string ComputeSqueezeEscape() => ComputeRecovery(true, true, true, true, true, true) + "|" + SqueezeEscapeFixture();
 
-        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false, bool recoveryPriority = false, bool squeezeEscape = false)
+        public static string ComputeMultiBite() => ComputeRecovery(true, true, true, true, true, true, true) + "|" + MultiBiteFixture();
+
+        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false, bool recoveryPriority = false, bool squeezeEscape = false, bool multiBite = false)
         {
-            string prefix = squeezeEscape ? "squeeze-escape=" : recoveryPriority ? "priority-recovery=" : stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
+            string prefix = multiBite ? "multi-bite=" : squeezeEscape ? "squeeze-escape=" : recoveryPriority ? "priority-recovery=" : stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
             var result = new StringBuilder(prefix);
             foreach (int seed in squeezeEscape ? new[] { 2, 9, 35, 68, 92, 105, 192 } : recoveryPriority ? new[] { 2, 9, 68, 92, 105, 192 } : aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
@@ -117,7 +119,7 @@ namespace SnakeClub.Tests
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
                     localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned,
-                    localCappedStart: capped, localStableBlocked: stableBlocked, localRecoveryPriority: recoveryPriority, localSqueezeEscape: squeezeEscape);
+                    localCappedStart: capped, localStableBlocked: stableBlocked, localRecoveryPriority: recoveryPriority, localSqueezeEscape: squeezeEscape, localMultiBite: multiBite);
                 int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
@@ -178,6 +180,49 @@ namespace SnakeClub.Tests
             }
             return result.ToString();
         }
+
+        private static string MultiBiteFixture()
+        {
+            hash = 14695981039346656037UL;
+            // True world Step: two AIs contact distinct segments of the player in one tick.
+            var world = new PveFixedWorld(1, false, null, true, localAdvantage:true, localOpeningFood:true, localOpeningEncounter:true,
+                localRecoverySupply:true, localSafeRecovery:true, localAlignedStart:true, localCappedStart:true,
+                localStableBlocked:true, localRecoveryPriority:true, localSqueezeEscape:true, localMultiBite:true);
+            var actors = (PveFixedFighter[])world.Fighters;
+            actors[0] = new PveFixedFighter("you", new PveFixedMotion(0,0,0,16));
+            actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-4500,400,16384,80));
+            actors[2] = new PveFixedFighter("bot-2", new PveFixedMotion(-11700,-400,49152,80));
+            for(int i=3;i<actors.Length;i++) actors[i].alive=false;
+            for (int step=0;step<24 && !world.Finished;step++) {
+                world.Step((byte)(step*13),false,true);
+                if (step==0 && (world.LastPlayerDamageTick!=1 || world.LastPlayerDamageCount!=6 || world.PlayerSegmentsLostToBites!=6 || !world.LastPlayerWasBitten || world.LastPlayerBiteCount!=6)) throw new InvalidOperationException("multi-damage fixture failed");
+                world.AppendReplayDiagnostics(Add);Add(world.Tick);Add(world.LastPlayerDamageTick);Add(world.LastPlayerDamageCount);Add(world.LastPlayerBiteCount);Add(world.LastPlayerWasBitten?1:0);Add(world.PlayerSegmentsLostToBites);
+                foreach(var fighter in world.Fighters) { Add(fighter.id);Add(fighter.alive?1:0);Add(fighter.motion.X);Add(fighter.motion.Y);Add(fighter.motion.Angle);Add(fighter.motion.Length);foreach(var part in fighter.motion.Segments){Add(part.x);Add(part.y);} }
+            }
+            // Resolve identical disjoint bites twice, reversing input array order.
+            foreach(bool reverse in new[]{false,true}) {
+                var a=new PveFixedFighter("a",new PveFixedMotion(-4500,800,16384,16));
+                var b=new PveFixedFighter("b",new PveFixedMotion(-11700,-800,49152,16));
+                var t=new PveFixedFighter("target",new PveFixedMotion(0,0,0,16));
+                var fighters=reverse?new[]{t,b,a}:new[]{a,b,t};
+                var inputs=new StrengthInputs[fighters.Length];
+                for(int k=0;k<fighters.Length;k++) inputs[k]=new StrengthInputs {basePower=fighters[k].id=="target"?100:300,speed=1000,baseSpeed=1000,randomFactor=1000,operationFactor=1000};
+                var bites=new StrengthBodyCombat().ResolveBuffered(0,fighters,inputs,false,true);
+                if(bites.Count!=2 || t.motion.Length!=10) throw new InvalidOperationException("separate bites fixture failed");
+                foreach(var bite in bites) {Add(bite.attacker);Add(bite.defender);Add(bite.segment);Add(bite.removed);}
+                foreach(var fighter in new[]{a,b,t}) {Add(fighter.motion.Length);foreach(var part in fighter.motion.Segments){Add(part.x);Add(part.y);}}
+            }
+            // Mutual bites preserve both snapshot decisions and award each attacker.
+            var ma=new PveFixedFighter("a",new PveFixedMotion(0,0,0,16));
+            var mb=new PveFixedFighter("b",new PveFixedMotion(-11700,0,32768,16));
+            var power=new StrengthInputs {basePower=100,speed=1000,baseSpeed=1000,randomFactor=1000,operationFactor=1000};
+            var mutual=new StrengthBodyCombat().ResolveBuffered(0,new[]{ma,mb},new[]{power,power},false,true);
+            if(mutual.Count!=2 || ma.motion.Length!=16 || mb.motion.Length!=16) throw new InvalidOperationException("mutual bite fixture failed");
+            foreach(var bite in mutual){Add(bite.attacker);Add(bite.defender);Add(bite.segment);Add(bite.removed);}
+            foreach(var fighter in new[]{ma,mb})foreach(var part in fighter.motion.Segments){Add(part.x);Add(part.y);}
+            return "multi-fixture="+hash.ToString("x16");
+        }
+
 
         // Real seed-35 match with a deterministic script. The one-shot
         // protection must trigger on real repeated blocks, expire, and not

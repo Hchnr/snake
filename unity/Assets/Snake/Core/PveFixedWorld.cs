@@ -32,14 +32,30 @@ namespace SnakeClub.Core
         public const string LocalStrengthStableBlockedRules = "strength-local-advantage-8";
         public const string LocalStrengthRecoveryPriorityRules = "strength-local-advantage-9";
         public const string LocalStrengthSqueezeEscapeRules = "strength-local-advantage-10";
+        public const string LocalStrengthMultiBiteRules = "strength-local-advantage-11";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
 
         // Diagnostic only: explicit flags select offline development variants.
         // They must not be used to verify accounts, rankings, or rewards.
-        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false, bool localAlignedStart = false, bool localCappedStart = false, bool localStableBlocked = false, bool localRecoveryPriority = false, bool localSqueezeEscape = false)
-            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result, localAdvantage, localOpeningFood, localOpeningEncounter, localRecoverySupply, localSafeRecovery, localAlignedStart, localCappedStart, localStableBlocked, localRecoveryPriority, localSqueezeEscape);
+        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false, bool localAlignedStart = false, bool localCappedStart = false, bool localStableBlocked = false, bool localRecoveryPriority = false, bool localSqueezeEscape = false, bool localMultiBite = false)
+            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result, localAdvantage, localOpeningFood, localOpeningEncounter, localRecoverySupply, localSafeRecovery, localAlignedStart, localCappedStart, localStableBlocked, localRecoveryPriority, localSqueezeEscape, localMultiBite);
+
+        // Diagnostic-only offline import. The version is explicitly selected;
+        // never use these local recordings to verify accounts or rewards.
+        public static bool TryReplayLocalStrength(string rules, int seed, bool firstRun, byte[] inputs, out PveFixedWorld result)
+        {
+            result = null;
+            string[] versions = { LocalStrengthAdvantageRules, LocalStrengthOpeningRules, LocalStrengthEncounterRules,
+                LocalStrengthRecoveryRules, LocalStrengthSafeRecoveryRules, LocalStrengthAlignedStartRules,
+                LocalStrengthCappedStartRules, LocalStrengthStableBlockedRules, LocalStrengthRecoveryPriorityRules,
+                LocalStrengthSqueezeEscapeRules, LocalStrengthMultiBiteRules };
+            int v = Array.IndexOf(versions, rules) + 1;
+            if (v <= 0) return false;
+            return TryReplayStrength(seed, firstRun, inputs, out result, true,
+                v >= 2, v >= 3, v >= 4, v >= 5, v >= 6, v >= 7, v >= 8, v >= 9, v >= 10, v >= 11);
+        }
 
         public static bool TryReplayStrength(int seed, StrengthEvalStartConfig snapshot, byte[] inputs, out PveFixedWorld result)
         {
@@ -48,7 +64,7 @@ namespace SnakeClub.Core
             return TryReplayInternal(seed, snapshot.firstRun, null, inputs, true, snapshot, out result);
         }
 
-        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false, bool localAlignedStart = false, bool localCappedStart = false, bool localStableBlocked = false, bool localRecoveryPriority = false, bool localSqueezeEscape = false)
+        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false, bool localAlignedStart = false, bool localCappedStart = false, bool localStableBlocked = false, bool localRecoveryPriority = false, bool localSqueezeEscape = false, bool localMultiBite = false)
         {
             result = null;
             int limit = (firstRun ? 60 : 90) * PveFixedWorld.TickRate;
@@ -64,8 +80,8 @@ namespace SnakeClub.Core
                     sawSteering |= steered;
                 }
             }
-            if ((localOpeningFood && !localAdvantage) || (localOpeningEncounter && !localOpeningFood) || (localRecoverySupply && !localOpeningEncounter) || (localSafeRecovery && !localRecoverySupply) || (localAlignedStart && !localSafeRecovery) || (localCappedStart && !localAlignedStart) || (localStableBlocked && !localCappedStart) || (localRecoveryPriority && !localStableBlocked) || (localSqueezeEscape && !localRecoveryPriority)) return false;
-            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot, localAdvantage: localAdvantage, localOpeningFood: localOpeningFood, localOpeningEncounter: localOpeningEncounter, localRecoverySupply: localRecoverySupply, localSafeRecovery: localSafeRecovery, localAlignedStart: localAlignedStart, localCappedStart: localCappedStart, localStableBlocked: localStableBlocked, localRecoveryPriority: localRecoveryPriority, localSqueezeEscape: localSqueezeEscape);
+            if ((localOpeningFood && !localAdvantage) || (localOpeningEncounter && !localOpeningFood) || (localRecoverySupply && !localOpeningEncounter) || (localSafeRecovery && !localRecoverySupply) || (localAlignedStart && !localSafeRecovery) || (localCappedStart && !localAlignedStart) || (localStableBlocked && !localCappedStart) || (localRecoveryPriority && !localStableBlocked) || (localSqueezeEscape && !localRecoveryPriority) || (localMultiBite && !localSqueezeEscape)) return false;
+            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot, localAdvantage: localAdvantage, localOpeningFood: localOpeningFood, localOpeningEncounter: localOpeningEncounter, localRecoverySupply: localRecoverySupply, localSafeRecovery: localSafeRecovery, localAlignedStart: localAlignedStart, localCappedStart: localCappedStart, localStableBlocked: localStableBlocked, localRecoveryPriority: localRecoveryPriority, localSqueezeEscape: localSqueezeEscape, localMultiBite: localMultiBite);
             for (int i = 0; i < inputs.Length; i += 2)
             {
                 if (world.Finished) return false;
@@ -117,6 +133,7 @@ namespace SnakeClub.Core
         public bool LocalStableBlocked { get; }
         public bool LocalRecoveryPriority { get; }
         public bool LocalSqueezeEscape { get; }
+        public bool LocalMultiBite { get; }
         public bool SqueezeEscapeUsed { get; private set; }
         public int LastSqueezeEscapeTick { get; private set; } = -1;
         public int SqueezeEscapeTicks => fighters[0].alive ? fighters[0].squeezeEscapeTicks : 0;
@@ -127,6 +144,7 @@ namespace SnakeClub.Core
         public bool OpeningSteeringSeen { get; private set; }
         public bool OpeningTurnAssistUsed { get; private set; }
         public string RulesVersion => !StrengthPreview ? PveFixedRecording.ExperimentalRules :
+            LocalMultiBite ? PveFixedRecording.LocalStrengthMultiBiteRules :
             LocalSqueezeEscape ? PveFixedRecording.LocalStrengthSqueezeEscapeRules :
             LocalRecoveryPriority ? PveFixedRecording.LocalStrengthRecoveryPriorityRules :
             LocalStableBlocked ? PveFixedRecording.LocalStrengthStableBlockedRules :
@@ -161,6 +179,8 @@ namespace SnakeClub.Core
         public bool IsRecoveryFruit(int index) => recoveryFruit != null && index >= 0 && index < recoveryFruit.Length && recoveryFruit[index];
         public CapturePoint LastPlayerAttackPoint { get; private set; }
         public CapturePoint LastPlayerDamagePoint { get; private set; }
+        private readonly List<CapturePoint> playerDamagePoints = new List<CapturePoint>(7);
+        public IReadOnlyList<CapturePoint> LastPlayerDamagePoints => playerDamagePoints;
         public int LastPlayerBlockedTick { get; private set; } = -1;
         public int LastPlayerHeadTieTick { get; private set; } = -1;
         public int LastPlayerPickupTick { get; private set; } = -1;
@@ -192,7 +212,7 @@ namespace SnakeClub.Core
         public int Tick { get; private set; }
         public bool Finished { get; private set; }
         public string Winner { get; private set; } = "";
-        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false, bool localAlignedStart = false, bool localCappedStart = false, bool localStableBlocked = false, bool localRecoveryPriority = false, bool localSqueezeEscape = false)
+        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false, bool localAlignedStart = false, bool localCappedStart = false, bool localStableBlocked = false, bool localRecoveryPriority = false, bool localSqueezeEscape = false, bool localMultiBite = false)
         {
             if (strengthSnapshot != null && (!strengthPreview || !strengthSnapshot.Supported || strengthSnapshot.firstRun != firstRun))
                 throw new ArgumentException("Invalid strength snapshot", nameof(strengthSnapshot));
@@ -216,6 +236,8 @@ namespace SnakeClub.Core
                 throw new ArgumentException("Recovery priority requires offline stable blocked contacts", nameof(localRecoveryPriority));
             if (localSqueezeEscape && !localRecoveryPriority)
                 throw new ArgumentException("Squeeze escape requires offline recovery priority", nameof(localSqueezeEscape));
+            if (localMultiBite && !localSqueezeEscape)
+                throw new ArgumentException("Multi bite requires squeeze escape", nameof(localMultiBite));
             for (int i = 0; i < fighters.Length; i++) strengthAttackTicks[i] = strengthDamageTicks[i] = -1;
             StrengthPreview = strengthPreview;
             LocalStrengthAdvantage = localAdvantage;
@@ -228,6 +250,7 @@ namespace SnakeClub.Core
             LocalStableBlocked = localStableBlocked;
             LocalRecoveryPriority = localRecoveryPriority;
             LocalSqueezeEscape = localSqueezeEscape;
+            LocalMultiBite = localMultiBite;
             recoveryPriorityExpiry = localRecoveryPriority ? new int[Arena.FruitCount] : null;
             recoveryFruit = localRecoverySupply ? new bool[Arena.FruitCount] : null;
             StrengthBasePower = strengthSnapshot != null ? strengthSnapshot.EffectivePower : localAdvantage ? 120 : 100;
@@ -705,6 +728,8 @@ namespace SnakeClub.Core
             projection.strengthDamageTick = StrengthPreview ? LastPlayerDamageTick : -1;
             projection.strengthAttackPoint = ToPoint(LastPlayerAttackPoint);
             projection.strengthDamagePoint = ToPoint(LastPlayerDamagePoint);
+            projection.strengthDamagePoints.Clear();
+            foreach (var point in playerDamagePoints) projection.strengthDamagePoints.Add(ToPoint(point));
             projection.captureTick = lastCaptureTick; projection.captureCount = lastCaptureCount; projection.captureOwner = lastCaptureOwner;
             projection.capturePolygon.Clear();
             for (int i = 0; i < lastCapturePolygon.Count; i++) projection.capturePolygon.Add(ToPoint(lastCapturePolygon[i]));
@@ -890,6 +915,7 @@ namespace SnakeClub.Core
             if (LocalStableBlocked) add(8);
             if (LocalRecoveryPriority) { add(9); for (int i = 0; i < recoveryPriorityExpiry.Length; i++) add(recoveryPriorityExpiry[i]); }
             if (LocalSqueezeEscape) { add(10); add(SqueezeEscapeUsed ? 1 : 0); add(LastSqueezeEscapeTick); add(fighters[0].squeezeEscapeTicks); add(squeezeBlockedStreak); add(squeezeBlockedDefender == null ? -1 : squeezeBlockedDefender.Length); if (squeezeBlockedDefender != null) foreach (char c in squeezeBlockedDefender) add(c); }
+            if (LocalMultiBite) add(11);
         }
 
         public bool TryGetStrength(string id, out StrengthValues head, out int tailDefense)
@@ -943,9 +969,30 @@ namespace SnakeClub.Core
             if (bite.attacker == "you")
             { LastPlayerAttackTick = Tick; LastPlayerAttackCount = bite.removed; LastPlayerAttackPoint = bite.point; PlayerSegmentsEaten += bite.removed; }
             if (bite.defender == "you")
-            { LastPlayerDamageTick = Tick; LastPlayerDamageCount = bite.removed; LastPlayerDamagePoint = bite.point; PlayerSegmentsLostToBites += bite.removed; }
+            {
+                if (LocalMultiBite && LastPlayerDamageTick == Tick) LastPlayerDamageCount += bite.removed;
+                else
+                {
+                    LastPlayerDamageTick = Tick; LastPlayerDamageCount = bite.removed; LastPlayerDamagePoint = bite.point;
+                    playerDamagePoints.Clear();
+                }
+                if (playerDamagePoints.Count < fighters.Length - 1) playerDamagePoints.Add(bite.point);
+                PlayerSegmentsLostToBites += bite.removed;
+            }
             if (bite.attacker == "you" || bite.defender == "you")
-            { LastPlayerBiteTick = Tick; LastPlayerBiteCount = bite.removed; LastPlayerWasBitten = bite.defender == "you"; }
+            {
+                LastPlayerBiteTick = Tick;
+                if (LocalMultiBite)
+                {
+                    LastPlayerWasBitten = LastPlayerDamageTick == Tick;
+                    LastPlayerBiteCount = LastPlayerWasBitten ? LastPlayerDamageCount : LastPlayerAttackCount;
+                }
+                else
+                {
+                    LastPlayerBiteCount = bite.removed;
+                    LastPlayerWasBitten = bite.defender == "you";
+                }
+            }
         }
 
         public void Step(byte heading, bool boost, bool playerSteered = false)
@@ -978,13 +1025,14 @@ namespace SnakeClub.Core
                 for (int i = 0; i < fighters.Length; i++) strengthInputs[i] = StrengthFor(fighters[i]);
                 var headGrowth = StrengthHeadCombat.ResolveBuffered(fighters, strengthInputs, true, strengthHeadTies,
                     strengthHeadValues, strengthHeadWinners, strengthHeadAdvantages, strengthHeadGrowth);
-                var bites = strengthCombat.ResolveBuffered(Tick, fighters, strengthInputs, LocalStableBlocked);
+                var bites = strengthCombat.ResolveBuffered(Tick, fighters, strengthInputs, LocalStableBlocked, LocalMultiBite);
+
                 for (int i = 0; i < fighters.Length; i++) if (fighters[i].alive) fighters[i].motion.Grow(headGrowth[i]);
                 ApplyStrengthLoops();
                 var separatedHeads = StrengthHeadCombat.SeparateTiesBuffered(fighters, strengthHeadTies, bites, strengthSeparatedHeads);
                 if (separatedHeads[0]) LastPlayerHeadTieTick = Tick;
                 string blockedDefender = null;
-                if (LocalStableBlocked && StableBlockedSeparation.Apply(fighters, bites, strengthCombat.AllBlockedContacts, separatedHeads, out blockedDefender))
+                if (LocalStableBlocked && StableBlockedSeparation.Apply(fighters, bites, strengthCombat.AllBlockedContacts, separatedHeads, out blockedDefender, LocalMultiBite))
                     LastPlayerBlockedTick = Tick;
                 var blockedContacts = strengthCombat.BlockedContacts;
                 for (int contactIndex = 0; !LocalStableBlocked && contactIndex < blockedContacts.Count; contactIndex++)
@@ -1084,7 +1132,8 @@ namespace SnakeClub.Core
             }
             // Preserve every existing s1 receipt; only the new offline opening
             // is domain-separated from earlier local and server variants.
-            if (world.LocalSqueezeEscape) AddString(PveFixedRecording.LocalStrengthSqueezeEscapeRules);
+            if (world.LocalMultiBite) AddString(PveFixedRecording.LocalStrengthMultiBiteRules);
+            else if (world.LocalSqueezeEscape) AddString(PveFixedRecording.LocalStrengthSqueezeEscapeRules);
             else if (world.LocalRecoveryPriority) AddString(PveFixedRecording.LocalStrengthRecoveryPriorityRules);
             else if (world.LocalStableBlocked) AddString(PveFixedRecording.LocalStrengthStableBlockedRules);
             else if (world.LocalCappedStart) AddString(PveFixedRecording.LocalStrengthCappedStartRules);

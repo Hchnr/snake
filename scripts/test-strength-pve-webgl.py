@@ -8,6 +8,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import json
+import hashlib
 import os
 import re
 import shutil
@@ -32,6 +33,8 @@ priority_pattern = re.compile(r'priority-recovery=([0-9a-f:,]+)')
 priority_fixture_pattern = re.compile(r'priority-fixture=([0-9a-f]{16})')
 squeeze_pattern = re.compile(r'squeeze-escape=([0-9a-f:,]+)')
 squeeze_fixture_pattern = re.compile(r'squeeze-fixture=([0-9a-f]{16})')
+multi_pattern = re.compile(r'multi-bite=([0-9a-f:,]+)')
+multi_fixture_pattern = re.compile(r'multi-fixture=([0-9a-f]{16})')
 stable_fixture_pattern = re.compile(r'stable-fixture=([0-9a-f]{16})')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
@@ -284,6 +287,18 @@ if not squeeze_match or len(squeeze_match.group(1).split(',')) != 112 or not squ
     sys.exit('Desktop v10 squeeze matrix or lifecycle fixture is incomplete.')
 expected_squeeze = squeeze_match.group(1)
 expected_squeeze_fixture = squeeze_fixture_match.group(1)
+# Captured from main before v11. Comparing two changed runtimes alone would
+# not catch a shared regression in existing v10 recordings.
+if hashlib.sha256(expected_squeeze.encode('ascii')).hexdigest() != '86aff99aca352ee5b9d5a78e997a8c156b0c7d82ed834f6ea03b7a8ea9bb6ebe' or expected_squeeze_fixture != '15f29e35ece5ba90':
+    sys.exit('MISMATCH: v10 squeeze vectors changed from the preserved reference.')
+multi_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-multibite-vector'],
+                                 text=True, capture_output=True, check=True, timeout=180).stdout
+multi_match = multi_pattern.search(multi_reference)
+multi_fixture_match = multi_fixture_pattern.search(multi_reference)
+if not multi_match or len(multi_match.group(1).split(',')) != 112 or not multi_fixture_match:
+    sys.exit('Desktop v11 multi-bite matrix or controlled fixture is incomplete.')
+expected_multi = multi_match.group(1)
+expected_multi_fixture = multi_fixture_match.group(1)
 squeeze_coverage = 0
 for case in expected_squeeze.split(','):
     fields = case.split(':')
@@ -323,7 +338,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
+    private static void Run() { if (Application.absoluteURL.Contains("multi=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeMultiBite()); else if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -397,6 +412,18 @@ internal static class FixedVectorDiagnostic {
         if not actual_squeeze_match or len(actual_squeeze_match.group(1).split(',')) != 112 or not actual_squeeze_fixture_match:
             sys.exit('WebGL v10 squeeze matrix or lifecycle fixture is incomplete.')
         actual_squeeze = actual_squeeze_match.group(1)
+        print('Running v11 multi-bite vectors in a fourth muted headless browser...', flush=True)
+        multi_result = subprocess.run(['node', str(root / 'scripts/fixed-pve-webgl-probe.cjs'), str(chrome),
+                                       'http://127.0.0.1:' + str(server.server_port) + '/?multi=1'],
+                                      capture_output=True, text=True, timeout=240, check=False)
+        if multi_result.returncode:
+            sys.exit('Headless v11 diagnostic failed: ' + multi_result.stderr[-3000:])
+        actual_multi_match = multi_pattern.search(multi_result.stdout)
+        actual_multi_fixture_match = multi_fixture_pattern.search(multi_result.stdout)
+        if not actual_multi_match or len(actual_multi_match.group(1).split(',')) != 112 or not actual_multi_fixture_match:
+            sys.exit('WebGL v11 matrix or controlled multi-bite fixture is incomplete.')
+        if actual_multi_match.group(1) != expected_multi or actual_multi_fixture_match.group(1) != expected_multi_fixture:
+            sys.exit('MISMATCH: v11 multi-bite simulation or controlled fixture differs across runtimes.')
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -456,6 +483,6 @@ internal static class FixedVectorDiagnostic {
             sys.exit('MISMATCH: squeeze-escape simulation differs across runtimes.')
         if actual_squeeze_fixture_match.group(1) != expected_squeeze_fixture:
             sys.exit('MISMATCH: squeeze lifecycle fixture differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9 and 112 v10 matches plus controlled bite/block, recovery-priority and squeeze fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9, 112 v10 and 112 v11 matches plus controlled bite/block, recovery-priority, squeeze and multi-bite fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

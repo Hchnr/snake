@@ -95,6 +95,7 @@ namespace SnakeClub.Core
         internal int strengthLevelUpTick = -1, strengthLevelUp;
         internal int strengthAttackTick = -1, strengthDamageTick = -1;
         internal Point strengthAttackPoint, strengthDamagePoint;
+        internal readonly List<Point> strengthDamagePoints = new List<Point>(7);
     }
 
     // Describes only outcomes established by the simulation. Unknown or
