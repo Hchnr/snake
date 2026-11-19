@@ -1155,6 +1155,8 @@ namespace SnakeClub.Core
                     ? "互吃 +" + world.LastPlayerAttackCount + "/-" + world.LastPlayerDamageCount + " · 弹开"
                     : "吃 " + world.LastPlayerAttackCount + " 节 · 遇强弹开";
             }
+            if (world.LocalStableBlocked && damage == latest && blocked == latest)
+            { warning = true; return "身体被吃 " + world.LastPlayerDamageCount + " 节 · 遇强弹开"; }
             if (damage == latest && attack == latest)
             { warning = true; return "互相吞食 · 吃 " + world.LastPlayerAttackCount + " 节 / 失 " + world.LastPlayerDamageCount + " 节"; }
             if (damage == latest) { warning = true; return "身体被吃掉 " + world.LastPlayerDamageCount + " 节"; }

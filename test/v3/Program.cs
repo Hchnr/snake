@@ -2511,8 +2511,33 @@ static void StableBlockedContactCases()
     Check(StrengthContactNotice.Text(current, 1, out warning) == "互吃 +1/-2 · 弹开" && warning,
         "v8 simultaneous mutual bite and rebound omitted an outcome");
     typeof(PveFixedWorld).GetProperty("LastPlayerAttackTick").SetValue(current, -1);
-    Check(StrengthContactNotice.Text(current, 1, out warning) == "身体被吃掉 2 节" && warning,
-        "v8 damage feedback priority changed");
+    Check(StrengthContactNotice.Text(current, 1, out warning) == "身体被吃 2 节 · 遇强弹开" && warning,
+        "simultaneous damage and rebound did not report both outcomes");
+    typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(old, 1);
+    typeof(PveFixedWorld).GetProperty("LastPlayerDamageCount").SetValue(old, 2);
+    typeof(PveFixedWorld).GetProperty("LastPlayerAttackTick").SetValue(old, -1);
+    Check(StrengthContactNotice.Text(old, 1, out warning) == "身体被吃掉 2 节" && warning,
+        "legacy damage feedback changed");
+    var damagedAndBlocked = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+        localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+        localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true);
+    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(damagedAndBlocked);
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(-300, 0, 0, 16));
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 1800, 16384, 80));
+    actors[2] = new PveFixedFighter("bot-2", new PveFixedMotion(-12000, 0, 0, 16));
+    for (int i = 3; i < actors.Length; i++) actors[i].alive = false;
+    damagedAndBlocked.Step(0, false);
+    Check(damagedAndBlocked.LastPlayerDamageTick == 1 && damagedAndBlocked.LastPlayerDamageCount == 3 &&
+        damagedAndBlocked.LastPlayerBlockedTick == 1 && damagedAndBlocked.LastPlayerAttackTick != 1 &&
+        StrengthContactNotice.Text(damagedAndBlocked, 1, out warning) == "身体被吃 3 节 · 遇强弹开" && warning,
+        "real simultaneous damage and rebound were not both reported");
+    Check(StrengthContactNotice.Text(damagedAndBlocked, 21, out _) == "", "combined notice did not expire");
+    typeof(PveFixedWorld).GetProperty("LastPlayerBlockedTick").SetValue(damagedAndBlocked, 2);
+    Check(StrengthContactNotice.Text(damagedAndBlocked, 2, out warning) == "强度不足 · 试试更弱的部位" && warning,
+        "older damage masked the more recent rebound");
+    typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(damagedAndBlocked, 3);
+    Check(StrengthContactNotice.Text(damagedAndBlocked, 3, out warning) == "身体被吃掉 3 节" && warning,
+        "older rebound masked more recent damage");
     typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(current, -1);
     Check(StrengthContactNotice.Text(current, 1, out warning) == "强度不足 · 试试更弱的部位" && warning,
         "v8 pure rebound feedback changed");
