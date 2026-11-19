@@ -113,6 +113,7 @@ var cases = new (string name, Action run)[]
     ("character motion follows real turns, boost and reduced effects", CharacterMotionCases),
     ("original characters have bounded distinct idle motion", OriginalIdleMotionCases),
     ("strength appearance follows real defense and temporary effects", StrengthAppearanceCases),
+    ("growth view follows current length and bounded preferences", GrowthViewCases),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("elimination feedback follows observed credited outcomes", EliminationFeedbackCases),
     ("kill feedback reflects observed growth and freezes with match ticks", KillFeedbackCases),
@@ -917,6 +918,22 @@ static void ResultMotionCases()
     Check(end.Lift == 0 && end.Tilt == 0, "celebration did not finish");
     var invalid = ResultMotion.Sample(true, false, float.NaN);
     Check(invalid.Lift == 0 && invalid.Tilt == 0, "invalid time produced a pose");
+}
+
+static void GrowthViewCases()
+{
+    Check(GrowthView.CharacterScale(16) == 1f && GrowthView.CharacterScale(80) == 1.5f &&
+        GrowthView.CharacterScale(-1) == 1f && GrowthView.CharacterScale(int.MaxValue) == 1.5f,
+        "growth scale escaped its bounds");
+    Check(GrowthView.CharacterScale(48) > GrowthView.CharacterScale(16) && GrowthView.CharacterScale(48) < GrowthView.CharacterScale(80),
+        "visible size did not follow current length");
+    Check(GrowthView.CameraSize(16, false, 0) == 20f && GrowthView.CameraSize(80, false, 0) == 28f &&
+        GrowthView.CameraSize(48, true, 0) > GrowthView.CameraSize(48, false, 0), "camera did not follow growth and boost");
+    Check(GrowthView.CameraSize(48, false, -1) < GrowthView.CameraSize(48, false, 0) &&
+        GrowthView.CameraSize(48, false, 1) > GrowthView.CameraSize(48, false, 0) &&
+        GrowthView.CameraSize(48, false, 99) == GrowthView.CameraSize(48, false, 0), "camera preference is not bounded or defaulted");
+    Check(GrowthView.NextPreference(0) == 1 && GrowthView.NextPreference(1) == -1 && GrowthView.NextPreference(-1) == 0 &&
+        GrowthView.PreferenceLabel(42) == "标准", "view preference cycle or invalid fallback changed");
 }
 
 static void StrengthAppearanceCases()

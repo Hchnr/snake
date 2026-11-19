@@ -143,6 +143,8 @@ namespace SnakeClub.Tests.Editor
                 Require(font != null, "UI font is missing");
                 screen.Setup(font, () => started++, () => { }, () => { }, () => { }, () => { }, () => backed++,
                     index => selected = index, index => equipped = index, () => { });
+                int viewChoice = 0;
+                screen.SetupPreferences(null, null, null, null, null, null, () => viewChoice = GrowthView.NextPreference(viewChoice));
                 screen.SetupResults(() => retried++, () => { }, () => { }, () => { });
                 screen.Visible = true; screen.SetPage(true);
                 screen.SetState(new PlayerProgress(), null, "", false, false, true, 0, 4, true, false);
@@ -151,6 +153,10 @@ namespace SnakeClub.Tests.Editor
                     foreach (var button in owner.GetComponentsInChildren<Button>(true)) if (button.name == name) return button;
                     throw new Exception("UI button not found: " + name);
                 }
+                FindButton("Settings view").onClick.Invoke();
+                screen.SetState(new PlayerProgress(), null, "", false, false, true, 0, 0, false, false, viewPreference: viewChoice);
+                Require(viewChoice == 1 && Array.Find(owner.GetComponentsInChildren<Text>(true), t => t.name == "Settings view label").text.Contains("较远"),
+                    "home view preference did not update its label");
                 screen.SetState(new PlayerProgress(), null, "", false, false, true, 0, 24, false, false, offlineCosmeticPreview: true);
                 var texts = owner.GetComponentsInChildren<Text>(true);
                 Require(Array.Find(texts, t => t.name == "Equip label").text.Contains("离线试玩") &&
@@ -551,6 +557,16 @@ namespace SnakeClub.Tests.Editor
                 var cached = buffers["you"]; renderer.Draw(projected, "you");
                 Require(ReferenceEquals(cached, buffers["you"]), "unchanged trail allocated new vertex buffers");
                 var ownSegments = projected.snakes.Find(s => s.id == "you").segments;
+                var growthSprites = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
+                float beforeGrowthScale = growthSprites["you"].transform.localScale.x, beforeGrowthWidth = trails["you"][0].widthMultiplier;
+                while (ownSegments.Count < 48) ownSegments.Add(new Point(-ownSegments.Count, 4));
+                renderer.Draw(projected, "you");
+                Require(growthSprites["you"].transform.localScale.x > beforeGrowthScale && trails["you"][0].widthMultiplier > beforeGrowthWidth,
+                    "actual body growth did not enlarge the avatar and trail");
+                ownSegments.RemoveRange(16, ownSegments.Count - 16); renderer.Draw(projected, "you");
+                Require(Mathf.Abs(growthSprites["you"].transform.localScale.x - beforeGrowthScale) < .001f &&
+                    Mathf.Abs(trails["you"][0].widthMultiplier - beforeGrowthWidth) < .001f && world.Fighters[0].motion.Length == 16,
+                    "body loss did not restore the visual or rendering changed the simulation");
                 ownSegments.Add(new Point(-30, 4)); renderer.Draw(projected, "you"); CheckTrail(1);
                 Require(ReferenceEquals(cached, buffers["you"]), "growth within capacity allocated new trail buffers");
                 ownSegments.RemoveRange(ownSegments.Count - 4, 4); renderer.Draw(projected, "you"); CheckTrail(1);
@@ -681,13 +697,13 @@ namespace SnakeClub.Tests.Editor
 
         private static void TestStrengthPracticeFirstRun()
         {
-            const string key = "snake.v033.strengthPracticeTutorial", hintKey = "snake.v031.tutorialHints";
-            bool hadKey = PlayerPrefs.HasKey(key), hadHintKey = PlayerPrefs.HasKey(hintKey);
-            int original = PlayerPrefs.GetInt(key, 0), originalHint = PlayerPrefs.GetInt(hintKey, 1);
+            const string key = "snake.v033.strengthPracticeTutorial", hintKey = "snake.v031.tutorialHints", viewKey = "snake.v034.viewPreference";
+            bool hadKey = PlayerPrefs.HasKey(key), hadHintKey = PlayerPrefs.HasKey(hintKey), hadViewKey = PlayerPrefs.HasKey(viewKey);
+            int original = PlayerPrefs.GetInt(key, 0), originalHint = PlayerPrefs.GetInt(hintKey, 1), originalView = PlayerPrefs.GetInt(viewKey, 0);
             var root = new GameObject("Strength practice progression regression");
             try
             {
-                PlayerPrefs.DeleteKey(key);
+                PlayerPrefs.DeleteKey(key); PlayerPrefs.SetInt(viewKey, 99);
                 var app = root.AddComponent<SnakeGameApp>();
                 var api = root.AddComponent<GameApiClient>();
                 api.Configure(new GameConfiguration { experimentalFixedPve = true, experimentalStrengthPve = true,
@@ -700,6 +716,10 @@ namespace SnakeClub.Tests.Editor
                 void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
                 Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, renderer); Field("connection").SetValue(app, connection);
                 Call("LoadPreferences"); Call("StartMain");
+                Require((int)Field("viewPreference").GetValue(app) == 0, "invalid view preference did not fall back to default");
+                Call("CycleViewPreference"); Call("LoadPreferences");
+                Require((int)Field("viewPreference").GetValue(app) == 1 && PlayerPrefs.GetInt(viewKey) == 1,
+                    "view preference did not persist across reload");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
                 var practice = (PlayerProgress)Field("practiceProfile").GetValue(app);
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "first strength match was not a tutorial");
@@ -747,6 +767,7 @@ namespace SnakeClub.Tests.Editor
                 UnityEngine.Object.DestroyImmediate(root);
                 if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
                 if (hadHintKey) PlayerPrefs.SetInt(hintKey, originalHint); else PlayerPrefs.DeleteKey(hintKey);
+                if (hadViewKey) PlayerPrefs.SetInt(viewKey, originalView); else PlayerPrefs.DeleteKey(viewKey);
                 PlayerPrefs.Save();
             }
         }

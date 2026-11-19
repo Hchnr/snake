@@ -75,9 +75,27 @@ async function main() {
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `for (const type of ['touchstart','touchend','touchcancel']) document.addEventListener(type, e => console.log('SNAKE_TOUCH_DOM ' + type + ' ' + [...e.changedTouches].map(t => t.identifier).join(',') + ' ' + [...e.touches].map(t => t.identifier).join(',')), true);` });
   await call('Page.navigate', { url: process.argv[3] });
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_HOME'), 'Unity home', 50000);
-  await delay(600); await tap(270, 640);
+  await delay(600); await tap(270, 910); await delay(300);
+  let homeViewIndex = events.length;
+  await tap(270, 600); await waitFor(() => hasSince(homeViewIndex, 'SNAKE_TOUCH_VIEW 1'), 'home view preference');
+  homeViewIndex = events.length; await tap(270, 600); await waitFor(() => hasSince(homeViewIndex, 'SNAKE_TOUCH_VIEW -1'), 'home view preference cycle');
+  homeViewIndex = events.length; await tap(270, 600); await waitFor(() => hasSince(homeViewIndex, 'SNAKE_TOUCH_VIEW 0'), 'restore default view');
+  await tap(270, 710); await delay(300); await tap(270, 640);
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_READY'), 'start match');
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
+  if (process.env.SNAKE_GROWTH_CAPTURE_DIR) {
+    const directory = process.env.SNAKE_GROWTH_CAPTURE_DIR;
+    fs.mkdirSync(directory, { recursive: true });
+    let result = await call('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(directory, 'before.png'), Buffer.from(result.data, 'base64'));
+    await waitFor(() => hasSince(0, 'SNAKE_TOUCH_GROWN'), 'diagnostic growth');
+    await waitFor(() => hasSince(0, 'SNAKE_TOUCH_GROWTH_ZOOM 100 '), 'grown camera');
+    const zoomAt = tick => Number(events.find(e => e.includes('SNAKE_TOUCH_GROWTH_ZOOM ' + tick + ' ')).match(/SNAKE_TOUCH_GROWTH_ZOOM \d+ ([0-9.]+)/)[1]);
+    if (zoomAt(100) - zoomAt(1) < 1) throw Error('camera did not zoom out after diagnostic growth');
+    result = await call('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(directory, 'after.png'), Buffer.from(result.data, 'base64'));
+    console.log('PASS actual renderer zooms out after injected growth');
+  }
   await drag('top-left', 10, 20, 10, 100, 192);
   await drag('top-right', 530, 20, 450, 20, 128);
   await drag('bottom-left', 10, 940, 10, 860, 64);
@@ -121,13 +139,19 @@ async function main() {
   await waitFor(() => hasSince(index, 'SNAKE_TOUCH_PAUSED 1'), 'pause tap');
   await delay(200); const pauseIndex = events.length; await delay(300);
   if (events.slice(pauseIndex).some(e => e.includes('SNAKE_TOUCH_TICK'))) throw Error('simulation advanced while paused');
+  const viewIndex = events.length; await tap(350, 579);
+  await waitFor(() => hasSince(viewIndex, 'SNAKE_TOUCH_VIEW 1'), 'paused view preference');
+  await delay(600);
+  const zooms = events.slice(viewIndex).map(e => e.match(/SNAKE_TOUCH_ZOOM ([0-9.]+)/)).filter(Boolean).map(m => Number(m[1]));
+  if (zooms.length < 2 || zooms[zooms.length - 1] - zooms[0] < .05) throw Error('camera did not smoothly zoom out while paused');
+  if (events.slice(pauseIndex).some(e => e.includes('SNAKE_TOUCH_TICK'))) throw Error('view adjustment advanced paused simulation');
   if (process.env.SNAKE_TOUCH_PAUSE_SCREENSHOT) {
     const screenshot = await call('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(process.env.SNAKE_TOUCH_PAUSE_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
   }
   index = events.length; await tap(270, 525);
   await waitFor(() => hasSince(index, 'SNAKE_TOUCH_TICK'), 'simulation resumes');
-  console.log('PASS tap pauses, freezes and resumes from the guide');
+  console.log('PASS home and pause view settings, paused zoom, and resume');
 }
 main().then(() => { ws.close(); chrome.kill('SIGTERM'); }).catch(async error => {
   console.error(error.message); process.exitCode = 1;

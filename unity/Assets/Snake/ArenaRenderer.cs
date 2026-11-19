@@ -81,6 +81,8 @@ namespace SnakeClub
         private Transform runtimeRoot;
         private GameObject starObject;
         private bool cameraReady;
+        private int observedViewPreference;
+        private bool adjustingPausedView;
         private int lastTick = -1, lastKills;
         private float burstStarted = -10f;
         private Vector3 burstPosition;
@@ -97,6 +99,7 @@ namespace SnakeClub
         public bool ReducedEffects { get; set; }
         public bool LegacyDangerWarning { get; set; } = true;
         public bool StrengthBodyVisual { get; set; }
+        public int ViewPreference { get; set; }
         public bool MotionPaused { get; set; }
         public bool VisualFallback { get; private set; }
         public bool Visible
@@ -106,7 +109,7 @@ namespace SnakeClub
             {
                 if (view == null || view.enabled == value) return;
                 view.enabled = value;
-                if (!value) { cameraReady = false; eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); strengthReactions.Clear(); reactionSource = null; presentationTick = -1; }
+                if (!value) { cameraReady = false; adjustingPausedView = false; eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); strengthReactions.Clear(); reactionSource = null; presentationTick = -1; }
             }
         }
 
@@ -443,7 +446,12 @@ namespace SnakeClub
                 Point p = focus.segments[0];
                 Vector3 target = new Vector3(p.x, 29, p.y - 10.5f);
                 view.transform.position = cameraReady ? Vector3.Lerp(view.transform.position, target, 1f - Mathf.Exp(-5f * (MotionPaused ? 0f : Time.deltaTime))) : target;
-                view.orthographicSize = Mathf.Lerp(view.orthographicSize, focus.boosting ? 22f : 20f, 1f - Mathf.Exp(-2.5f * (MotionPaused ? 0f : Time.deltaTime)));
+                int preference = GrowthView.NormalizePreference(ViewPreference);
+                if (preference != observedViewPreference) { observedViewPreference = preference; adjustingPausedView = MotionPaused; }
+                float targetSize = StrengthBodyVisual ? GrowthView.CameraSize(focus.segments.Count, focus.boosting, preference) : focus.boosting ? 22f : 20f;
+                float zoomDelta = !MotionPaused || (StrengthBodyVisual && adjustingPausedView) ? Time.deltaTime : 0f;
+                view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));
+                if (Mathf.Abs(view.orthographicSize - targetSize) < .01f) adjustingPausedView = false;
                 cameraReady = true;
             }
             for (int i = 0; i < crystals.Count; i++)
@@ -487,6 +495,11 @@ namespace SnakeClub
                 int color = PaletteIndex(snake, playerId, visualSkin, characterSprite != null);
                 var appearance = StrengthBodyVisual ? StrengthAppearance.FromDefense(snake.strengthHeadDefense, snake.strengthTailDefense, snake.strengthEffectFactor)
                     : StrengthAppearance.FromDefense(0, 0, 0);
+                if (StrengthBodyVisual)
+                {
+                    float growthScale = GrowthView.CharacterScale(snake.segments.Count);
+                    appearance = new StrengthAppearanceValues(appearance.BodyWidth * growthScale, appearance.HeadScale * growthScale, appearance.TailRatio, appearance.Glow);
+                }
                 var list = bodies[color];
                 List<Vector3> positions;
                 if (!smoothed.TryGetValue(snake.id, out positions))

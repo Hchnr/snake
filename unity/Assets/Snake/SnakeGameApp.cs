@@ -50,6 +50,7 @@ namespace SnakeClub
         private bool SimulationSuspended => paused || appPaused || !appFocused || !platformVisible || adShowing;
         private bool pointerBoost;
         private bool reducedEffects;
+        private int viewPreference;
         private readonly DragSteering dragSteering = new DragSteering();
         private readonly MatchHighlights matchHighlights = new MatchHighlights();
         private readonly NameplateLayout nameplates = new NameplateLayout();
@@ -355,7 +356,7 @@ namespace SnakeClub
                     bool trial = !DefaultStrengthMain && CurrentProfile.tutorialComplete && !CurrentProfile.dailyTrialUsed && GamePlatform.HasRewardedAds(api);
                     homeScreen.SetState(CurrentProfile, homeAvatar != null ? homeAvatar.Texture : null, frontNotice, busy, api.Connected,
                         feedback.Enabled, EffectiveSkin, previewSkin, ReferencePreviewEnabled, trial,
-                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview || DefaultStrengthMain, api.Config.StrengthPveServerPreview, OfflineCosmeticPreview);
+                        !string.IsNullOrEmpty(friendDate) && friendDate == api.Date, reducedEffects, feedback.HapticsEnabled, GamePlatform.SupportsHaptics, feedback.MusicEnabled, feedback.MusicVolume, feedback.EffectsVolume, friendScore, friendRules, friendDate, tutorialHints, api.Config.FixedPvePreview || api.Config.FixedPveServerPreview, TutorialReady, api.Config.StrengthRulesPreview || DefaultStrengthMain, api.Config.StrengthPveServerPreview, OfflineCosmeticPreview, viewPreference);
                     if (resultVisible)
                     {
                         SnakeState own = state.snakes.Find(s => s.id == playerId);
@@ -451,6 +452,7 @@ namespace SnakeClub
             arenaRenderer.ReducedEffects = reducedEffects;
             arenaRenderer.LegacyDangerWarning = fixedPve == null || !fixedPve.StrengthPreview;
             arenaRenderer.StrengthBodyVisual = fixedPve != null && fixedPve.StrengthPreview;
+            arenaRenderer.ViewPreference = viewPreference;
             arenaRenderer.MotionPaused = SimulationSuspended;
             if (arenaRenderer.Visible) arenaRenderer.Draw(state, wardrobePreview ? "demo-0" : playerId);
         }
@@ -834,7 +836,8 @@ namespace SnakeClub
                         27, new Color(.76f, .92f, .90f), TextAnchor.MiddleCenter);
                 }
                 if (Button(strengthGuide ? new Rect(265, 1010, 550, 90) : new Rect(265, 825, 550, 90), "继续对战", new Color(.10f, .60f, .49f))) paused = false;
-                if (Button(strengthGuide ? new Rect(345, 1120, 390, 75) : new Rect(345, 980, 390, 75), "返回菜单", new Color(.15f, .22f, .31f))) BackToMenu();
+                if (Button(strengthGuide ? new Rect(185, 1120, 310, 75) : new Rect(345, 980, 390, 75), "返回菜单", new Color(.15f, .22f, .31f))) BackToMenu();
+                if (strengthGuide && Button(new Rect(525, 1120, 365, 75), "视野：" + GrowthView.PreferenceLabel(viewPreference), new Color(.12f, .35f, .40f))) CycleViewPreference();
             }
             else DrawControls();
         }
