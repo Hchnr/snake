@@ -113,6 +113,16 @@ namespace SnakeClub
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
         private bool platformReady;
         private TTAppLifeCycle lifecycle;
+        private RewardedAdAttempt activeAd;
+        internal void TrackAd(RewardedAdAttempt attempt)
+        {
+            if (activeAd != null && !activeAd.Finished) throw new InvalidOperationException("An ad is already active");
+            activeAd = attempt;
+        }
+        internal void ReleaseAd(RewardedAdAttempt attempt)
+        {
+            if (ReferenceEquals(activeAd, attempt)) activeAd = null;
+        }
 #endif
 
         public void Configure(GameConfiguration config) { if (config != null) Config = config; }
@@ -189,6 +199,8 @@ namespace SnakeClub
 
         private void OnDestroy()
         {
+            var attempt = activeAd; activeAd = null;
+            attempt?.Cancel();
             if (lifecycle != null) { lifecycle.OnShow -= OnPlatformShow; lifecycle.OnHide -= OnPlatformHide; }
         }
 
@@ -329,15 +341,29 @@ namespace SnakeClub
         {
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
             if (!HasRewardedAds(api)) { done(false, "广告暂不可用"); return; }
-            var ad = TT.CreateRewardedVideoAd(new CreateRewardedVideoAdParam { AdUnitId = api.Config.rewardedAdUnitId });
-            bool finished = false;
-            ad.OnClose += (ended, count) => { if (finished) return; finished = true; ad.Destroy(); done(ended, ended ? "" : "已取消观看"); };
-            ad.OnError += (code, message) => { if (finished) return; finished = true; ad.Destroy(); done(false, "广告暂不可用"); };
-            ad.Show();
+            RewardedAdFlow.Start(
+                () => new DouyinRewardedAd(TT.CreateRewardedVideoAd(new CreateRewardedVideoAdParam { AdUnitId = api.Config.rewardedAdUnitId })),
+                api.TrackAd, api.ReleaseAd, done);
 #else
             done(false, "广告暂不可用");
 #endif
         }
+
+#if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
+        private sealed class DouyinRewardedAd : IRewardedAdAdapter
+        {
+            private readonly TTRewardedVideoAd ad;
+            private RewardedAdClosedDelegate closed;
+            private AdErrorDelegate error;
+            public DouyinRewardedAd(TTRewardedVideoAd ad) { this.ad = ad ?? throw new InvalidOperationException("No rewarded ad instance"); }
+            public void SubscribeClose(Action<bool> callback) { closed = (ended, count) => callback(ended); ad.OnClose += closed; }
+            public void SubscribeError(Action callback) { error = (code, message) => callback(); ad.OnError += error; }
+            public void UnsubscribeClose() { if (closed != null) ad.OnClose -= closed; }
+            public void UnsubscribeError() { if (error != null) ad.OnError -= error; }
+            public void Show() => ad.Show();
+            public void Destroy() => ad.Destroy();
+        }
+#endif
 
         public static void ShareChallenge(string token, int score, Action<string> done)
         {
