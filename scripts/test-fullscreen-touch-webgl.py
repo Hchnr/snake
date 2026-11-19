@@ -58,8 +58,8 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
     before = '                    if (resultVisible)\n                    {\n                        SnakeState own = state.snakes.Find(s => s.id == playerId);'
     after = '                    if (homeVisible && frontPage == "home" && !touchDiagnosticHome) { touchDiagnosticHome = true; Debug.Log("SNAKE_TOUCH_HOME"); }\n' + before
     code = inject_once(code, before, after)
-    before = '            state = fixedPve.RenderState();\n            matchHighlights.Reset();'
-    after = '            foreach (var fighter in fixedPve.Fighters) fighter.shieldTicks = 100000;\n            state = fixedPve.RenderState();\n            Debug.Log("SNAKE_TOUCH_READY");\n            matchHighlights.Reset();'
+    before = '            state = fixedPve.RenderState();\n            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
+    after = '            foreach (var fighter in fixedPve.Fighters) fighter.shieldTicks = 100000;\n' + before + '\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
     before = '                fixedPve.Step(heading, pointerBoost);\n                runInputs.Add(heading);'
     after = '                fixedPve.Step(heading, pointerBoost);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'

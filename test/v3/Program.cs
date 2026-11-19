@@ -175,6 +175,7 @@ var cases = new (string name, Action run)[]
     ("nearby off-screen opponent indicators use real actors and safe placement", OpponentEdgeCases),
     ("edge markers seek safe nearby slots without covering labels", EdgeMarkerLayoutCases),
     ("nameplates avoid overlap, anchors and the minimap", NameplateCases),
+    ("visible combat notices reserve nameplate and edge-marker space", ContactNoticeLayoutCases),
     ("event outcome notices reflect observed events and actual points", EventOutcomeCases),
     ("star carriers attract nearby AI without changing daily-3 replay", StarPursuitCases),
     ("daily events are repeatable and start with nearby opponents", DailyEvents),
@@ -413,6 +414,43 @@ static void MusicBehavior()
     Check(home.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && home.Any(x => Math.Abs(x) > .05f), "home loop is clipped or silent");
     Check(battle.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && battle.Any(x => Math.Abs(x) > .05f), "battle loop is clipped or silent");
     Check(!home.SequenceEqual(battle), "home and battle loops are identical");
+}
+
+static void ContactNoticeLayoutCases()
+{
+    Check(!ContactNoticeLayout.TryGetArea(false, false, out _), "an absent notice reserved screen space");
+    Check(ContactNoticeLayout.TryGetArea(true, true, out var damage) && damage.x == 190 && damage.width == 700 &&
+        ContactNoticeLayout.TryGetArea(false, true, out var capture) && capture.x == 240 && capture.width == 600,
+        "visible notice bounds or combat-over-capture priority changed");
+    var world = new PveFixedWorld(42, false, null, true);
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+    fighters[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-11700, 0, 32768, 16));
+    for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+    ((List<PveFixedFruit>)world.Fruit).Clear(); world.Step(0, false);
+    string notice = StrengthContactNotice.Text(world, world.Tick, out _);
+    Check(!string.IsNullOrEmpty(notice) && ContactNoticeLayout.TryGetArea(true, false, out damage),
+        "real combat did not expose the notice area");
+    var anchor = new Point(540, 660); var names = new NameplateLayout();
+    names.BeginFrame(world.Tick); names.AddAnchor(anchor);
+    Check(names.TryPlace("you", anchor, out var unreserved) && unreserved.y < damage.y + damage.height &&
+        unreserved.y + NameplateLayout.Height > damage.y, "regression fixture did not reproduce the overlap");
+    names.BeginFrame(world.Tick + 1); names.AddAnchor(anchor);
+    names.Reserve(damage.x, damage.y, damage.width, damage.height);
+    Check(names.TryPlace("you", anchor, out var moved) && moved.y + NameplateLayout.Height <= damage.y,
+        "a remembered nameplate covered the active combat notice");
+    var edge = new Point(540, 510);
+    Check(EdgeIndicatorLayout.TryPlace(edge, null, out var original) && original.y + 54 > damage.y,
+        "edge-marker fixture did not reproduce the overlap");
+    Check(EdgeIndicatorLayout.TryPlace(edge, new[] { damage }, out var safe) &&
+        (safe.x + EdgeIndicatorLayout.DefaultWidth <= damage.x || safe.x >= damage.x + damage.width ||
+         safe.y + 54 <= damage.y || safe.y >= damage.y + damage.height),
+        "edge marker covered the active combat notice");
+    Check(StrengthContactNotice.Text(world, world.Tick + 20, out _) == "", "combat notice did not expire");
+    names.BeginFrame(world.Tick + 30); names.AddAnchor(anchor);
+    Check(names.TryPlace("you", anchor, out var restored) && restored.y == unreserved.y,
+        "nameplate failed to return after the notice disappeared");
 }
 
 static void NameplateCases()
