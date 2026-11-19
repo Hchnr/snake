@@ -104,18 +104,20 @@ namespace SnakeClub.Tests
 
         public static string ComputeRecoveryPriority() => ComputeRecovery(true, true, true, true, true) + "|" + RecoveryPriorityFixture();
 
-        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false, bool recoveryPriority = false)
+        public static string ComputeSqueezeEscape() => ComputeRecovery(true, true, true, true, true, true) + "|" + SqueezeEscapeFixture();
+
+        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false, bool recoveryPriority = false, bool squeezeEscape = false)
         {
-            string prefix = recoveryPriority ? "priority-recovery=" : stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
+            string prefix = squeezeEscape ? "squeeze-escape=" : recoveryPriority ? "priority-recovery=" : stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
             var result = new StringBuilder(prefix);
-            foreach (int seed in recoveryPriority ? new[] { 2, 9, 68, 92, 105, 192 } : aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
+            foreach (int seed in squeezeEscape ? new[] { 2, 9, 35, 68, 92, 105, 192 } : recoveryPriority ? new[] { 2, 9, 68, 92, 105, 192 } : aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
             for (int pattern = 0; pattern < (recoveryPriority ? 8 : capped ? 7 : aligned ? 4 : safe ? 3 : 2); pattern++)
             {
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
                     localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned,
-                    localCappedStart: capped, localStableBlocked: stableBlocked, localRecoveryPriority: recoveryPriority);
+                    localCappedStart: capped, localStableBlocked: stableBlocked, localRecoveryPriority: recoveryPriority, localSqueezeEscape: squeezeEscape);
                 int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
@@ -164,6 +166,9 @@ namespace SnakeClub.Tests
                     if (world.RecoverySupplyCollectedByOpponents > 0) flags |= 4;
                     if (world.RecoverySuppliesUsed > 1) flags |= 8;
                     if (capped && world.OpeningTurnAssistUsed) flags |= 16;
+                    if (squeezeEscape && world.SqueezeEscapeUsed) flags |= 64;
+                    if (squeezeEscape && world.SqueezeEscapeTicks > 0) flags |= 128;
+                    if (squeezeEscape && world.SqueezeEscapeUsed && world.SqueezeEscapeTicks == 0) flags |= 256;
                     if (recoveryPriority) for (int i = 0; i < world.Fruit.Count; i++)
                         if (world.RecoveryPriorityTicks(i) > 0) { flags |= 32; break; }
                 }
@@ -172,6 +177,81 @@ namespace SnakeClub.Tests
                     .Append(world.Tick).Append(':').Append(flags).Append(':').Append(hash.ToString("x16"));
             }
             return result.ToString();
+        }
+
+        // Real seed-35 match with a deterministic script. The one-shot
+        // protection must trigger on real repeated blocks, expire, and not
+        // allow the protected player to participate in body combat.
+        private static string SqueezeEscapeFixture()
+        {
+            var world = new PveFixedWorld(35, true, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true,
+                localAlignedStart: true, localCappedStart: true, localStableBlocked: true,
+                localRecoveryPriority: true, localSqueezeEscape: true);
+            byte heading = 0; int previousRemaining = 0, activeTicks = 0, starts = 0;
+            bool ended = false, expiryOverlap = false, reboundResumed = false; int expiryTick = -1; hash = 14695981039346656037UL;
+            while (!world.Finished && world.Tick < 560)
+            {
+                if (world.Tick % 8 == 0)
+                {
+                    var player = world.Fighters[0].motion; long nearest = long.MaxValue; int dx = 0, dy = 0;
+                    foreach (var enemy in world.Fighters)
+                    {
+                        if (enemy.id == "you" || !enemy.alive || enemy.motion.Length <= PveFixedMotion.MinimumLength) continue;
+                        var tail = enemy.motion.Segments[enemy.motion.Length - 1];
+                        int x = tail.x - player.X, y = tail.y - player.Y; long distance = (long)x * x + (long)y * y;
+                        if (distance < nearest) { nearest = distance; dx = x; dy = y; }
+                    }
+                    if (nearest < long.MaxValue) heading = (byte)(((int)Math.Round(Math.Atan2(dy, dx) * 128 / Math.PI) + 256) & 255);
+                }
+                if (world.Tick >= 464) heading = 64;
+                int previousTick = world.Tick, remainingBefore = world.SqueezeEscapeTicks;
+                world.Step(heading, false, true);
+                int remaining = world.SqueezeEscapeTicks;
+                if (remaining > previousRemaining) starts++;
+                if (remainingBefore > 0)
+                {
+                    activeTicks++;
+                    if (!world.Fighters[0].alive || world.LastPlayerBlockedTick == world.Tick ||
+                        world.LastPlayerAttackTick == world.Tick || world.LastPlayerDamageTick == world.Tick)
+                        throw new InvalidOperationException("Squeeze protection did not prevent head loss or body combat");
+                    if (remaining != remainingBefore - 1 && world.Fighters[0].alive)
+                        throw new InvalidOperationException("Squeeze countdown changed unexpectedly");
+                }
+                var projection = world.RenderState();
+                var playerProjection = projection.snakes[0];
+                if (remaining > 0)
+                {
+                    if (playerProjection.shield <= 0 || !string.IsNullOrEmpty(projection.strengthHeadThreat))
+                        throw new InvalidOperationException("Protected state or head threat was projected incorrectly");
+                    foreach (var snake in projection.snakes)
+                    {
+                        foreach (bool marked in snake.strengthWeakSegments) if (marked) throw new InvalidOperationException("Protected player saw an edible-body marker");
+                        foreach (bool marked in snake.strengthThreatSegments) if (marked) throw new InvalidOperationException("Protected player saw a body-threat marker");
+                    }
+                }
+                if (remainingBefore > 0 && remaining == 0 && world.Fighters[0].alive)
+                {
+                    long nearest = long.MaxValue; var own = world.Fighters[0].motion;
+                    foreach (var foe in world.Fighters) if (foe.id != "you" && foe.alive)
+                        for (int i = 1; i < foe.motion.Length; i++)
+                        { long dx = (long)own.X - foe.motion.Segments[i].x, dy = (long)own.Y - foe.motion.Segments[i].y; nearest = Math.Min(nearest, dx * dx + dy * dy); }
+                    expiryOverlap = nearest < 1116L * 1116L; expiryTick = world.Tick;
+                }
+                if (world.SqueezeEscapeUsed && remaining == 0 && world.Fighters[0].alive) ended = true;
+                if (expiryTick >= 0 && world.Tick == expiryTick + 1 && remainingBefore == 0 && world.LastPlayerBlockedTick == world.Tick) reboundResumed = true;
+                Add(expiryOverlap ? 1 : 0); Add(reboundResumed ? 1 : 0);
+                Add((int)(playerProjection.shield * 1000)); Add(projection.strengthHeadThreat);
+                world.AppendReplayDiagnostics(Add); Add(previousTick); Add(heading); Add(world.Tick); Add(remaining);
+                Add(world.LastPlayerBlockedTick); Add(world.LastPlayerAttackTick); Add(world.LastPlayerDamageTick);
+                Add(world.PlayerSegmentsEaten); Add(world.PlayerSegmentsLostToBites);
+                foreach (var fighter in world.Fighters)
+                { Add(fighter.alive ? 1 : 0); Add(fighter.motion.Angle); foreach (var part in fighter.motion.Segments) { Add(part.x); Add(part.y); } }
+                previousRemaining = remaining;
+            }
+            if (starts != 1 || !world.SqueezeEscapeUsed || activeTicks != PveFixedWorld.SqueezeEscapeDurationTicks || !ended || !expiryOverlap || !reboundResumed)
+                throw new InvalidOperationException("Seed 35 failed squeeze lifecycle, overlap at expiry or resumed rebound: starts=" + starts + " active=" + activeTicks + " ended=" + ended + " overlap=" + expiryOverlap + " rebound=" + reboundResumed);
+            return "squeeze-fixture=" + hash.ToString("x16");
         }
 
         // The spawned food comes from a real bite; repeated controlled AI

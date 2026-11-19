@@ -40,7 +40,7 @@ namespace SnakeClub.Core
             for (int i = 0; i < fighters.Length; i++) for (int j = i + 1; j < fighters.Length; j++)
             {
                 var a = fighters[i]; var b = fighters[j];
-                if (!a.alive || !b.alive || a.shieldTicks > 0 || b.shieldTicks > 0) continue;
+                if (!a.alive || !b.alive || a.ProtectionTicks > 0 || b.ProtectionTicks > 0) continue;
                 long dx = (long)a.motion.X - b.motion.X, dy = (long)a.motion.Y - b.motion.Y;
                 if (dx * dx + dy * dy >= 1440L * 1440L) continue;
                 long ab = (long)values[i].attack * 100 - (long)values[j].defense * 105;
@@ -200,12 +200,12 @@ namespace SnakeClub.Core
             var candidates = candidatesBuffer; candidates.Clear();
             for (int i = 0; i < fighters.Length; i++)
             {
-                var attacker = fighters[i]; if (!attacker.alive || attacker.shieldTicks > 0) continue;
+                var attacker = fighters[i]; if (!attacker.alive || attacker.ProtectionTicks > 0) continue;
                 BodyStrength.TryCalculate(powers[i], 0, out var attackingPower);
                 for (int j = 0; j < fighters.Length; j++)
                 {
                     var defender = fighters[j];
-                    if (i == j || !defender.alive || defender.shieldTicks > 0 || defender.motion.Length <= PveFixedMotion.MinimumLength) continue;
+                    if (i == j || !defender.alive || defender.ProtectionTicks > 0 || defender.motion.Length <= PveFixedMotion.MinimumLength) continue;
                     if (IsPairCoolingDown(tick, attacker.id, defender.id)) continue;
                     if (DistanceSquared(attacker.motion.Segments[0], defender.motion.Segments[0]) < HeadRadiusSquared) continue;
                     int segment = -1; long nearest = BodyRadiusSquared;
@@ -286,7 +286,12 @@ namespace SnakeClub.Core
         private const long RadiusSquared = 1116L * 1116L;
         internal static bool Apply(PveFixedFighter[] fighters, IReadOnlyList<BodyBite> bites,
             IReadOnlyList<BlockedBodyContact> contacts, bool[] separatedHeads)
+            => Apply(fighters, bites, contacts, separatedHeads, out _);
+
+        internal static bool Apply(PveFixedFighter[] fighters, IReadOnlyList<BodyBite> bites,
+            IReadOnlyList<BlockedBodyContact> contacts, bool[] separatedHeads, out string playerDefender)
         {
+            playerDefender = null;
             string resolved = ""; bool hasResolved = false, playerBlocked = false;
             foreach (var contact in contacts)
             {
@@ -294,8 +299,8 @@ namespace SnakeClub.Core
                 int ai = -1, di = -1;
                 for (int i = 0; i < fighters.Length; i++)
                 { if (fighters[i].id == contact.attacker) ai = i; if (fighters[i].id == contact.defender) di = i; }
-                if (ai < 0 || di < 0 || !fighters[ai].alive || !fighters[di].alive || fighters[ai].shieldTicks > 0 ||
-                    fighters[di].shieldTicks > 0 || fighters[di].motion.Length <= PveFixedMotion.MinimumLength || separatedHeads[ai]) continue;
+                if (ai < 0 || di < 0 || !fighters[ai].alive || !fighters[di].alive || fighters[ai].ProtectionTicks > 0 ||
+                    fighters[di].ProtectionTicks > 0 || fighters[di].motion.Length <= PveFixedMotion.MinimumLength || separatedHeads[ai]) continue;
                 int segment = contact.segment;
                 foreach (var bite in bites) if (bite.defender == contact.defender)
                 {
@@ -310,7 +315,7 @@ namespace SnakeClub.Core
                 var before = motion.Segments[segment - 1]; var after = motion.Segments[Math.Min(segment + 1, motion.Length - 1)];
                 fighters[ai].motion.SeparateFrom(point, new CapturePoint(after.x - before.x, after.y - before.y));
                 resolved = contact.attacker; hasResolved = true;
-                if (resolved == "you") playerBlocked = true;
+                if (resolved == "you") { playerBlocked = true; playerDefender = contact.defender; }
             }
             return playerBlocked;
         }

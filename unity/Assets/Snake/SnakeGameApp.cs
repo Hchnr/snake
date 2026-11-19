@@ -238,7 +238,7 @@ namespace SnakeClub
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             bool localStrength = run == null && (defaultStrength || api.Config.StrengthRulesPreview);
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength);
+                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength);
             state = fixedPve.RenderState();
             strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
@@ -629,12 +629,24 @@ namespace SnakeClub
             AddRecoveryObstacle(obstacles, GameUiScreenRect(rect, safe, width, height), RecoveryMarkerHalfSize * scale);
         }
 
+        internal static void PrioritizeSqueezeGuidance(string squeeze, ref string protection, ref string recovery)
+        {
+            if (!string.IsNullOrEmpty(squeeze)) { protection = ""; recovery = squeeze; }
+        }
+
         internal static void ResolveStrengthGuidance(string protection, string contact, string capture, string recovery, bool intro,
             out bool showProtection, out bool showRecovery, out bool showIntro)
         {
             showProtection = !string.IsNullOrEmpty(protection) && string.IsNullOrEmpty(contact) && string.IsNullOrEmpty(capture);
             showRecovery = !showProtection && !string.IsNullOrEmpty(recovery);
             showIntro = !showProtection && !showRecovery && intro;
+        }
+
+        internal static void AppendRecoveryHeadlineObstacle(List<Rect> obstacles, bool visible, Rect headline, Rect safe, float width, float height)
+        {
+            if (!visible) return;
+            SafeUiMetrics(safe, width, height, out float scale, out _, out _);
+            AddRecoveryObstacle(obstacles, GameUiScreenRect(headline, safe, width, height), RecoveryMarkerHalfSize * scale);
         }
 
         internal static void AppendRecoveryGuidanceObstacle(List<Rect> obstacles, bool visible, Rect safe, float width, float height)
@@ -757,6 +769,15 @@ namespace SnakeClub
             }
         }
 
+        // During escape, keep the kill announcement away from the crowded
+        // top combat/nameplate area and above the escape guidance panel.
+        internal static Rect HeadlineNoticeArea(bool escapeActive, bool killVisible)
+            => escapeActive && killVisible ? new Rect(250, 1160, 580, 110) : new Rect(250, 430, 580, 110);
+
+        internal static bool EscapeHeadlineActive(PveFixedWorld world, ArenaState state)
+            => world != null && world.LocalSqueezeEscape && !world.Finished && state != null &&
+                state.phase == "running" && world.SqueezeEscapeTicks > 0;
+
         private void DrawGame()
         {
             string strengthNotice = StrengthContactNotice.Text(fixedPve, state != null ? state.tick : -1, out bool strengthWarning);
@@ -772,12 +793,21 @@ namespace SnakeClub
             string captureText = CaptureNotice.Text(state, playerId, captureVisible, fixedPve != null && fixedPve.StrengthPreview);
             string protectionText = strengthProtectionNotice.Text(fixedPve, state, playerId, SimulationSuspended);
             string recoveryText = RecoverySupplyNotice.Text(fixedPve, state != null ? state.tick : -1, SimulationSuspended);
+            string squeezeText = StrengthSqueezeEscapeNotice.Text(fixedPve, state, playerId, SimulationSuspended);
+            PrioritizeSqueezeGuidance(squeezeText, ref protectionText, ref recoveryText);
             ResolveStrengthGuidance(protectionText, strengthNotice, captureText, recoveryText, StrengthIntroVisible(),
                 out bool showProtection, out bool showRecovery, out bool showStrengthIntro);
             bool showGuidance = showProtection || showRecovery || showStrengthIntro;
             ContactNoticeLayout.TryGetArea(showContactNotice, false, out var contactNoticeArea);
+            string killMessage = killFeedback.Current(state);
+            bool showKillNotice = !string.IsNullOrEmpty(killMessage);
+            bool escapeActive = EscapeHeadlineActive(fixedPve, state);
+            Rect headlineArea = HeadlineNoticeArea(escapeActive, showKillNotice);
+            string levelNotice = !paused && state != null ? StrengthLevelNotice.Text(fixedPve, state.tick) : "";
+            bool showLevelNotice = !string.IsNullOrEmpty(levelNotice) && !showKillNotice;
             // Draw first so labels, prompts and controls always cover markers.
-            DrawOccludedRecoveryMarkers(showContactNotice, contactNoticeArea, showGuidance);
+            DrawOccludedRecoveryMarkers(showContactNotice, contactNoticeArea, showGuidance,
+                showKillNotice || showLevelNotice, headlineArea);
             Panel(GameTopBar, new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
@@ -837,16 +867,13 @@ namespace SnakeClub
                     Label(new Rect(285, 292, 470, 82), eventMessage, 23, new Color(1f, .87f, .55f), TextAnchor.MiddleCenter, true);
                 }
             }
-            string killMessage = killFeedback.Current(state);
-            if (!string.IsNullOrEmpty(killMessage))
+            if (showKillNotice)
             {
                 float flash = reducedEffects ? 1f : 1f + .10f * Mathf.Sin(state.tick * .7f);
-                Label(new Rect(250, 430, 580, 110), killMessage, Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
+                Label(headlineArea, killMessage, Mathf.RoundToInt(37 * flash), new Color(1f, .88f, .45f), TextAnchor.MiddleCenter, true);
             }
-            string levelNotice = !paused && state != null ? StrengthLevelNotice.Text(fixedPve, state.tick) : "";
-            bool showLevelNotice = !string.IsNullOrEmpty(levelNotice) && string.IsNullOrEmpty(killMessage);
             if (showLevelNotice)
-                Label(new Rect(250, 430, 580, 110), levelNotice, 36, new Color(.78f, 1f, .64f), TextAnchor.MiddleCenter, true);
+                Label(headlineArea, levelNotice, 36, new Color(.78f, 1f, .64f), TextAnchor.MiddleCenter, true);
             bool showCaptureNotice = !showContactNotice && !string.IsNullOrEmpty(captureText);
             if (!showContactNotice) ContactNoticeLayout.TryGetArea(false, showCaptureNotice, out contactNoticeArea);
             bool hasContactNoticeArea = showContactNotice || showCaptureNotice;
@@ -902,14 +929,14 @@ namespace SnakeClub
             }
             if (state != null && state.phase == "running")
             {
-                DrawNames(state, showProtection || showRecovery || showStrengthIntro, hasContactNoticeArea, contactNoticeArea);
+                DrawNames(state, showProtection || showRecovery || showStrengthIntro, hasContactNoticeArea, contactNoticeArea, showKillNotice || showLevelNotice, headlineArea);
                 edgeObstacles.Clear();
                 if (hasContactNoticeArea) edgeObstacles.Add(contactNoticeArea);
                 if (showGuidance) edgeObstacles.Add(new EdgeObstacle(StrengthGuidancePanel.x, StrengthGuidancePanel.y, StrengthGuidancePanel.width, StrengthGuidancePanel.height));
                 if (strengthHeadWarning) edgeObstacles.Add(new EdgeObstacle(250, 1635, 580, 74));
                 if (strengthBodyWarning) edgeObstacles.Add(new EdgeObstacle(230, 1525, 620, 70));
                 if (!string.IsNullOrEmpty(strengthBoostHint)) edgeObstacles.Add(new EdgeObstacle(220, 1715, 640, 70));
-                if (showLevelNotice) edgeObstacles.Add(new EdgeObstacle(250, 430, 580, 110));
+                if (showKillNotice || showLevelNotice) edgeObstacles.Add(new EdgeObstacle(headlineArea.x, headlineArea.y, headlineArea.width, headlineArea.height));
                 foreach (var entry in nameplateEntries)
                     edgeObstacles.Add(new EdgeObstacle(entry.box.x, entry.box.y, entry.box.width, entry.box.height));
                 bool hasObjectiveEdge = DrawEventTargetEdge(state, out Rect objectiveEdge);
@@ -998,7 +1025,8 @@ namespace SnakeClub
                 renderer.TryFallbackHeadScreenBounds(player.segments[0], out bounds);
         }
 
-        private void DrawOccludedRecoveryMarkers(bool showContactNotice, EdgeObstacle contactNoticeArea, bool showGuidance)
+        private void DrawOccludedRecoveryMarkers(bool showContactNotice, EdgeObstacle contactNoticeArea, bool showGuidance,
+            bool showHeadlineNotice, Rect headlineArea)
         {
             if (Event.current.type != EventType.Repaint || fixedPve == null || !fixedPve.StrengthPreview || !fixedPve.LocalRecoverySupply || state == null ||
                 arenaRenderer == null) return;
@@ -1011,6 +1039,7 @@ namespace SnakeClub
             PrepareRecoveryHudObstacles(recoveryObstacles, safe, Screen.width, Screen.height);
             AppendRecoveryContactObstacle(recoveryObstacles, showContactNotice, contactNoticeArea, safe, Screen.width, Screen.height);
             AppendRecoveryGuidanceObstacle(recoveryObstacles, showGuidance, safe, Screen.width, Screen.height);
+            AppendRecoveryHeadlineObstacle(recoveryObstacles, showHeadlineNotice, headlineArea, safe, Screen.width, Screen.height);
             AppendRecoveryCharacterObstacles(recoveryObstacles, arenaRenderer, state, playerId, padding);
             Rect safeMarker = RecoveryMarkerSafeArea(safe, Screen.width, Screen.height);
             SelectOccludedRecoveryMarkers(state, true, SimulationSuspended, bounds, safeMarker,
@@ -1227,7 +1256,8 @@ namespace SnakeClub
             GUI.color = previousColor;
         }
 
-        private void DrawNames(ArenaState world, bool strengthPromptVisible, bool hasContactNoticeArea, EdgeObstacle contactNoticeArea)
+        private void DrawNames(ArenaState world, bool strengthPromptVisible, bool hasContactNoticeArea, EdgeObstacle contactNoticeArea,
+            bool showHeadlineNotice, Rect headlineArea)
         {
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
             ReservePlayerNameplateBounds(nameplates, arenaRenderer, world, playerId, Screen.safeArea, Screen.width, Screen.height);
@@ -1241,8 +1271,7 @@ namespace SnakeClub
             }
             if (!string.IsNullOrEmpty(StrengthBoostNotice.Text(fixedPve, world, playerId, pointerBoost, SimulationSuspended)))
                 nameplates.Reserve(220, 1715, 640, 70);
-            if (!paused && string.IsNullOrEmpty(killFeedback.Current(world)) && !string.IsNullOrEmpty(StrengthLevelNotice.Text(fixedPve, world.tick)))
-                nameplates.Reserve(250, 430, 580, 110);
+            if (showHeadlineNotice) nameplates.Reserve(headlineArea.x, headlineArea.y, headlineArea.width, headlineArea.height);
             if (strengthPromptVisible) nameplates.Reserve(StrengthGuidancePanel.x, StrengthGuidancePanel.y, StrengthGuidancePanel.width, StrengthGuidancePanel.height);
             else if (firstRun && tutorialHints && !online && !paused && !(fixedPve != null && fixedPve.StrengthPreview) && CanControlPlayer())
             {
@@ -1278,6 +1307,9 @@ namespace SnakeClub
             string.IsNullOrEmpty(StrengthContactNotice.Text(fixedPve, state.tick, out _)) &&
             string.IsNullOrEmpty(CaptureNotice.Text(state, playerId, false));
 
+        internal static string ProtectionNameplateSuffix(bool strength, bool own, bool escaping)
+            => strength ? (own && escaping ? " 脱困" : " 保护") : " · 保护";
+
         private void CollectNameplate(ArenaState world, SnakeState snake)
         {
             if (!snake.alive || snake.segments.Count == 0) return;
@@ -1290,7 +1322,8 @@ namespace SnakeClub
                 label = snake.id == playerId ? "你" : snake.bot ? "AI" : "玩家";
             if (snake.boss) label = "首领 · 护盾 " + snake.bossShield;
             if (world.eventStatus == "active" && world.eventTarget == snake.id) label = "悬赏 · " + label;
-            if (snake.shield > 0) label += fixedPve != null && fixedPve.StrengthPreview ? " 保护" : " · 保护";
+            if (snake.shield > 0) label += ProtectionNameplateSuffix(fixedPve != null && fixedPve.StrengthPreview,
+                snake.id == playerId, fixedPve != null && fixedPve.SqueezeEscapeTicks > 0);
             nameplateEntries.Add(new NameplateEntry { box = new Rect(placed.x, placed.y, NameplateLayout.Width, NameplateLayout.Height),
                 anchor = position, color = arenaRenderer.TrailColor(snake, playerId), label = label });
         }

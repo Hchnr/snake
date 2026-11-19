@@ -788,6 +788,69 @@ namespace SnakeClub.Tests.Editor
             Require(!string.IsNullOrEmpty(realProtection) &&
                 string.IsNullOrEmpty(protectionNotice.Text(protectedWorld, protectedWorld.RenderState(), "you", true)),
                 "real shield guidance missing or visible while suspended");
+            var squeezeWorld = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true);
+            var squeezeActors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(squeezeWorld);
+            var escapeTicks = typeof(PveFixedFighter).GetField("squeezeEscapeTicks", BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(escapeTicks != null, "squeeze escape timer fixture missing");
+            squeezeActors[0].shieldTicks = 0;
+            escapeTicks.SetValue(squeezeActors[0], 40);
+            var squeezeState = squeezeWorld.RenderState();
+            var birthOnly = new StrengthProtectionNotice(); birthOnly.Observe(squeezeWorld, squeezeState, "you");
+            Require(birthOnly.Text(squeezeWorld, squeezeState, "you", false) == "", "escape misidentified as birth protection");
+            string squeeze = StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", false);
+            Require(squeeze.Contains("脱困保护 2 秒") && squeeze.Contains("可穿过对手") && squeeze.Contains("暂不能互吃"), "escape text omitted actual semantics");
+            var suffix = typeof(SnakeGameApp).GetMethod("ProtectionNameplateSuffix", flags);
+            string Suffix(bool strength, bool own, bool escaping) => (string)suffix.Invoke(null, new object[] { strength, own, escaping });
+            Require(Suffix(true, true, true) == " 脱困" && Suffix(true, true, false) == " 保护" &&
+                Suffix(true, false, true) == " 保护" && Suffix(false, true, true) == " · 保护", "nameplate confused escape with birth protection or changed legacy");
+            Require(StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", true) == "", "paused escape notice remained visible");
+            Require(StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "bot-1", false) == "", "escape notice leaked to an opponent");
+            var escapeHeadlineActive = typeof(SnakeGameApp).GetMethod("EscapeHeadlineActive", flags);
+            Require(escapeHeadlineActive != null && (bool)escapeHeadlineActive.Invoke(null, new object[] { squeezeWorld, squeezeState }),
+                "active escape did not keep headline layout during paused rendering");
+            var headlineMethod = typeof(SnakeGameApp).GetMethod("HeadlineNoticeArea", flags);
+            var addHeadline = typeof(SnakeGameApp).GetMethod("AppendRecoveryHeadlineObstacle", flags);
+            Require(headlineMethod != null && addHeadline != null, "headline layout helpers missing");
+            Rect Headline(bool active, bool kill) => (Rect)headlineMethod.Invoke(null, new object[] { active, kill });
+            Rect topHeadline = Headline(false, true), escapeHeadline = Headline(true, true);
+            Require(topHeadline == Headline(false, false) && topHeadline == Headline(true, false) && escapeHeadline.y == 1160,
+                "kill or level headline moved outside the intended escape state");
+            Require(!escapeHeadline.Overlaps(new Rect(300, 1080, 480, 72)) && !escapeHeadline.Overlaps(new Rect(100, 1320, 880, 100)),
+                "escape headline covers elimination or escape guidance");
+            var namesWithHeadline = new NameplateLayout(); var ownAnchor = new Point(540, 666);
+            namesWithHeadline.BeginFrame(1); namesWithHeadline.AddAnchor(ownAnchor);
+            namesWithHeadline.Reserve(413, 666, 254, 297); namesWithHeadline.Reserve(190, 520, 700, 90);
+            namesWithHeadline.Reserve(escapeHeadline.x, escapeHeadline.y, escapeHeadline.width, escapeHeadline.height);
+            Require(namesWithHeadline.TryPlace("you", ownAnchor, out var ownLabel) &&
+                !new Rect(ownLabel.x, ownLabel.y, NameplateLayout.Width, NameplateLayout.Height).Overlaps(escapeHeadline),
+                "escape kill headline hid or covered the player's label");
+            var areaSafe = new Rect(30, 60, 480, 800); var headingPixels = (Rect)uiRect.Invoke(null, new object[] { escapeHeadline, areaSafe, 540f, 960f });
+            obstacles.Clear(); addHeadline.Invoke(null, new object[] { obstacles, true, escapeHeadline, areaSafe, 540f, 960f });
+            Require(obstacles.Count == 1 && obstacles[0].Contains(headingPixels.center) && obstacles[0].xMin < headingPixels.xMin,
+                "recovery marker did not avoid the actual escape headline and full marker margin");
+            obstacles.Clear(); addHeadline.Invoke(null, new object[] { obstacles, false, escapeHeadline, areaSafe, 540f, 960f });
+            Require(obstacles.Count == 0, "hidden headline continued to block recovery markers");
+            var prioritize = typeof(SnakeGameApp).GetMethod("PrioritizeSqueezeGuidance", flags);
+            var choiceArgs = new object[] { squeeze, realProtection, realRecovery };
+            prioritize.Invoke(null, choiceArgs);
+            var squeezeChoice = Choose((string)choiceArgs[1], "actual damage and rebound", "", (string)choiceArgs[2], true);
+            Require(!squeezeChoice[0] && squeezeChoice[1] && !squeezeChoice[2] && (string)choiceArgs[2] == squeeze,
+                "escape guidance did not remain alongside real contact feedback");
+            escapeTicks.SetValue(squeezeActors[0], 1);
+            Require(StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", false).Contains("1 秒"), "escape countdown rounded incorrectly");
+            escapeTicks.SetValue(squeezeActors[0], 0);
+            Require(!(bool)escapeHeadlineActive.Invoke(null, new object[] { squeezeWorld, squeezeState }), "expired escape retained special headline layout");
+            typeof(PveFixedWorld).GetProperty("Tick").SetValue(squeezeWorld, 1);
+            squeezeState = squeezeWorld.RenderState(); birthOnly.Observe(squeezeWorld, squeezeState, "you");
+            Require(birthOnly.Text(squeezeWorld, squeezeState, "you", false) == "", "escape expiry impersonated birth protection expiry");
+            Require(StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", false) == "", "escape notice survived expiry");
+            escapeTicks.SetValue(squeezeActors[0], 10); squeezeActors[0].alive = false;
+            Require(StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", false) == "", "escape notice survived death");
+            squeezeActors[0].alive = true; typeof(PveFixedWorld).GetProperty("Finished").SetValue(squeezeWorld, true);
+            Require(StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", false) == "", "escape notice survived match end");
+            Require(!(bool)escapeHeadlineActive.Invoke(null, new object[] { squeezeWorld, squeezeState }), "finished match retained escape headline layout");
             var choice = Choose(realProtection, "", "", realRecovery, true);
             Require(choice[0] && !choice[1] && !choice[2], "protection did not win guidance priority");
             choice = Choose("shield", "damage", "", realRecovery, true);
@@ -1376,7 +1439,7 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "account tutorial changed local first run");
                 var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
@@ -1403,7 +1466,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");

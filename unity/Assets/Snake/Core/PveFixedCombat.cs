@@ -12,6 +12,8 @@ namespace SnakeClub.Core
         public readonly PveFixedMotion motion;
         public bool alive = true;
         public int shieldTicks, captureCooldown, kills, eventPoints;
+        internal int squeezeEscapeTicks;
+        internal int ProtectionTicks => Math.Max(shieldTicks, squeezeEscapeTicks);
         public bool credited;
         public string eliminatedBy = "", eliminationReason = "";
         public PveFixedFighter(string id, PveFixedMotion motion)
