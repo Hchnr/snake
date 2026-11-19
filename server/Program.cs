@@ -9,6 +9,10 @@ using SnakeClub.Core;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.ConfigureHttpJsonOptions(options => options.SerializerOptions.IncludeFields = true);
 bool production = string.Equals(Environment.GetEnvironmentVariable("SNAKE_ENV"), "production", StringComparison.OrdinalIgnoreCase);
+// Bound request bodies before JSON binding allocates them. Experimental local
+// endpoints retain their existing development behavior; public proxies should
+// enforce their own limits as well.
+if (production) builder.WebHost.ConfigureKestrel(options => options.Limits.MaxRequestBodySize = 128 * 1024);
 string? rateValue = Environment.GetEnvironmentVariable("SNAKE_RATE_LIMIT_PER_MIN");
 if (!string.IsNullOrEmpty(rateValue) && (!int.TryParse(rateValue, out var configuredLimit) || configuredLimit < 1 || configuredLimit > 10000))
     throw new InvalidOperationException("SNAKE_RATE_LIMIT_PER_MIN must be between 1 and 10000.");
