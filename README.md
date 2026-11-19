@@ -80,6 +80,8 @@ WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定
 
 强弱触摸回放测试等待终局的默认上限为 600 秒，可通过 `SNAKE_STRENGTH_MATCH_TIMEOUT_SECONDS` 设置 60～900 秒；上限仅控制等待，不改变游戏速度或成功条件。负载较高时，静音无头浏览器可能比实时模拟慢，超时不能作为回放通过。
 
+该触摸诊断的 CDP 请求有独立超时，连接中断会结束等待；外层超时会终止其进程组。此进程组清理目前仅支持 macOS / Linux（POSIX）。可运行 `node --test test/v3/cdp-requests.test.cjs` 和 `python3 test/v3/headless_process_test.py` 检查断连、超时与清理，不代替真实触摸或抖音设备测试。
+
 `python3 scripts/test-strength-touch-replay-webgl.py` 默认严格要求自然对局出现保护结束提示和回追；触摸时序会变化，回追未发生时测试会失败。若只验证左拖限角及完整跨端回放，可显式运行 `SNAKE_STRENGTH_OPENING_LEFT=1 SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=0 SNAKE_STRENGTH_REQUIRE_RECOVERY=0 python3 scripts/test-strength-touch-replay-webgl.py`；输出会标明跳过的两项，不能把它当作回追或提示验收。确定性回追覆盖由上面的逐步指纹测试另行检查。
 
 运行 `python3 scripts/evaluate-aligned-start.py --seeds 100` 可比较开局方向和首次转向辅助的脚本样本；结果不能代替真人手感或平衡测试。

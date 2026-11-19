@@ -3,6 +3,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const { CdpRequests } = require('./cdp-requests.cjs');
 // Keep existing probe callers on the original upward drag unless opted in.
 const openingLeft = process.env.SNAKE_STRENGTH_OPENING_LEFT === '1';
 // Default remains strict: recovery must occur in this natural round.
@@ -19,11 +20,15 @@ const chrome = spawn(process.argv[2], [
   '--remote-debugging-port=0', '--user-data-dir=' + profile, 'about:blank'
 ], { stdio: 'ignore' });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-let ws, sequence = 0, pending = new Map(), events = [], failure;
-function call(method, params = {}) {
-  const id = ++sequence;
-  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })); });
+let ws, cdp, events = [], failure;
+chrome.on('error', error => { failure = 'Chrome failed to start: ' + error.message; if (cdp) cdp.fail(Error(failure)); });
+function stopChrome() {
+  if (chrome.exitCode !== null || chrome.signalCode !== null) return;
+  chrome.kill('SIGTERM');
+  const timer = setTimeout(() => { if (chrome.exitCode === null && chrome.signalCode === null) chrome.kill('SIGKILL'); }, 3000);
+  timer.unref();
 }
+function call(method, params = {}) { return cdp.call(method, params); }
 async function waitFor(predicate, description, timeout = 12000) {
   const until = Date.now() + timeout;
   while (Date.now() < until) {
@@ -62,20 +67,28 @@ async function drag(label, x, y, endX, endY, expected) {
 async function main() {
   let port;
   for (let i = 0; i < 200; i++) {
+    if (failure) throw Error(failure);
     try { port = fs.readFileSync(path.join(profile, 'DevToolsActivePort'), 'utf8').split('\n')[0]; break; }
     catch { await delay(100); }
   }
   if (!port) throw Error('Chrome did not expose DevTools');
-  const tabs = await (await fetch('http://127.0.0.1:' + port + '/json')).json();
+  const tabs = await (await fetch('http://127.0.0.1:' + port + '/json', { signal: AbortSignal.timeout(15000) })).json();
   const tab = tabs.find(t => t.type === 'page');
+  if (!tab) throw Error('Chrome did not expose a page');
   ws = new WebSocket(tab.webSocketDebuggerUrl);
-  await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error('DevTools socket open timed out')), 15000);
+    ws.onopen = () => { clearTimeout(timer); resolve(); };
+    ws.onerror = () => { clearTimeout(timer); reject(Error('DevTools socket open failed')); };
+  });
+  cdp = new CdpRequests(ws);
+  ws.onclose = () => { failure = 'DevTools socket closed'; cdp.fail(Error(failure)); };
+  ws.onerror = () => { failure = 'DevTools socket error'; cdp.fail(Error(failure)); };
   ws.onmessage = event => {
-    const message = JSON.parse(event.data);
-    if (message.id && pending.has(message.id)) {
-      const p = pending.get(message.id); pending.delete(message.id);
-      message.error ? p.reject(Error(message.error.message)) : p.resolve(message.result);
-    }
+    let message;
+    try { message = JSON.parse(event.data); }
+    catch { failure = 'Invalid DevTools message'; cdp.fail(Error(failure)); return; }
+    if (message.id) cdp.receive(message);
     if (message.method === 'Runtime.exceptionThrown') failure = 'Browser exception: ' + message.params.exceptionDetails.text;
     if (message.method === 'Runtime.consoleAPICalled') {
       const text = message.params.args.map(a => a.value || a.description || '').join(' ');
@@ -137,7 +150,7 @@ async function main() {
   if (!match) throw Error('Malformed strength replay result');
   console.log(match[0]);
 }
-main().then(() => { ws.close(); chrome.kill('SIGTERM'); }).catch(async error => {
+main().then(() => { ws.close(); stopChrome(); }).catch(async error => {
   console.error(error.message); process.exitCode = 1;
   let lastInput = '';
   const changes = [];
@@ -157,6 +170,14 @@ main().then(() => { ws.close(); chrome.kill('SIGTERM'); }).catch(async error => 
       console.error('Failure screenshot: ' + filename);
     }
   } catch {}
-  if (ws) ws.close(); chrome.kill('SIGTERM');
+  if (ws) ws.close(); stopChrome();
 });
-chrome.on('exit', () => { try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {} });
+// close also fires on spawn failure, after Chrome has released its handles.
+chrome.on('close', () => { try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {} });
+for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => {
+  failure = 'Interrupted: ' + signal;
+  if (cdp) cdp.fail(Error(failure));
+  if (ws) ws.close();
+  stopChrome();
+  process.exitCode = signal === 'SIGINT' ? 130 : 143;
+});
