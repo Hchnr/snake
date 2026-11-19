@@ -99,9 +99,11 @@ namespace SnakeClub.Tests
 
         public static string ComputeCappedStart() => ComputeRecovery(true, true, true);
 
-        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false)
+        public static string ComputeStableBlocked() => ComputeRecovery(true, true, true, true) + "|" + StableBlockedFixture();
+
+        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false)
         {
-            string prefix = capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
+            string prefix = stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
             var result = new StringBuilder(prefix);
             foreach (int seed in aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
@@ -110,7 +112,7 @@ namespace SnakeClub.Tests
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
                     localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned,
-                    localCappedStart: capped);
+                    localCappedStart: capped, localStableBlocked: stableBlocked);
                 int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
@@ -165,6 +167,32 @@ namespace SnakeClub.Tests
                     .Append(world.Tick).Append(':').Append(flags).Append(':').Append(hash.ToString("x16"));
             }
             return result.ToString();
+        }
+
+        // Controlled same-frame bite + blocked contact: random match samples
+        // alone do not guarantee exercising this v8-specific branch.
+        private static string StableBlockedFixture()
+        {
+            var world = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true,
+                localAlignedStart: true, localCappedStart: true, localStableBlocked: true);
+            var fighters = (PveFixedFighter[])world.Fighters;
+            fighters[0] = new PveFixedFighter("you", new PveFixedMotion(-300, 0, 0, 16));
+            fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 1800, 16384, 80));
+            fighters[2] = new PveFixedFighter("bot-2", new PveFixedMotion(13500, 0, 0, 16));
+            for (int i = 3; i < fighters.Length; i++) fighters[i].alive = false;
+            world.Step(0, false);
+            if (world.LastPlayerAttackTick != 1 || world.LastPlayerAttackCount != 1 || world.LastPlayerBlockedTick != 1)
+                throw new InvalidOperationException("Stable blocked fixture did not exercise both actual outcomes");
+            hash = 14695981039346656037UL;
+            world.AppendReplayDiagnostics(Add);
+            Add(world.LastPlayerAttackTick); Add(world.LastPlayerAttackCount); Add(world.LastPlayerBlockedTick);
+            foreach (var fighter in world.Fighters)
+            {
+                Add(fighter.id); Add(fighter.alive ? 1 : 0); Add(fighter.motion.Angle);
+                foreach (var part in fighter.motion.Segments) { Add(part.x); Add(part.y); }
+            }
+            return "stable-fixture=" + hash.ToString("x16");
         }
     }
 }
