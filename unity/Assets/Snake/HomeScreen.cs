@@ -197,7 +197,7 @@ namespace SnakeClub
             var skin = SkinCatalog.Get(selectedPreview);
             Set(skinName, skin.Name);
             Set(skinDescription, offlineCosmeticPreview && !skin.ReferencePreview && !profile.ownedSkins.Contains(selectedPreview) ? "离线试玩仅改变外观 · 不增加属性" :
-                strengthServerPreview ? "皮肤仅改变外观 · 账号成长影响攻防" : strengthPvePreview ? (skin.ReferencePreview ? "内部参考 · 试玩仅改变外观" : "强弱试玩仅改变外观 · 属性统一") :
+                strengthServerPreview ? "皮肤仅改变外观 · 账号成长影响攻防" : strengthPvePreview ? (skin.ReferencePreview ? "内部参考 · 试玩仅改变外观" : "皮肤仅改变外观 · 玩家有攻防优势") :
                 skin.Description + (skin.ReferencePreview ? " · 内部参考" : " · 每日挑战属性统一"));
             for (int i = 0; i < skinCards.Length; i++)
             {

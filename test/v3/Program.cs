@@ -20,11 +20,11 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
-if (args.Length == 4 && args[0] == "strength-replay-terminal")
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay)) throw new InvalidOperationException("Invalid recording");
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, args[0] == "strength-advantage-replay-terminal")) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
@@ -1843,10 +1843,10 @@ static void StrengthGrowthCases()
     Check(!snapshot.Supported && world.StrengthBasePower == 103 && world.StrengthHardness == 14, "snapshot was not frozen or validated");
     Check(!PveFixedRecording.TryReplayStrength(42, snapshot, new byte[0], out _), "invalid snapshot accepted");
     var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-    PveFixedWorld Bite(bool growth)
+    PveFixedWorld Bite(bool growth, bool advantage = false)
     {
         var cfg = growth ? StrengthEvalStartConfig.Capture(new PlayerProgress { experience = 700, tutorialComplete = true }) : null;
-        var match = new PveFixedWorld(42, false, null, true, cfg);
+        var match = new PveFixedWorld(42, false, null, true, cfg, advantage);
         var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(match);
         actors[0] = new PveFixedFighter("you", new PveFixedMotion(-3600, 0, 0, 16));
         actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 21));
@@ -1854,6 +1854,11 @@ static void StrengthGrowthCases()
         match.Step(0, false); return match;
     }
     Check(Bite(false).LastPlayerBlockedTick == 1 && Bite(true).LastPlayerBiteTick == 1, "account growth did not change a real body collision");
+    Check(Bite(false, true).LastPlayerBiteTick == 1, "offline advantage did not enable the real body bite");
+    bool invalidLegacy = false, invalidSnapshot = false;
+    try { _ = new PveFixedWorld(42, false, null, localAdvantage: true); } catch (ArgumentException) { invalidLegacy = true; }
+    try { _ = new PveFixedWorld(42, false, null, true, StrengthEvalStartConfig.Capture(new PlayerProgress { tutorialComplete = true }), true); } catch (ArgumentException) { invalidSnapshot = true; }
+    Check(invalidLegacy && invalidSnapshot, "offline advantage leaked into legacy or server snapshot modes");
 }
 
 static void StrengthBotHeadCases()
@@ -2106,8 +2111,16 @@ static void StrengthRecordingCases()
 {
     foreach (int seed in new[] { 1, 73, 12345 })
     foreach (bool first in new[] { false, true })
+    foreach (bool advantage in new[] { false, true })
     {
-        var live = new PveFixedWorld(seed, first, null, strengthPreview: true);
+        var live = new PveFixedWorld(seed, first, null, strengthPreview: true, localAdvantage: advantage);
+        Check(live.LocalStrengthAdvantage == advantage && live.StrengthBasePower == (advantage ? 120 : 100) && live.StrengthHardness == (advantage ? 80 : 0),
+            "offline advantage did not apply only when requested");
+        Check(live.RulesVersion == (advantage ? PveFixedRecording.LocalStrengthAdvantageRules : PveFixedRecording.ExperimentalStrengthRules),
+            "local practice rules were not identified separately");
+        Check(live.TryGetStrength("you", out var own, out _) && live.TryGetStrength("bot-1", out var bot, out _) &&
+            (advantage ? own.attack > bot.attack && own.defense > bot.defense : own.attack == bot.attack && own.defense == bot.defense),
+            "starting player advantage did not change actual attack and defense");
         var tape = new List<byte>();
         while (!live.Finished)
         {
@@ -2115,7 +2128,7 @@ static void StrengthRecordingCases()
             bool boost = tick % 120 >= 95;
             tape.Add(heading); tape.Add(boost ? (byte)1 : (byte)0); live.Step(heading, boost);
         }
-        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay) && replay.StrengthPreview &&
+        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay, advantage) && replay.StrengthPreview &&
             live.Tick == replay.Tick && live.Winner == replay.Winner && live.StrengthPickupVisible == replay.StrengthPickupVisible &&
             live.StrengthPickupPosition.x == replay.StrengthPickupPosition.x && live.StrengthPickupPosition.y == replay.StrengthPickupPosition.y,
             "completed strength recording did not reproduce match outcome");
@@ -2137,6 +2150,8 @@ static void StrengthRecordingCases()
         Check(SnakeClub.Tests.StrengthPveReplayVector.Terminal(live) == SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay),
             "terminal fingerprint changed after strength replay");
         string digest = StrengthStateDigest.Compute(live);
+        bool otherVersionFinished = PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var otherVersion, !advantage);
+        Check(!otherVersionFinished || !StrengthStateDigest.Matches(otherVersion, digest), "different local rules accepted as the same match");
         Check(digest.StartsWith("s1-") && StrengthStateDigest.Matches(replay, digest) && !StrengthStateDigest.Matches(replay, "") &&
             !StrengthStateDigest.Matches(replay, "s1-0000000000000000"), "strength digest was not verified correctly");
         var replayFruit = (List<PveFixedFruit>)replay.Fruit;
@@ -2150,9 +2165,9 @@ static void StrengthRecordingCases()
         for (int i = 0; i < live.Fruit.Count; i++)
             Check(live.Fruit[i].position.x == replay.Fruit[i].position.x && live.Fruit[i].position.y == replay.Fruit[i].position.y &&
                 live.Fruit[i].color == replay.Fruit[i].color, "strength recording changed fruit state");
-        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _), "unfinished strength recording accepted");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _, advantage), "unfinished strength recording accepted");
         tape.Add(0); tape.Add(0);
-        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _), "trailing strength input accepted");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _, advantage), "trailing strength input accepted");
     }
     Check(!PveFixedRecording.TryReplayStrength(1, true, null, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0 }, out _) &&
