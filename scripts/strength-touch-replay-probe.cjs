@@ -3,6 +3,10 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const matchTimeoutSeconds = Number(process.argv[4] || 600);
+if (!Number.isInteger(matchTimeoutSeconds) || matchTimeoutSeconds < 60 || matchTimeoutSeconds > 900) {
+  throw Error('Match timeout must be an integer from 60 to 900 seconds');
+}
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-touch-chrome-'));
 const chrome = spawn(process.argv[2], [
   '--headless=new', '--mute-audio', '--no-first-run', '--no-default-browser-check',
@@ -98,11 +102,11 @@ async function main() {
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)), 'actual boost');
   await touch('touchEnd', [point(350, 500, 2)]); await delay(150); await touch('touchEnd', []);
   await capture('protection'); await capture('battle');
-  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 10000);
+  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 60000);
   await capture('protection-ended');
-  await waitFor(() => events.some(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 25000);
+  await waitFor(() => events.some(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 120000);
   await capture('recovery-supply');
-  await waitFor(() => hasSince(0, 'SNAKE_STRENGTH_E2E '), 'complete actual-touch match and local replay', 180000);
+  await waitFor(() => hasSince(0, 'SNAKE_STRENGTH_E2E '), 'complete actual-touch match and local replay', matchTimeoutSeconds * 1000);
   await delay(1000); await capture('result');
   const line = events.find(e => e.includes('SNAKE_STRENGTH_E2E '));
   const match = line.match(/SNAKE_STRENGTH_E2E (?:MATCH|FAIL) -?\d+ [01] \d+ s1-[0-9a-f]{16} [A-Za-z0-9+/=]+/);

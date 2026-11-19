@@ -62,6 +62,11 @@ namespace SnakeClub
         private readonly List<NameplateEntry> nameplateEntries = new List<NameplateEntry>(8);
         private readonly List<EdgeObstacle> edgeObstacles = new List<EdgeObstacle>(9);
         private readonly List<Vector2> occludedRecoveryMarkers = new List<Vector2>(PveFixedWorld.RecoverySupplyCount);
+        private readonly List<Rect> recoveryObstacles = new List<Rect>(12);
+        private static readonly Rect GameTopBar = new Rect(48, 50, 984, 188);
+        private static readonly Rect GameMiniMap = new Rect(790, 285, 240, 240);
+        private static readonly Rect GamePauseButton = new Rect(55, 285, 215, 76);
+        private const float RecoveryMarkerHalfSize = 23f;
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
         private readonly KillFeedback killFeedback = new KillFeedback();
@@ -548,11 +553,57 @@ namespace SnakeClub
 
         private static void SafeUiMetrics(out float scale, out float left, out float top)
         {
-            Rect safe = Screen.safeArea;
-            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);
+            SafeUiMetrics(Screen.safeArea, Screen.width, Screen.height, out scale, out left, out top);
+        }
+
+        private static void SafeUiMetrics(Rect safe, float width, float height, out float scale, out float left, out float top)
+        {
+            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, width, height);
             scale = Mathf.Min(safe.width / 1080f, safe.height / 1920f);
             left = safe.xMin + (safe.width - 1080 * scale) * .5f;
-            top = Screen.height - safe.yMax + (safe.height - 1920 * scale) * .5f;
+            top = height - safe.yMax + (safe.height - 1920 * scale) * .5f;
+        }
+
+        // Virtual IMGUI top-left coordinates to Unity bottom-left pixels.
+        internal static Rect GameUiScreenRect(Rect rect, Rect safe, float width, float height)
+        {
+            SafeUiMetrics(safe, width, height, out float scale, out float left, out float top);
+            return new Rect(left + rect.x * scale, height - top - (rect.y + rect.height) * scale,
+                rect.width * scale, rect.height * scale);
+        }
+
+        internal static Rect RecoveryMarkerSafeArea(Rect safe, float width, float height)
+        {
+            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, width, height);
+            SafeUiMetrics(safe, width, height, out float scale, out _, out _);
+            float padding = RecoveryMarkerHalfSize * scale;
+            return Rect.MinMaxRect(safe.xMin + padding, safe.yMin + padding, safe.xMax - padding, safe.yMax - padding);
+        }
+
+        private static void AddRecoveryObstacle(List<Rect> obstacles, Rect area, float padding)
+        {
+            obstacles.Add(Rect.MinMaxRect(area.xMin - padding, area.yMin - padding, area.xMax + padding, area.yMax + padding));
+        }
+
+        internal static void PrepareRecoveryHudObstacles(List<Rect> obstacles, Rect safe, float width, float height)
+        {
+            SafeUiMetrics(safe, width, height, out float scale, out _, out _);
+            float padding = RecoveryMarkerHalfSize * scale;
+            obstacles.Clear();
+            AddRecoveryObstacle(obstacles, GameUiScreenRect(GameTopBar, safe, width, height), padding);
+            AddRecoveryObstacle(obstacles, GameUiScreenRect(GameMiniMap, safe, width, height), padding);
+            AddRecoveryObstacle(obstacles, GameUiScreenRect(GamePauseButton, safe, width, height), padding);
+        }
+
+        internal static void AppendRecoveryCharacterObstacles(List<Rect> obstacles, ArenaRenderer renderer,
+            ArenaState world, string playerId, float padding)
+        {
+            foreach (var other in world.snakes)
+            {
+                if (other == null || !other.alive || other.id == playerId || other.segments == null || other.segments.Count == 0) continue;
+                if (renderer.TryCharacterScreenBounds(other.id, out Rect otherBounds) ||
+                    renderer.TryFallbackHeadScreenBounds(other.segments[0], out otherBounds)) AddRecoveryObstacle(obstacles, otherBounds, padding);
+            }
         }
 
         private Vector2 ToVirtual(Vector2 screen)
@@ -661,7 +712,7 @@ namespace SnakeClub
         {
             // Draw first so labels, prompts and controls always cover markers.
             DrawOccludedRecoveryMarkers();
-            Panel(new Rect(48, 50, 984, 188), new Color(.035f, .065f, .12f, .90f));
+            Panel(GameTopBar, new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
             if (online && !string.IsNullOrEmpty(room)) Label(new Rect(88, 135, 410, 52), "房间  " + room, 28, new Color(.42f, .94f, .80f), TextAnchor.MiddleLeft);
@@ -824,7 +875,7 @@ namespace SnakeClub
                     if (SmallButton(new Rect(800, 570, 155, 60), "关闭提示", new Color(.16f, .26f, .31f), 20)) SetTutorialHints(false);
                 }
             }
-            if (Button(new Rect(55, 285, 215, 76), online ? "退出" : (paused ? "继续" : "暂停"), new Color(.10f, .17f, .25f, .92f)))
+            if (Button(GamePauseButton, online ? "退出" : (paused ? "继续" : "暂停"), new Color(.10f, .17f, .25f, .92f)))
             {
                 if (online) BackToMenu();
                 else { paused = !paused; if (paused) feedback.SuspendAudio(); }
@@ -861,7 +912,7 @@ namespace SnakeClub
         // Screen coordinates here have Unity's bottom-left origin, matching
         // the renderer's sprite bounds and the actual projected fruit center.
         internal static void SelectOccludedRecoveryMarkers(ArenaState world, bool enabled, bool suspended,
-            Rect playerBounds, Rect screenBounds, Point playerHead, Func<Point, Vector3> project, List<Vector2> markers)
+            Rect playerBounds, Rect screenBounds, Point playerHead, Func<Point, Vector3> project, List<Rect> obstacles, List<Vector2> markers)
         {
             markers.Clear();
             if (!enabled || suspended || world == null || world.phase != "running" || project == null ||
@@ -874,6 +925,10 @@ namespace SnakeClub
                 Vector3 point = project(fruit.position);
                 var screen = new Vector2(point.x, point.y);
                 if (point.z <= 0 || !screenBounds.Contains(screen)) continue;
+                bool obstructed = false;
+                if (obstacles != null)
+                    foreach (Rect obstacle in obstacles) if (obstacle.Contains(screen)) { obstructed = true; break; }
+                if (obstructed) continue;
                 // A clearly separate on-screen supply already gives the
                 // player somewhere to go; avoid putting marks over the art.
                 if (!playerBounds.Contains(screen)) return;
@@ -886,12 +941,19 @@ namespace SnakeClub
 
         private void DrawOccludedRecoveryMarkers()
         {
-            if (fixedPve == null || !fixedPve.StrengthPreview || !fixedPve.LocalRecoverySupply || state == null ||
+            if (Event.current.type != EventType.Repaint || fixedPve == null || !fixedPve.StrengthPreview || !fixedPve.LocalRecoverySupply || state == null ||
                 arenaRenderer == null || !arenaRenderer.TryCharacterScreenBounds(playerId, out Rect bounds)) return;
             var player = state.snakes.Find(s => s.id == playerId);
             if (player == null || !player.alive || player.segments.Count == 0) return;
-            SelectOccludedRecoveryMarkers(state, true, SimulationSuspended, bounds, new Rect(0, 0, Screen.width, Screen.height),
-                player.segments[0], arenaRenderer.FruitToScreen, occludedRecoveryMarkers);
+            Rect safe = Screen.safeArea;
+            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);
+            SafeUiMetrics(out float uiScale, out _, out _);
+            float padding = RecoveryMarkerHalfSize * uiScale;
+            PrepareRecoveryHudObstacles(recoveryObstacles, safe, Screen.width, Screen.height);
+            AppendRecoveryCharacterObstacles(recoveryObstacles, arenaRenderer, state, playerId, padding);
+            Rect safeMarker = RecoveryMarkerSafeArea(safe, Screen.width, Screen.height);
+            SelectOccludedRecoveryMarkers(state, true, SimulationSuspended, bounds, safeMarker,
+                player.segments[0], arenaRenderer.FruitToScreen, recoveryObstacles, occludedRecoveryMarkers);
             if (occludedRecoveryMarkers.Count == 0) return;
             Color oldColor = GUI.color;
             foreach (Vector2 screen in occludedRecoveryMarkers)
@@ -900,7 +962,7 @@ namespace SnakeClub
                 // Four open corners identify the real position rather than
                 // drawing another fruit or an offset pickup target. A dark
                 // outline keeps the pale corners visible over bright art.
-                const float r = 20, length = 10, width = 3, outline = 3;
+                const float r = 20, length = 10, width = 3, outline = RecoveryMarkerHalfSize - r;
                 for (int pass = 0; pass < 2; pass++)
                 {
                     GUI.color = pass == 0 ? new Color(.015f, .055f, .045f, .96f) : new Color(.90f, 1f, .76f, 1f);
@@ -947,7 +1009,7 @@ namespace SnakeClub
 
         private void DrawMiniMap(ArenaState world)
         {
-            Rect map = new Rect(790, 285, 240, 240);
+            Rect map = GameMiniMap;
             if (!ReferenceEquals(minimapWorld, world)) { minimapWorld = world; minimapFrame = -1; minimapOcclusion.Reset(); }
             if (minimapFrame != Time.frameCount)
             {

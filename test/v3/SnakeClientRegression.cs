@@ -528,10 +528,18 @@ namespace SnakeClub.Tests.Editor
                 Func<Point, Vector3> overlappingProjection = p => new Vector3(5, 5, 1);
                 int MarkedCount()
                 {
-                    markerSelection.Invoke(null, new object[] { world.RenderState(), true, false, new Rect(0, 0, 10, 10), new Rect(0, 0, 10, 10), new Point(0, 0), overlappingProjection, projectedMarkers });
+                    markerSelection.Invoke(null, new object[] { world.RenderState(), true, false, new Rect(0, 0, 10, 10), new Rect(0, 0, 10, 10), new Point(0, 0), overlappingProjection, null, projectedMarkers });
                     return projectedMarkers.Count;
                 }
                 renderer.Draw(world.RenderState(), "you");
+                var addCharacters = typeof(SnakeGameApp).GetMethod("AppendRecoveryCharacterObstacles", BindingFlags.Static | BindingFlags.NonPublic);
+                var characterObstacles = new System.Collections.Generic.List<Rect>();
+                addCharacters.Invoke(null, new object[] { characterObstacles, renderer, world.RenderState(), "you", 1f });
+                Require(characterObstacles.Count == 1, "real living opponent was not used as a recovery obstruction");
+                actors[1].alive = false; characterObstacles.Clear();
+                addCharacters.Invoke(null, new object[] { characterObstacles, renderer, world.RenderState(), "you", 1f });
+                Require(characterObstacles.Count == 0, "dead opponent or player incorrectly obstructed recovery selection");
+                actors[1].alive = true;
                 for (int i = 0; i < rings.Length; i++) Require(!rings[i].enabled, "supply marker appeared before a real bite");
                 Require(MarkedCount() == 0, "overlay appeared before a real bite");
                 world.Step(0, false); renderer.Draw(world.RenderState(), "you");
@@ -585,7 +593,8 @@ namespace SnakeClub.Tests.Editor
             Func<Point, Vector3> project = p => new Vector3(p.x * 10, p.y * 10, p.x < 0 ? -1 : 1);
             Rect bounds = new Rect(0, 0, 100, 100);
             Rect screen = new Rect(0, 0, 400, 400);
-            void Select(bool enabled, bool suspended) => select.Invoke(null, new object[] { world, enabled, suspended, bounds, screen, new Point(0, 0), project, markers });
+            var obstacles = new System.Collections.Generic.List<Rect>();
+            void Select(bool enabled, bool suspended) => select.Invoke(null, new object[] { world, enabled, suspended, bounds, screen, new Point(0, 0), project, obstacles, markers });
             Select(true, false);
             Require(markers.Count == 0, "a separate on-screen supply should suppress the character marker");
             screen = new Rect(0, 0, 100, 100); Select(true, false);
@@ -603,6 +612,65 @@ namespace SnakeClub.Tests.Editor
             Require(markers.Count == 1 && markers[0] == new Vector2(60, 40), "marker did not switch to the next actual fruit after collection");
             mark.SetValue(tied, false); Select(true, false);
             Require(markers.Count == 0, "fruit outside the screen should not have an overlay");
+            // The same virtual rectangles used for the actual HUD must map to
+            // the same screen pixels used by the selection. Include insets,
+            // the half-size clearance around the on-screen marker and a bot.
+            var uiRect = typeof(SnakeGameApp).GetMethod("GameUiScreenRect", BindingFlags.Static | BindingFlags.NonPublic);
+            Rect Ui(string field, Rect safe, float width, float height)
+            {
+                var value = (Rect)typeof(SnakeGameApp).GetField(field, BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                return (Rect)uiRect.Invoke(null, new object[] { value, safe, width, height });
+            }
+            Rect map = Ui("GameMiniMap", new Rect(0, 0, 540, 960), 540, 960);
+            Rect top = Ui("GameTopBar", new Rect(0, 0, 540, 960), 540, 960);
+            Rect button = Ui("GamePauseButton", new Rect(0, 0, 540, 960), 540, 960);
+            Require(map == new Rect(395, 697.5f, 120, 120) && top == new Rect(24, 841, 492, 94) &&
+                button == new Rect(27.5f, 779.5f, 107.5f, 38), "game HUD screen projection did not match its drawing coordinates");
+            Rect inset = new Rect(30, 60, 480, 800);
+            Rect insetMap = Ui("GameMiniMap", inset, 540, 960);
+            Require(Mathf.Abs(insetMap.x - 374.1667f) < .01f && Mathf.Abs(insetMap.y - 641.25f) < .01f &&
+                Mathf.Abs(insetMap.width - 100f) < .01f && Mathf.Abs(insetMap.height - 100f) < .01f,
+                "inset HUD projection failed to use the same letterbox and inverted Y as the actual UI");
+            Require(Ui("GameMiniMap", new Rect(), 540, 960) == map, "invalid safe area did not fall back to the screen");
+            var hudWorld = new ArenaState { phase = "running" };
+            var underPlayer = new FruitState { position = new Point(270, 500) };
+            var alternate = new FruitState { position = new Point(445, 740) };
+            mark.SetValue(underPlayer, true); mark.SetValue(alternate, true);
+            hudWorld.fruits.Add(underPlayer); hudWorld.fruits.Add(alternate);
+            Func<Point, Vector3> identity = p => new Vector3(p.x, p.y, 1);
+            var blockers = new System.Collections.Generic.List<Rect>();
+            var prepare = typeof(SnakeGameApp).GetMethod("PrepareRecoveryHudObstacles", BindingFlags.Static | BindingFlags.NonPublic);
+            var safeArea = typeof(SnakeGameApp).GetMethod("RecoveryMarkerSafeArea", BindingFlags.Static | BindingFlags.NonPublic);
+            var addObstacle = typeof(SnakeGameApp).GetMethod("AddRecoveryObstacle", BindingFlags.Static | BindingFlags.NonPublic);
+            var fullScreen = new Rect(0, 0, 540, 960);
+            prepare.Invoke(null, new object[] { blockers, fullScreen, 540f, 960f });
+            Rect safeMarker = (Rect)safeArea.Invoke(null, new object[] { fullScreen, 540f, 960f });
+            Require(safeMarker == new Rect(11.5f, 11.5f, 517, 937) && blockers.Count == 3,
+                "actual HUD obstacle preparation or safe area clearance changed");
+            Require((Rect)safeArea.Invoke(null, new object[] { new Rect(), 540f, 960f }) == safeMarker,
+                "invalid safe area did not preserve marker clearance");
+            Rect insetMarker = (Rect)safeArea.Invoke(null, new object[] { inset, 540f, 960f });
+            Require(Mathf.Abs(insetMarker.xMin - (30 + 23f * 800 / 1920)) < .01f &&
+                Mathf.Abs(insetMarker.yMax - (860 - 23f * 800 / 1920)) < .01f,
+                "inset safe area did not leave room for the full marker");
+            Rect hudPlayer = new Rect(240, 450, 60, 100);
+            void HudSelect() => select.Invoke(null, new object[] { hudWorld, true, false, hudPlayer,
+                safeMarker, new Point(270, 500), identity, blockers, markers });
+            HudSelect(); Require(markers.Count == 1 && markers[0] == new Vector2(270, 500), "map-hidden fruit wrongly suppressed the player marker");
+            alternate.position = new Point(350, 600); HudSelect(); Require(markers.Count == 0, "an exposed fruit did not suppress the player marker");
+            addObstacle.Invoke(null, new object[] { blockers, new Rect(340, 590, 20, 20), 11.5f }); HudSelect();
+            Require(markers.Count == 1 && markers[0] == new Vector2(270, 500), "opponent-hidden fruit wrongly suppressed the player marker");
+            blockers.RemoveAt(blockers.Count - 1); HudSelect(); Require(markers.Count == 0, "indicator failed to hide when the opponent moved away");
+            alternate.position = new Point(270, 900); HudSelect(); Require(markers.Count == 1, "top-bar-hidden fruit wrongly suppressed the player marker");
+            alternate.position = new Point(385, 740); HudSelect(); Require(markers.Count == 1, "partial HUD overlap ignored marker clearance");
+            alternate.position = new Point(3, 300); HudSelect(); Require(markers.Count == 1, "fruit outside the safe marker area suppressed the player marker");
+            hudPlayer = new Rect(390, 720, 60, 60); underPlayer.position = new Point(405, 740); HudSelect();
+            Require(markers.Count == 0, "player marker was drawn under the HUD");
+            hudPlayer = new Rect(240, 450, 60, 100); underPlayer.position = new Point(270, 500);
+            addObstacle.Invoke(null, new object[] { blockers, new Rect(260, 490, 20, 20), 11.5f }); HudSelect();
+            Require(markers.Count == 0, "player marker was drawn over an overlapping opponent");
+            blockers.RemoveAt(blockers.Count - 1);
+            mark.SetValue(underPlayer, false); HudSelect(); Require(markers.Count == 0, "collected hidden fruit retained its marker");
             Debug.Log("PASS Unity occluded recovery markers follow live fruit and projection");
         }
 
