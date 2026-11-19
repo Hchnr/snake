@@ -771,6 +771,17 @@ namespace SnakeClub.Core
         { this.x = x; this.y = y; this.width = width; this.height = height; }
     }
 
+    // Shared bounds for the notice that actually wins presentation priority.
+    public static class ContactNoticeLayout
+    {
+        public static bool TryGetArea(bool strengthVisible, bool captureVisible, out EdgeObstacle area)
+        {
+            area = strengthVisible ? new EdgeObstacle(190, 520, 700, 90) :
+                captureVisible ? new EdgeObstacle(240, 520, 600, 90) : default;
+            return strengthVisible || captureVisible;
+        }
+    }
+
     // Keep the directional arrow accurate while trying nearby, non-overlapping slots.
     public static class EdgeIndicatorLayout
     {

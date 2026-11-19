@@ -81,6 +81,7 @@ namespace SnakeClub
         private Transform runtimeRoot;
         private GameObject starObject;
         private bool cameraReady;
+        private ArenaState strengthCameraSource;
         private int observedViewPreference;
         private bool adjustingPausedView;
         private int lastTick = -1, lastKills;
@@ -444,16 +445,28 @@ namespace SnakeClub
             }
             SnakeState focus = state.snakes.Find(s => s.id == playerId && s.alive);
             if (focus == null) focus = state.snakes.Find(s => s.alive);
+            if (!StrengthBodyVisual) strengthCameraSource = null;
             if (focus != null && focus.segments.Count > 0)
             {
+                // Strength worlds retain their projection object throughout a
+                // match. A new projection means retry/new match, not a frame
+                // update: start at the new player instead of following the
+                // previous match's last surviving opponent across the map.
+                bool newStrengthWorld = StrengthBodyVisual && !ReferenceEquals(strengthCameraSource, state);
+                if (newStrengthWorld) { strengthCameraSource = state; cameraReady = false; }
                 Point p = focus.segments[0];
                 Vector3 target = new Vector3(p.x, 29, p.y - 10.5f);
                 view.transform.position = cameraReady ? Vector3.Lerp(view.transform.position, target, 1f - Mathf.Exp(-5f * (MotionPaused ? 0f : Time.deltaTime))) : target;
                 int preference = GrowthView.NormalizePreference(ViewPreference);
-                if (preference != observedViewPreference) { observedViewPreference = preference; adjustingPausedView = MotionPaused; }
+                if (newStrengthWorld) { observedViewPreference = preference; adjustingPausedView = false; }
+                else if (preference != observedViewPreference) { observedViewPreference = preference; adjustingPausedView = MotionPaused; }
                 float targetSize = StrengthBodyVisual ? GrowthView.CameraSize(focus.segments.Count, focus.boosting, preference) : focus.boosting ? 22f : 20f;
                 float zoomDelta = !MotionPaused || (StrengthBodyVisual && adjustingPausedView) ? Time.deltaTime : 0f;
-                view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));
+                if (newStrengthWorld) view.orthographicSize = targetSize;
+                else
+                {
+                    view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));
+                }
                 if (Mathf.Abs(view.orthographicSize - targetSize) < .01f) adjustingPausedView = false;
                 cameraReady = true;
             }
