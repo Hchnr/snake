@@ -30,7 +30,7 @@ public static class StrengthMultiBiteRegression
       bool valid = PveFixedRecording.TryReplayStrength(seed, false, inputs.ToArray(), out var replay, true, true, true, true, true, true, true, true, true, true, true);
       C(valid && world.RulesVersion == "strength-local-advantage-11" && StrengthStateDigest.Compute(world) == StrengthStateDigest.Compute(replay), $"v11 replay seed {seed}");
       C(PveFixedRecording.TryReplayLocalStrength(world.RulesVersion, seed, false, inputs.ToArray(), out var imported) && StrengthStateDigest.Compute(world) == StrengthStateDigest.Compute(imported), $"v11 version import seed {seed}");
-      C(!PveFixedRecording.TryReplayLocalStrength("strength-local-advantage-12", seed, false, inputs.ToArray(), out _), "unknown version rejected");
+      C(!PveFixedRecording.TryReplayLocalStrength("strength-local-advantage-13", seed, false, inputs.ToArray(), out _), "unknown version rejected");
     }
     {
       var w = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true, localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true, localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true, localMultiBite: true);

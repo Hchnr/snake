@@ -70,11 +70,11 @@ namespace SnakeClub.Core
             if (!deferGrowth) for (int i = 0; i < fighters.Length; i++) fighters[i].motion.Grow(growth[i]);
             return growth;
         }
-        // Resolve ties only after head eliminations and body bites have been
-        // decided from the original snapshot. Disjoint pairs use stable order.
-        public static bool[] SeparateTies(PveFixedFighter[] fighters, List<HeadTieContact> ties, List<BodyBite> bites)
-            => SeparateTiesBuffered(fighters, ties, bites, new bool[fighters.Length]);
-        internal static bool[] SeparateTiesBuffered(PveFixedFighter[] fighters, List<HeadTieContact> ties, List<BodyBite> bites, bool[] used)
+        // Resolve ties after head eliminations and body bites from the same snapshot.
+        // Pairs use stable order; the v12 preview checks actual positions again.
+        public static bool[] SeparateTies(PveFixedFighter[] fighters, List<HeadTieContact> ties, List<BodyBite> bites, bool separateAfterBite = false)
+            => SeparateTiesBuffered(fighters, ties, bites, new bool[fighters.Length], separateAfterBite);
+        internal static bool[] SeparateTiesBuffered(PveFixedFighter[] fighters, List<HeadTieContact> ties, List<BodyBite> bites, bool[] used, bool separateAfterBite = false)
         {
             Array.Clear(used, 0, used.Length);
             if (ties.Count == 0) return used;
@@ -91,8 +91,18 @@ namespace SnakeClub.Core
                 bool involved = false;
                 foreach (var bite in bites)
                     if (bite.attacker == a.id || bite.attacker == b.id || bite.defender == a.id || bite.defender == b.id) { involved = true; break; }
-                if (involved) continue;
-                int dx = tie.firstPosition.x - tie.secondPosition.x, dy = tie.firstPosition.y - tie.secondPosition.y;
+                if (involved && !separateAfterBite) continue;
+                int dx = separateAfterBite ? a.motion.X - b.motion.X : tie.firstPosition.x - tie.secondPosition.x;
+                int dy = separateAfterBite ? a.motion.Y - b.motion.Y : tie.firstPosition.y - tie.secondPosition.y;
+                if (separateAfterBite && (a.ProtectionTicks > 0 || b.ProtectionTicks > 0 || (long)dx * dx + (long)dy * dy >= 1440L * 1440L)) continue;
+                if (separateAfterBite)
+                {
+                    if (!TrySafeTiePositions(fighters, tie.first, tie.second, dx, dy, out int ax, out int ay, out int bx, out int by, out int directionX, out int directionY)) continue;
+                    a.motion.PlaceSeparatedHead(ax, ay, directionX, directionY);
+                    b.motion.PlaceSeparatedHead(bx, by, -directionX, -directionY);
+                    used[tie.first] = used[tie.second] = true;
+                    continue;
+                }
                 int length = PveFixedMotion.Distance(dx, dy);
                 if (length == 0) { dx = 1; dy = 0; length = 1; }
                 int ox = (int)((long)dx * 760 / length), oy = (int)((long)dy * 760 / length);
@@ -104,6 +114,116 @@ namespace SnakeClub.Core
                 used[tie.first] = used[tie.second] = true;
             }
             return used;
+        }
+        private static void PreviewHeadMove(PveFixedMotion motion, int x, int y, Span<CapturePoint> preview)
+        {
+            preview[0] = new CapturePoint(x, y);
+            for (int i = 1; i < motion.Length; i++)
+            {
+                var a = preview[i - 1]; var b = motion.Segments[i];
+                int dx = a.x - b.x, dy = a.y - b.y, length = PveFixedMotion.Distance(dx, dy);
+                preview[i] = length > PveFixedMotion.Spacing
+                    ? new CapturePoint(a.x - (int)((long)dx * PveFixedMotion.Spacing / length), a.y - (int)((long)dy * PveFixedMotion.Spacing / length)) : b;
+            }
+        }
+        private static bool IntroducesBodyContact(PveFixedMotion changed, Span<CapturePoint> preview, PveFixedMotion other)
+        {
+            const long radius = 1116L * 1116L;
+            var otherHead = other.Segments[0]; var oldHead = changed.Segments[0]; var newHead = preview[0];
+            for (int i = 1; i < changed.Length; i++)
+            {
+                var before = changed.Segments[i]; var after = preview[i];
+                long x = (long)before.x - otherHead.x, y = (long)before.y - otherHead.y;
+                long nx = (long)after.x - otherHead.x, ny = (long)after.y - otherHead.y;
+                if (nx * nx + ny * ny < Math.Min(radius, x * x + y * y)) return true;
+            }
+            for (int i = 1; i < other.Length; i++)
+            {
+                var body = other.Segments[i];
+                long x = (long)oldHead.x - body.x, y = (long)oldHead.y - body.y;
+                long nx = (long)newHead.x - body.x, ny = (long)newHead.y - body.y;
+                if (nx * nx + ny * ny < Math.Min(radius, x * x + y * y)) return true;
+            }
+            return false;
+        }
+        // For the separating pair, head contacts take precedence over body
+        // contacts on this tick. Avoid creating the first body contact, but do
+        // not prevent an existing contact from getting closer. Nearest segment
+        // identity and strength may change; this is not a whole-frame guarantee.
+        private static bool PairCreatesBodyContact(PveFixedMotion body, Span<CapturePoint> bodyPreview, PveFixedMotion head, Span<CapturePoint> headPreview)
+        {
+            const long radius = 1116L * 1116L;
+            var oldHead = head.Segments[0]; var newHead = headPreview[0];
+            long oldNearest = long.MaxValue, newNearest = long.MaxValue;
+            for (int i = 1; i < body.Length; i++)
+            {
+                var before = body.Segments[i]; var after = bodyPreview[i];
+                long x = (long)before.x - oldHead.x, y = (long)before.y - oldHead.y;
+                long nx = (long)after.x - newHead.x, ny = (long)after.y - newHead.y;
+                oldNearest = Math.Min(oldNearest, x * x + y * y);
+                newNearest = Math.Min(newNearest, nx * nx + ny * ny);
+            }
+            return oldNearest >= radius && newNearest < radius;
+        }
+        // Try the original separation first. Alternate offsets use a fixed
+        // order so the same snapshot yields the same result on each runtime.
+        private static readonly int[] TieAngles = { 0, 16, -16, 32, -32, 48, -48, 64, -64, 80, -80, 96, -96, 112, -112, 128 };
+        private static bool TrySafeTiePositions(PveFixedFighter[] fighters, int first, int second, int dx, int dy,
+            out int ax, out int ay, out int bx, out int by, out int directionX, out int directionY)
+        {
+            ax = ay = bx = by = directionX = directionY = 0;
+            if (dx == 0 && dy == 0) dx = 1;
+            var a = fighters[first].motion; var b = fighters[second].motion;
+            Span<CapturePoint> previewA = stackalloc CapturePoint[Arena.MaximumLength];
+            Span<CapturePoint> previewB = stackalloc CapturePoint[Arena.MaximumLength];
+            int edge = PveFixedMotion.Edge;
+            foreach (int offset in TieAngles)
+            {
+                int cosine = PveFixedMotion.DirectionX(unchecked((byte)offset));
+                int sine = PveFixedMotion.DirectionY(unchecked((byte)offset));
+                // Keep precision for coincident heads, whose fallback vector is 1.
+                int vx = (int)((long)dx * cosine - (long)dy * sine);
+                int vy = (int)((long)dx * sine + (long)dy * cosine);
+                int length = PveFixedMotion.Distance(vx, vy);
+                if (length == 0) continue;
+                int ox, oy;
+                if (offset == 0)
+                {
+                    int legacyLength = PveFixedMotion.Distance(dx, dy);
+                    ox = (int)((long)dx * 760 / legacyLength); oy = (int)((long)dy * 760 / legacyLength);
+                }
+                else { ox = (int)((long)vx * 760 / length); oy = (int)((long)vy * 760 / length); }
+                int mx = Math.Max(-edge + Math.Abs(ox), Math.Min(edge - Math.Abs(ox), (a.X + b.X) / 2));
+                int my = Math.Max(-edge + Math.Abs(oy), Math.Min(edge - Math.Abs(oy), (a.Y + b.Y) / 2));
+                int x1 = mx + ox, y1 = my + oy, x2 = mx - ox, y2 = my - oy;
+                long pairX = (long)x1 - x2, pairY = (long)y1 - y2;
+                if (pairX * pairX + pairY * pairY < 1440L * 1440L) continue;
+                bool clear = true;
+                for (int i = 0; i < fighters.Length; i++)
+                {
+                    if (i == first || i == second || !fighters[i].alive) continue;
+                    var other = fighters[i].motion;
+                    long x = (long)x1 - other.X, y = (long)y1 - other.Y;
+                    long z = (long)x2 - other.X, w = (long)y2 - other.Y;
+                    long oldAx = (long)a.X - other.X, oldAy = (long)a.Y - other.Y;
+                    long oldBx = (long)b.X - other.X, oldBy = (long)b.Y - other.Y;
+                    long aLimit = Math.Min(1440L * 1440L, oldAx * oldAx + oldAy * oldAy);
+                    long bLimit = Math.Min(1440L * 1440L, oldBx * oldBx + oldBy * oldBy);
+                    if (x * x + y * y < aLimit || z * z + w * w < bLimit) { clear = false; break; }
+                }
+                if (!clear) continue;
+                PreviewHeadMove(a, x1, y1, previewA); PreviewHeadMove(b, x2, y2, previewB);
+                if (PairCreatesBodyContact(a, previewA, b, previewB) || PairCreatesBodyContact(b, previewB, a, previewA)) continue;
+                for (int i = 0; i < fighters.Length && clear; i++)
+                {
+                    if (i == first || i == second || !fighters[i].alive) continue;
+                    var other = fighters[i].motion;
+                    if (IntroducesBodyContact(a, previewA, other) || IntroducesBodyContact(b, previewB, other)) clear = false;
+                }
+                if (!clear) continue;
+                ax = x1; ay = y1; bx = x2; by = y2; directionX = offset == 0 ? dx : vx; directionY = offset == 0 ? dy : vy; return true;
+            }
+            return false;
         }
     }
 
@@ -171,8 +291,9 @@ namespace SnakeClub.Core
         }
 
         // All contacts and powers are decided from the state at the start of
-        // this call. Each attacker and each defender has at most one bite per
-        // tick; competing bites use advantage, then stable IDs, never list order.
+        // this call. Each attacker has at most one bite per tick; v11 permits
+        // different attackers on disjoint body segments. Competing bites use
+        // advantage, then stable IDs, never list order.
         // The caller applies contact separation after all snapshot outcomes.
         public List<BodyBite> Resolve(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs)
             => new List<BodyBite>(ResolveBuffered(tick, fighters, inputs));

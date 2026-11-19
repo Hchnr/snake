@@ -16,7 +16,8 @@ namespace SnakeClub.Core
             9239,9330,9415,9495,9569,9638,9700,9757,9808,9853,9892,9925,9952,9973,9988,9997,10000
         };
         public const int Edge = 109280, MinimumLength = 5;
-        private const int TurnStep = 1982, Spacing = 900;
+        private const int TurnStep = 1982;
+        internal const int Spacing = 900;
         private readonly List<CapturePoint> segments = new List<CapturePoint>(Arena.MaximumLength);
         public IReadOnlyList<CapturePoint> Segments => segments;
         public CapturePoint PreviousHead { get; private set; }
