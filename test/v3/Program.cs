@@ -20,11 +20,12 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
-if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal"))
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, args[0] == "strength-advantage-replay-terminal")) throw new InvalidOperationException("Invalid recording");
+    bool advantage = args[0] != "strength-replay-terminal", openingFood = args[0] == "strength-opening-replay-terminal";
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood)) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
@@ -142,6 +143,7 @@ var cases = new (string name, Action run)[]
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
     ("strength replay diagnostics detect hidden-state divergence", StrengthHiddenDiagnosticsCases),
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
+    ("offline opening food gives real reachable early growth", StrengthOpeningFoodCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
@@ -2081,6 +2083,8 @@ static void StrengthWeakPointCases()
 {
     Check(StrengthTutorialHints.Select(0, false, false).Contains("全屏拖动") && StrengthTutorialHints.Select(0, false, false).Contains("弹开") &&
         !StrengthTutorialHints.Select(0, true, false).Contains("全屏拖动"), "strength tutorial did not follow steering");
+    Check(StrengthTutorialHints.Select(0, false, false, true).Contains("果实") && StrengthTutorialHints.Select(0, false, false, true).Contains("弹开") &&
+        !StrengthTutorialHints.Select(0, false, false).Contains("果实"), "opening food tutorial was missing or leaked into other rules");
     Check(StrengthTutorialHints.Select(80, false, false).Contains("全屏拖动") && StrengthTutorialHints.Select(80, true, false).Contains("第二根手指") &&
         !StrengthTutorialHints.Select(80, true, true).Contains("第二根手指") && StrengthTutorialHints.Select(80, true, true).Contains("金点") &&
         StrengthTutorialHints.Select(80, true, true).Contains("红叉"),
@@ -2128,12 +2132,13 @@ static void StrengthRecordingCases()
 {
     foreach (int seed in new[] { 1, 73, 12345 })
     foreach (bool first in new[] { false, true })
-    foreach (bool advantage in new[] { false, true })
+    foreach (int variant in new[] { 0, 1, 2 })
     {
-        var live = new PveFixedWorld(seed, first, null, strengthPreview: true, localAdvantage: advantage);
+        bool advantage = variant > 0, openingFood = variant == 2;
+        var live = new PveFixedWorld(seed, first, null, strengthPreview: true, localAdvantage: advantage, localOpeningFood: openingFood);
         Check(live.LocalStrengthAdvantage == advantage && live.StrengthBasePower == (advantage ? 120 : 100) && live.StrengthHardness == (advantage ? 80 : 0),
             "offline advantage did not apply only when requested");
-        Check(live.RulesVersion == (advantage ? PveFixedRecording.LocalStrengthAdvantageRules : PveFixedRecording.ExperimentalStrengthRules),
+        Check(live.LocalOpeningFood == openingFood && live.RulesVersion == (openingFood ? PveFixedRecording.LocalStrengthOpeningRules : advantage ? PveFixedRecording.LocalStrengthAdvantageRules : PveFixedRecording.ExperimentalStrengthRules),
             "local practice rules were not identified separately");
         Check(live.TryGetStrength("you", out var own, out _) && live.TryGetStrength("bot-1", out var bot, out _) &&
             (advantage ? own.attack > bot.attack && own.defense > bot.defense : own.attack == bot.attack && own.defense == bot.defense),
@@ -2145,7 +2150,7 @@ static void StrengthRecordingCases()
             bool boost = tick % 120 >= 95;
             tape.Add(heading); tape.Add(boost ? (byte)1 : (byte)0); live.Step(heading, boost);
         }
-        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay, advantage) && replay.StrengthPreview &&
+        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay, advantage, openingFood) && replay.StrengthPreview &&
             live.Tick == replay.Tick && live.Winner == replay.Winner && live.StrengthPickupVisible == replay.StrengthPickupVisible &&
             live.StrengthPickupPosition.x == replay.StrengthPickupPosition.x && live.StrengthPickupPosition.y == replay.StrengthPickupPosition.y,
             "completed strength recording did not reproduce match outcome");
@@ -2169,6 +2174,11 @@ static void StrengthRecordingCases()
         string digest = StrengthStateDigest.Compute(live);
         bool otherVersionFinished = PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var otherVersion, !advantage);
         Check(!otherVersionFinished || !StrengthStateDigest.Matches(otherVersion, digest), "different local rules accepted as the same match");
+        if (openingFood)
+        {
+            bool oldFinished = PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var oldReplay, true);
+            Check(!oldFinished || !StrengthStateDigest.Matches(oldReplay, digest), "old advantage recording was confused with the new opening");
+        }
         Check(digest.StartsWith("s1-") && StrengthStateDigest.Matches(replay, digest) && !StrengthStateDigest.Matches(replay, "") &&
             !StrengthStateDigest.Matches(replay, "s1-0000000000000000"), "strength digest was not verified correctly");
         var replayFruit = (List<PveFixedFruit>)replay.Fruit;
@@ -2182,14 +2192,76 @@ static void StrengthRecordingCases()
         for (int i = 0; i < live.Fruit.Count; i++)
             Check(live.Fruit[i].position.x == replay.Fruit[i].position.x && live.Fruit[i].position.y == replay.Fruit[i].position.y &&
                 live.Fruit[i].color == replay.Fruit[i].color, "strength recording changed fruit state");
-        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _, advantage), "unfinished strength recording accepted");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _, advantage, openingFood), "unfinished strength recording accepted");
         tape.Add(0); tape.Add(0);
-        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _, advantage), "trailing strength input accepted");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _, advantage, openingFood), "trailing strength input accepted");
     }
     Check(!PveFixedRecording.TryReplayStrength(1, true, null, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0 }, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0, 2 }, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[(60 * PveFixedWorld.TickRate + 1) * 2], out _), "malformed strength recording accepted");
+}
+
+static void StrengthOpeningFoodCases()
+{
+    bool invalid = false;
+    try { _ = new PveFixedWorld(1, false, null, true, localOpeningFood: true); } catch (ArgumentException) { invalid = true; }
+    Check(invalid && !PveFixedRecording.TryReplayStrength(1, false, new byte[] { 0, 0 }, out _, false, true),
+        "opening food escaped the offline advantage mode");
+    foreach (bool first in new[] { false, true })
+    for (int seed = 1; seed <= 64; seed++)
+    foreach (byte direction in new byte[] { 0, 64, 128, 192 })
+    foreach (bool boost in new[] { false, true })
+    {
+        var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true);
+        var old = new PveFixedWorld(seed, first, null, true, localAdvantage: true);
+        var player = world.Fighters[0].motion;
+        var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        Check(Equals(typeof(PveFixedWorld).GetField("random", flags).GetValue(world), typeof(PveFixedWorld).GetField("random", flags).GetValue(old)) &&
+            Equals(typeof(PveFixedWorld).GetField("nextStrengthPickupTick", flags).GetValue(world), typeof(PveFixedWorld).GetField("nextStrengthPickupTick", flags).GetValue(old)),
+            "opening placement changed the seeded random stream or pickup schedule");
+        for (int i = 0; i < world.Fighters.Count; i++)
+            Check(world.Fighters[i].motion.X == old.Fighters[i].motion.X && world.Fighters[i].motion.Y == old.Fighters[i].motion.Y &&
+                world.Fighters[i].motion.Angle == old.Fighters[i].motion.Angle, "opening placement changed a fighter spawn");
+        Check(world.Fruit.Count == Arena.FruitCount && player.X == old.Fighters[0].motion.X && player.Y == old.Fighters[0].motion.Y,
+            "opening changed the fruit count or player's spawn");
+        for (int i = 0; i < world.Fruit.Count; i++)
+        {
+            var actual = world.Fruit[i]; var previous = old.Fruit[i];
+            Check(actual.color == previous.color, "opening changed the seeded fruit colors");
+            if (i < 8)
+            {
+                long dx = actual.position.x - player.X, dy = actual.position.y - player.Y;
+                long distance = dx * dx + dy * dy;
+                Check(distance > 1250L * 1250L && distance < 3100L * 3100L &&
+                    Math.Abs(actual.position.x) < PveFixedMotion.Edge && Math.Abs(actual.position.y) < PveFixedMotion.Edge,
+                    "opening fruit was unreachable, immediately collected, or outside the arena");
+                for (int j = 1; j < world.Fighters.Count; j++)
+                {
+                    long ox = actual.position.x - world.Fighters[j].motion.X, oy = actual.position.y - world.Fighters[j].motion.Y;
+                    Check(ox * ox + oy * oy > 1250L * 1250L, "opponent spawned directly on opening fruit");
+                }
+            }
+            else Check(actual.position.x == previous.position.x && actual.position.y == previous.position.y, "opening relocated unrelated fruit");
+        }
+        var initial = world.Fruit.Take(8).ToArray();
+        bool collectedOpening = false;
+        for (int tick = 0; tick < 40 && !world.Finished && !collectedOpening; tick++)
+        {
+            var before = world.Fruit.Take(8).ToArray();
+            world.Step(direction, boost);
+            for (int i = 0; i < 8; i++)
+            {
+                var point = before[i].position; var after = world.Fruit[i].position;
+                long dx = point.x - player.X, dy = point.y - player.Y;
+                if (point.x == initial[i].position.x && point.y == initial[i].position.y &&
+                    (after.x != point.x || after.y != point.y) && dx * dx + dy * dy <= 1250L * 1250L)
+                    collectedOpening = true;
+            }
+        }
+        Check(collectedOpening && world.TryGetStrengthLevelProgress("you", out int level, out int progress, out _) && (level > 0 || progress > 0),
+            "player could not collect actual opening food in the first two seconds of a straight path");
+    }
 }
 
 static void StrengthNoticeCases()

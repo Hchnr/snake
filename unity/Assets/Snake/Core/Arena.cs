@@ -269,9 +269,10 @@ namespace SnakeClub.Core
     // automatically as the timer advances. They do not affect input or rules.
     public static class StrengthTutorialHints
     {
-        public static string Select(int tick, bool hasSteered, bool hasBoosted)
+        public static string Select(int tick, bool hasSteered, bool hasBoosted, bool openingFood = false)
         {
             if (tick < 0 || tick >= 260) return "";
+            if (tick < 60 && openingFood) return (hasSteered ? "先吃周围果实变大" : "全屏拖动 · 先吃周围果实变大") + "\n够强吃身体 · 较弱会弹开";
             if (tick < 60) return (hasSteered ? "强度足够才能吃身体" : "全屏拖动转向 · 强度足够才能吃身体") + "\n较弱会弹开";
             if (tick < 140)
             {
