@@ -230,7 +230,7 @@ namespace SnakeClub
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             bool localStrength = run == null && (defaultStrength || api.Config.StrengthRulesPreview);
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength);
+                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength);
             state = fixedPve.RenderState();
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);

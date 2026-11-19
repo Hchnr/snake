@@ -24,14 +24,15 @@ namespace SnakeClub.Core
         // Offline-only practice variant; never accepted as a server reward rule.
         public const string LocalStrengthAdvantageRules = "strength-local-advantage-1";
         public const string LocalStrengthOpeningRules = "strength-local-advantage-2";
+        public const string LocalStrengthEncounterRules = "strength-local-advantage-3";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
 
         // Diagnostic only: explicit flags select offline development variants.
         // They must not be used to verify accounts, rankings, or rewards.
-        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false)
-            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result, localAdvantage, localOpeningFood);
+        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false)
+            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result, localAdvantage, localOpeningFood, localOpeningEncounter);
 
         public static bool TryReplayStrength(int seed, StrengthEvalStartConfig snapshot, byte[] inputs, out PveFixedWorld result)
         {
@@ -40,14 +41,14 @@ namespace SnakeClub.Core
             return TryReplayInternal(seed, snapshot.firstRun, null, inputs, true, snapshot, out result);
         }
 
-        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false)
+        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false)
         {
             result = null;
             int limit = (firstRun ? 60 : 90) * PveFixedWorld.TickRate;
             if (inputs == null || inputs.Length == 0 || inputs.Length % 2 != 0 || inputs.Length > limit * 2) return false;
             for (int i = 1; i < inputs.Length; i += 2) if (inputs[i] > 1) return false;
-            if (localOpeningFood && !localAdvantage) return false;
-            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot, localAdvantage: localAdvantage, localOpeningFood: localOpeningFood);
+            if ((localOpeningFood && !localAdvantage) || (localOpeningEncounter && !localOpeningFood)) return false;
+            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot, localAdvantage: localAdvantage, localOpeningFood: localOpeningFood, localOpeningEncounter: localOpeningEncounter);
             for (int i = 0; i < inputs.Length; i += 2)
             {
                 if (world.Finished) return false;
@@ -91,7 +92,9 @@ namespace SnakeClub.Core
         public bool StrengthPreview { get; }
         public bool LocalStrengthAdvantage { get; }
         public bool LocalOpeningFood { get; }
+        public bool LocalOpeningEncounter { get; }
         public string RulesVersion => !StrengthPreview ? PveFixedRecording.ExperimentalRules :
+            LocalOpeningEncounter ? PveFixedRecording.LocalStrengthEncounterRules :
             LocalOpeningFood ? PveFixedRecording.LocalStrengthOpeningRules :
             LocalStrengthAdvantage ? PveFixedRecording.LocalStrengthAdvantageRules : PveFixedRecording.ExperimentalStrengthRules;
         public int StrengthBasePower { get; }
@@ -138,7 +141,7 @@ namespace SnakeClub.Core
         public int Tick { get; private set; }
         public bool Finished { get; private set; }
         public string Winner { get; private set; } = "";
-        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null, bool localAdvantage = false, bool localOpeningFood = false)
+        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false)
         {
             if (strengthSnapshot != null && (!strengthPreview || !strengthSnapshot.Supported || strengthSnapshot.firstRun != firstRun))
                 throw new ArgumentException("Invalid strength snapshot", nameof(strengthSnapshot));
@@ -146,10 +149,13 @@ namespace SnakeClub.Core
                 throw new ArgumentException("Local advantage is available only in offline strength practice", nameof(localAdvantage));
             if (localOpeningFood && !localAdvantage)
                 throw new ArgumentException("Opening food requires offline strength advantage", nameof(localOpeningFood));
+            if (localOpeningEncounter && !localOpeningFood)
+                throw new ArgumentException("Opening encounter requires offline opening food", nameof(localOpeningEncounter));
             for (int i = 0; i < fighters.Length; i++) strengthAttackTicks[i] = strengthDamageTicks[i] = -1;
             StrengthPreview = strengthPreview;
             LocalStrengthAdvantage = localAdvantage;
             LocalOpeningFood = localOpeningFood;
+            LocalOpeningEncounter = localOpeningEncounter;
             StrengthBasePower = strengthSnapshot != null ? strengthSnapshot.EffectivePower : localAdvantage ? 120 : 100;
             StrengthHardness = strengthSnapshot != null ? strengthSnapshot.EffectiveHardness : localAdvantage ? 80 : 0;
             random = unchecked((uint)seed); if (random == 0) random = 0x6d2b79f5;
@@ -163,6 +169,8 @@ namespace SnakeClub.Core
             {
                 CapturePoint head = Spawn(i);
                 int heading = Next(256);
+                if (LocalOpeningEncounter && i == 1)
+                    heading = HeadingAwayFromPlayer(head);
                 fighters[i] = new PveFixedFighter(i == 0 ? "you" : "bot-" + i,
                     new PveFixedMotion(head.x, head.y, heading * 256, DailyMatch.CaptureStartingLength)) { shieldTicks = (firstRun && i == 0 ? 4 : 3) * TickRate };
                 botDirection[i] = (byte)heading;
@@ -187,6 +195,19 @@ namespace SnakeClub.Core
         }
         private PveFixedFruit NewFruit() => new PveFixedFruit(new CapturePoint(Next(216001) - 108000, Next(216001) - 108000), Next(4));
         private static long DistanceSquared(int x, int y) => (long)x * x + (long)y * y;
+        // A seeded opening opponent faces away from the player, leaving its
+        // real trailing body approachable without changing its combat rules.
+        private int HeadingAwayFromPlayer(CapturePoint head)
+        {
+            long best = long.MinValue; int heading = 0;
+            int dx = head.x - fighters[0].motion.X, dy = head.y - fighters[0].motion.Y;
+            for (int i = 0; i < 256; i++)
+            {
+                long dot = (long)dx * PveFixedMotion.DirectionX((byte)i) + (long)dy * PveFixedMotion.DirectionY((byte)i);
+                if (dot > best) { best = dot; heading = i; }
+            }
+            return heading;
+        }
         private CapturePoint Spawn(int index)
         {
             CapturePoint candidate = default;
@@ -195,6 +216,11 @@ namespace SnakeClub.Core
                 if (index > 0 && index <= 2)
                 {
                     byte angle = (byte)Next(256); int radius = (index == 1 ? 9000 : 12000) + Next(2001);
+                    if (LocalOpeningEncounter && index == 1)
+                    {
+                        angle = unchecked((byte)((angle % 65) - 32)); // seeded arc around the initial direction
+                        radius += 5000;
+                    }
                     candidate = new CapturePoint(fighters[0].motion.X + PveFixedMotion.DirectionX(angle) * radius / 10000,
                         fighters[0].motion.Y + PveFixedMotion.DirectionY(angle) * radius / 10000);
                 }
@@ -854,7 +880,8 @@ namespace SnakeClub.Core
             }
             // Preserve every existing s1 receipt; only the new offline opening
             // is domain-separated from earlier local and server variants.
-            if (world.LocalOpeningFood) AddString(PveFixedRecording.LocalStrengthOpeningRules);
+            if (world.LocalOpeningEncounter) AddString(PveFixedRecording.LocalStrengthEncounterRules);
+            else if (world.LocalOpeningFood) AddString(PveFixedRecording.LocalStrengthOpeningRules);
             AddInt(world.Tick); AddString(world.Winner); AddInt(world.StrengthBasePower); AddInt(world.StrengthHardness);
             AddInt(world.StrengthPickupVisible ? 1 : 0); AddInt(world.StrengthPickupPosition.x); AddInt(world.StrengthPickupPosition.y);
             AddInt(world.LastPlayerAttackTick); AddInt(world.LastPlayerAttackCount); AddInt(world.LastPlayerDamageTick); AddInt(world.LastPlayerDamageCount);
