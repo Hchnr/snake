@@ -21,6 +21,12 @@ editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/600
 chrome = Path(os.environ.get('SNAKE_CHROME', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'))
 if not editor.is_file() or not chrome.is_file():
     sys.exit('Unity Editor or Chrome not found; set UNITY_EDITOR and SNAKE_CHROME.')
+try:
+    match_timeout = int(os.environ.get('SNAKE_STRENGTH_MATCH_TIMEOUT_SECONDS', '600'))
+except ValueError:
+    sys.exit('SNAKE_STRENGTH_MATCH_TIMEOUT_SECONDS must be an integer from 60 to 900.')
+if not 60 <= match_timeout <= 900:
+    sys.exit('SNAKE_STRENGTH_MATCH_TIMEOUT_SECONDS must be an integer from 60 to 900.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -137,8 +143,8 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     try:
         print('Playing a complete strength preview using muted headless Chrome...', flush=True)
         result = subprocess.run(['node', str(root / 'scripts/strength-touch-replay-probe.cjs'), str(chrome),
-                                 'http://127.0.0.1:' + str(server.server_port) + '/'],
-                                capture_output=True, text=True, timeout=240, check=False)
+                                 'http://127.0.0.1:' + str(server.server_port) + '/', str(match_timeout)],
+                                capture_output=True, text=True, timeout=match_timeout + 300, check=False)
         if result.returncode:
             sys.exit('Touch replay diagnostic failed:\n' + result.stdout[-2000:] + result.stderr[-4000:])
         lines = [line for line in result.stdout.splitlines() if line.startswith('SNAKE_STRENGTH_E2E ')]
