@@ -47,8 +47,32 @@ capture.write_text(json.dumps({
 }))
 artifact = pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_OUTPUT']) / 'tt-minigame'
 artifact.mkdir(parents=True)
-(artifact / 'game.json').write_text('{}')
-(artifact / 'project.config.json').write_text('{}')
+mode = os.environ.get('SNAKE_TEST_ARTIFACT', 'valid')
+subpackages = [{'name': 'wasmcode', 'root': 'wasmcode/'}, {'name': 'data-package', 'root': 'data-package/'}]
+for package in subpackages:
+    (artifact / package['root']).mkdir()
+    (artifact / package['root'] / 'game.js').write_text('')
+if mode == 'bad_subpackages': subpackages = {}
+if mode == 'bad_subpackage_entry': subpackages = ['bad']
+if mode == 'missing_subpackage': subpackages = [{'root': 'missing/'}]
+if mode == 'escaping_subpackage': subpackages = [{'root': '../'}]
+if mode == 'absolute_subpackage': subpackages = [{'root': str(artifact.parent)}]
+if mode == 'symlink_subpackage':
+    (artifact / 'external-link').symlink_to(artifact.parent, target_is_directory=True)
+    subpackages = [{'root': 'external-link/'}]
+(artifact / 'game.json').write_text('{broken' if mode == 'bad_game_json' else
+    json.dumps([] if mode == 'nonobject_game' else {'deviceOrientation': 'landscape' if mode == 'wrong_orientation' else 'portrait', 'subpackages': subpackages}))
+(artifact / 'project.config.json').write_text('{broken' if mode == 'bad_config_json' else
+    json.dumps([] if mode == 'nonobject_config' else {'appid': 'wrong' if mode == 'wrong_appid' else os.environ['SNAKE_DOUYIN_PREVIEW_APPID']}))
+if mode != 'missing_entry':
+    (artifact / 'game.js').write_text('' if mode == 'empty_entry' else '/* mini-game entry */')
+if mode == 'outside_stamp':
+    external = artifact.parent.parent / 'external-project'
+    external.mkdir()
+    (external / 'game.json').write_text(json.dumps({'deviceOrientation': 'portrait'}))
+    (external / 'project.config.json').write_text(json.dumps({'appid': os.environ['SNAKE_DOUYIN_PREVIEW_APPID']}))
+    (external / 'game.js').write_text('/* valid but stale */')
+    artifact = external
 pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
 ''')
         self.editor.chmod(0o755)
@@ -123,6 +147,35 @@ pathlib.Path(os.environ['SNAKE_DOUYIN_PREVIEW_STAMP']).write_text(str(artifact))
     def test_graphics_requires_explicit_opt_in(self):
         result = self.build(graphics=True)
         self.assertFalse(result['noGraphics'])
+
+    def test_rejects_incomplete_or_wrong_preview_artifacts(self):
+        for mode in ('missing_entry', 'empty_entry', 'bad_game_json', 'nonobject_game',
+                     'wrong_orientation', 'bad_config_json', 'nonobject_config',
+                     'wrong_appid', 'outside_stamp', 'bad_subpackages', 'bad_subpackage_entry',
+                     'missing_subpackage', 'escaping_subpackage', 'absolute_subpackage',
+                     'symlink_subpackage'):
+            with self.subTest(mode=mode):
+                env = {**os.environ, 'UNITY_EDITOR': str(self.editor),
+                       'SNAKE_TEST_CAPTURE': str(self.root / (mode + '.json')),
+                       'SNAKE_TEST_ARTIFACT': mode}
+                result = subprocess.run([sys.executable, str(self.root / 'scripts/build-douyin-preview.py'),
+                                         '--appid', 'test-appid', '--output', str(self.root / mode)],
+                                        capture_output=True, text=True, env=env)
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn('TTSDK returned an invalid project:', result.stderr)
+                self.assertNotIn('Douyin preview project:', result.stdout)
+
+    def test_rejects_empty_or_padded_appid_before_build(self):
+        for appid in ('', '  ', ' test-appid '):
+            with self.subTest(appid=appid):
+                env = {**os.environ, 'UNITY_EDITOR': str(self.editor),
+                       'SNAKE_TEST_CAPTURE': str(self.root / 'capture.json')}
+                result = subprocess.run([sys.executable, str(self.root / 'scripts/build-douyin-preview.py'),
+                                         '--appid', appid, '--output', str(self.root / 'invalid')],
+                                        capture_output=True, text=True, env=env)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('--appid must be non-empty', result.stderr)
+                self.assertFalse((self.root / 'capture.json').exists())
 
 
 if __name__ == '__main__':

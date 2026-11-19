@@ -37,6 +37,8 @@ graphics.add_argument('--no-graphics', dest='no_graphics', action='store_true', 
 graphics.add_argument('--graphics', dest='no_graphics', action='store_false', help='allow graphics if the installed TTSDK needs them')
 parser.set_defaults(no_graphics=True)
 args = parser.parse_args()
+if not args.appid or args.appid != args.appid.strip():
+    parser.error('--appid must be non-empty and have no surrounding whitespace')
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
 output = Path(args.output).expanduser().resolve()
 sdk = root / 'unity/Assets/Plugins/ByteGame/com.bytedance.starksdk/package.json'
@@ -92,8 +94,36 @@ with tempfile.TemporaryDirectory(prefix='snake-douyin-preview-') as directory:
         errors = [line for line in contents.splitlines() if 'error CS' in line or 'DOUYIN_PREVIEW_BUILD_FAILED' in line]
         print('\n'.join(errors[-20:] or contents.splitlines()[-30:]), file=sys.stderr)
         sys.exit(result.returncode or 1)
-    artifact = Path(stamp.read_text().strip())
-    if not (artifact / 'game.json').is_file() or not (artifact / 'project.config.json').is_file():
+    try:
+        artifact = Path(stamp.read_text(encoding='utf-8').strip()).resolve()
+        try:
+            artifact.relative_to(output)
+        except ValueError:
+            raise ValueError('artifact path is outside the requested output directory')
+        game = json.loads((artifact / 'game.json').read_text(encoding='utf-8'))
+        config = json.loads((artifact / 'project.config.json').read_text(encoding='utf-8'))
+        entry = artifact / 'game.js'
+        if not isinstance(game, dict) or game.get('deviceOrientation') != 'portrait':
+            raise ValueError('game.json must describe a portrait mini-game')
+        subpackages = game.get('subpackages', [])
+        if not isinstance(subpackages, list):
+            raise ValueError('game.json subpackages must be an array')
+        for package in subpackages:
+            package_root = package.get('root') if isinstance(package, dict) else None
+            if not isinstance(package_root, str) or not package_root.strip() or Path(package_root).is_absolute():
+                raise ValueError('game.json contains an invalid subpackage root')
+            resolved = (artifact / package_root).resolve()
+            try:
+                resolved.relative_to(artifact)
+            except ValueError:
+                raise ValueError('subpackage root is outside the mini-game project')
+            if resolved == artifact or not resolved.is_dir():
+                raise ValueError('game.json references a missing subpackage directory')
+        if not isinstance(config, dict) or config.get('appid') != args.appid:
+            raise ValueError('project.config.json AppID does not match the requested AppID')
+        if not entry.is_file() or entry.stat().st_size == 0:
+            raise ValueError('game.js is missing or empty')
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         preserve_failure_log(log)
-        sys.exit(f'TTSDK returned an incomplete project: {artifact}')
+        sys.exit(f'TTSDK returned an invalid project: {error}')
     print(f'Douyin preview project: {artifact}')
