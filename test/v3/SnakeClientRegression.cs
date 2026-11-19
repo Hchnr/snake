@@ -479,9 +479,15 @@ namespace SnakeClub.Tests.Editor
                 var impactPoints = (System.Collections.Generic.List<Point>)typeof(ArenaState).GetField("strengthDamagePoints", flags).GetValue(state);
                 Require(world.LastPlayerDamageCount == 6 && impactPoints.Count == 2 && primary.enabled && extra[0].enabled && extra[1] == null,
                     "actual simultaneous damage did not produce two impact rings");
-                Require(Mathf.Abs(primary.GetPosition(0).x - .35f - impactPoints[0].x) < .01f &&
-                    Mathf.Abs(extra[0].GetPosition(0).x - .35f - impactPoints[1].x) < .01f,
+                Require(Mathf.Abs(primary.GetPosition(0).x - .85f - impactPoints[0].x) < .01f &&
+                    Mathf.Abs(extra[0].GetPosition(0).x - .85f - impactPoints[1].x) < .01f &&
+                    Mathf.Abs(primary.GetPosition(0).y - .32f) < .001f && Mathf.Abs(extra[0].GetPosition(0).y - .32f) < .001f,
                     "multi-impact rings did not use the actual hit locations");
+                var overlay = Resources.Load<Shader>("ImpactOverlay");
+                var attack = (LineRenderer)typeof(ArenaRenderer).GetField("strengthAttackRing", flags).GetValue(renderer);
+                Require(overlay != null && overlay.isSupported && primary.sharedMaterial.shader == overlay &&
+                    extra[0].sharedMaterial == primary.sharedMaterial && attack.sharedMaterial != primary.sharedMaterial,
+                    "damage overlay missing, unshared or applied to attack");
                 renderer.MotionPaused = true; var frozen = extra[0].GetPosition(0);
                 clock.Advance(1f, true); renderer.Draw(state, "you");
                 Require(extra[0].enabled && extra[0].GetPosition(0) == frozen, "paused multi-impact did not freeze");
@@ -530,7 +536,7 @@ namespace SnakeClub.Tests.Editor
                 Require(match.LastPlayerAttackTick == 1 && match.LastPlayerDamageTick == 1 && attack.enabled && damage.enabled,
                     "actual mutual bite did not display both impacts");
                 Require(Mathf.Abs(attack.GetPosition(0).x - .35f - match.LastPlayerAttackPoint.x / 1000f) < .01f &&
-                    Mathf.Abs(damage.GetPosition(0).x - .35f - match.LastPlayerDamagePoint.x / 1000f) < .01f,
+                    Mathf.Abs(damage.GetPosition(0).x - .85f - match.LastPlayerDamagePoint.x / 1000f) < .01f,
                     "impact position differed from the actual bite");
                 var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
                 clock.Advance(.2f, false); renderer.Draw(match.RenderState(), "you");

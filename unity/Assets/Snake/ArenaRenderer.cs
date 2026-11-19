@@ -60,6 +60,7 @@ namespace SnakeClub
         private Material weakPointMaterial;
         private Material threatMaterial;
         private Material trailLineMaterial;
+        private Material damageImpactMaterial;
         private Material trailPulseMaterial;
         private Material outerBackdropMaterial;
         private Mesh sphere;
@@ -216,6 +217,8 @@ namespace SnakeClub
             trailPulseMaterial.SetColor("_EmissionColor", new Color(.18f, .22f, .20f));
             var lineShader = Shader.Find("Sprites/Default");
             trailLineMaterial = lineShader != null ? new Material(lineShader) : MakeMaterial(Color.white, 0);
+            var impactShader = Resources.Load<Shader>("ImpactOverlay");
+            if (impactShader != null && impactShader.isSupported) damageImpactMaterial = new Material(impactShader);
             SetupScene();
         }
 
@@ -399,6 +402,7 @@ namespace SnakeClub
             reboundRipple = MakeEffectRing("Rebound ripple", new Color(.55f, 1f, .91f, 1f));
             strengthAttackRing = MakeEffectRing("Strength attack impact", new Color(1f, .86f, .30f, 1f));
             strengthDamageRing = MakeEffectRing("Strength damage impact", new Color(1f, .32f, .25f, 1f));
+            if (damageImpactMaterial != null) strengthDamageRing.sharedMaterial = damageImpactMaterial;
             strengthPickupPendingRing = MakeEffectRing("Strength pickup warning", new Color(1f, .78f, .30f, 1f));
             strengthLevelRing = MakeEffectRing("Strength level up", new Color(.65f, 1f, .60f, 1f));
             for (int i = 0; i < recoverySupplyRings.Length; i++)
@@ -785,7 +789,10 @@ namespace SnakeClub
                     {
                         additionalDamagePoints[i] = state.strengthDamagePoints[i + 1];
                         if (additionalDamageRings[i] == null)
+                        {
                             additionalDamageRings[i] = MakeEffectRing("Strength damage impact " + (i + 2), new Color(1f, .32f, .25f, 1f));
+                            if (damageImpactMaterial != null) additionalDamageRings[i].sharedMaterial = damageImpactMaterial;
+                        }
                     }
                 }
             }
@@ -807,11 +814,11 @@ namespace SnakeClub
                 strengthLevelRing.widthMultiplier = ReducedEffects ? .16f : .20f * (1f - progress);
             }
             DrawStrengthImpact(strengthAttackRing, strengthAttackPoint, strengthAttackStarted);
-            DrawStrengthImpact(strengthDamageRing, strengthDamagePoint, strengthDamageStarted);
+            DrawStrengthImpact(strengthDamageRing, strengthDamagePoint, strengthDamageStarted, true);
             for (int i = 0; i < additionalDamageRings.Length; i++)
             {
                 if (additionalDamageRings[i] == null) continue;
-                if (i < additionalDamageCount) DrawStrengthImpact(additionalDamageRings[i], additionalDamagePoints[i], strengthDamageStarted);
+                if (i < additionalDamageCount) DrawStrengthImpact(additionalDamageRings[i], additionalDamagePoints[i], strengthDamageStarted, true);
                 else additionalDamageRings[i].enabled = false;
             }
             float reboundAge = visualClock.Time - reboundStarted;
@@ -872,13 +879,13 @@ namespace SnakeClub
             DrawBatch(scales, scaleMaterial); DrawBatch(weakPoints, weakPointMaterial); DrawBatch(threatMarks, threatMaterial); DrawBatch(trail, scaleMaterial); DrawBatch(trailPulses, trailPulseMaterial); DrawBatch(sparks, fruitMaterials[0]); DrawBatch(eyes, eyeMaterial); DrawBatch(pupils, pupilMaterial);
         }
 
-        private void DrawStrengthImpact(LineRenderer ring, Point point, float started)
+        private void DrawStrengthImpact(LineRenderer ring, Point point, float started, bool damage = false)
         {
             float age = visualClock.Time - started;
             ring.enabled = StrengthBodyVisual && age >= 0f && age < .45f;
             if (!ring.enabled) return;
             float progress = age / .45f;
-            PlaceRing(ring, new Vector3(point.x, .32f, point.y), ReducedEffects ? .85f : Mathf.Lerp(.35f, 1.5f, progress));
+            PlaceRing(ring, new Vector3(point.x, .32f, point.y), ReducedEffects ? .85f : Mathf.Lerp(damage ? .85f : .35f, 1.5f, progress));
             ring.widthMultiplier = ReducedEffects ? .16f : .20f * (1f - progress);
         }
 
@@ -933,6 +940,7 @@ namespace SnakeClub
             if (view != null) view.targetTexture = null;
             if (previewTexture != null) { previewTexture.Release(); Destroy(previewTexture); }
             if (captureSweepMesh != null) Destroy(captureSweepMesh);
+            if (damageImpactMaterial != null) Destroy(damageImpactMaterial);
             if (trailPulseMaterial != null) Destroy(trailPulseMaterial);
             if (weakPointMaterial != null) Destroy(weakPointMaterial);
             if (threatMaterial != null) Destroy(threatMaterial);
