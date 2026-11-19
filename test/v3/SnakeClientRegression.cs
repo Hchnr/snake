@@ -744,6 +744,56 @@ namespace SnakeClub.Tests.Editor
             Require(obstacles.Count == 1 && obstacles[0].Contains(projectedContact.center) &&
                 obstacles[0].xMin < projectedContact.xMin && obstacles[0].yMax > projectedContact.yMax,
                 "contact panel did not use the inset UI projection and full marker clearance");
+            var addGuidance = typeof(SnakeGameApp).GetMethod("AppendRecoveryGuidanceObstacle", flags);
+            var guidanceChoice = typeof(SnakeGameApp).GetMethod("ResolveStrengthGuidance", flags);
+            Require(addGuidance != null && guidanceChoice != null, "guidance obstruction fixture missing");
+            bool[] Choose(string protection, string contact, string capture, string recovery, bool intro)
+            {
+                object[] args = { protection, contact, capture, recovery, intro, false, false, false };
+                guidanceChoice.Invoke(null, args);
+                return new[] { (bool)args[5], (bool)args[6], (bool)args[7] };
+            }
+            string realRecovery = RecoverySupplyNotice.Text(world, world.Tick, false);
+            Require(!string.IsNullOrEmpty(realRecovery), "real recovery guidance missing after bite");
+            var protectedWorld = new PveFixedWorld(42, false, null, true);
+            var protectionNotice = new StrengthProtectionNotice();
+            protectionNotice.Observe(protectedWorld, protectedWorld.RenderState(), "you");
+            string realProtection = protectionNotice.Text(protectedWorld, protectedWorld.RenderState(), "you", false);
+            Require(!string.IsNullOrEmpty(realProtection) &&
+                string.IsNullOrEmpty(protectionNotice.Text(protectedWorld, protectedWorld.RenderState(), "you", true)),
+                "real shield guidance missing or visible while suspended");
+            var choice = Choose(realProtection, "", "", realRecovery, true);
+            Require(choice[0] && !choice[1] && !choice[2], "protection did not win guidance priority");
+            choice = Choose("shield", "damage", "", realRecovery, true);
+            Require(!choice[0] && choice[1] && !choice[2], "real recovery did not win when damage hid protection");
+            choice = Choose("shield", "", "capture", "", true);
+            Require(!choice[0] && !choice[1] && choice[2], "capture did not suppress protection before tutorial fallback");
+            choice = Choose("", "", "", "", false);
+            Require(!choice[0] && !choice[1] && !choice[2], "empty guidance unexpectedly appeared");
+            firstScreen = new Vector2(270, 500); secondScreen = new Vector2(270, 275);
+            bounds = new Rect(240, 450, 60, 100);
+            prepare.Invoke(null, new object[] { obstacles, safe, 540f, 960f });
+            addGuidance.Invoke(null, new object[] { obstacles, false, safe, 540f, 960f }); Select(false);
+            Require(markers.Count == 0, "negative control did not expose guidance-panel suppression");
+            addGuidance.Invoke(null, new object[] { obstacles, true, safe, 540f, 960f }); Select(false);
+            Require(markers.Count == 1 && markers[0] == firstScreen, "guidance-hidden fruit suppressed recovery marker");
+            secondScreen = new Vector2(45, 275); Select(false);
+            Require(markers.Count == 1, "guidance panel did not reserve full marker edge");
+            secondScreen = new Vector2(350, 600); Select(false);
+            Require(markers.Count == 0, "visible fruit failed to suppress marker while guidance was visible");
+            Select(true); Require(markers.Count == 0, "guidance marker remained while suspended");
+            Require(string.IsNullOrEmpty(RecoverySupplyNotice.Text(world, world.Tick + 4 * PveFixedWorld.TickRate, false)),
+                "recovery guidance did not expire");
+            secondScreen = new Vector2(270, 275);
+            prepare.Invoke(null, new object[] { obstacles, safe, 540f, 960f });
+            addGuidance.Invoke(null, new object[] { obstacles, false, safe, 540f, 960f }); Select(false);
+            Require(markers.Count == 0, "expired guidance continued to obstruct selection");
+            Rect guidance = (Rect)typeof(SnakeGameApp).GetField("StrengthGuidancePanel", flags).GetValue(null);
+            Rect projectedGuidance = (Rect)uiRect.Invoke(null, new object[] { guidance, inset, 540f, 960f });
+            obstacles.Clear(); addGuidance.Invoke(null, new object[] { obstacles, true, inset, 540f, 960f });
+            Require(obstacles.Count == 1 && obstacles[0].Contains(projectedGuidance.center) &&
+                obstacles[0].xMin < projectedGuidance.xMin && obstacles[0].yMax > projectedGuidance.yMax,
+                "guidance panel ignored inset or marker clearance");
             var legacy = new PveFixedWorld(42, false, null);
             Require(string.IsNullOrEmpty(StrengthContactNotice.Text(legacy, 0, out _)), "contact panel leaked into legacy mode");
             Debug.Log("PASS Unity recovery guidance respects actual contact notice lifetime and layout");
