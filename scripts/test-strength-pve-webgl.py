@@ -35,6 +35,8 @@ squeeze_pattern = re.compile(r'squeeze-escape=([0-9a-f:,]+)')
 squeeze_fixture_pattern = re.compile(r'squeeze-fixture=([0-9a-f]{16})')
 multi_pattern = re.compile(r'multi-bite=([0-9a-f:,]+)')
 multi_fixture_pattern = re.compile(r'multi-fixture=([0-9a-f]{16})')
+headtie_pattern = re.compile(r'head-tie=([0-9a-f:,]+)')
+headtie_fixture_pattern = re.compile(r'headtie-fixture=([0-9a-f]{16})')
 stable_fixture_pattern = re.compile(r'stable-fixture=([0-9a-f]{16})')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
@@ -299,6 +301,17 @@ if not multi_match or len(multi_match.group(1).split(',')) != 112 or not multi_f
     sys.exit('Desktop v11 multi-bite matrix or controlled fixture is incomplete.')
 expected_multi = multi_match.group(1)
 expected_multi_fixture = multi_fixture_match.group(1)
+# Preserve v11 rather than comparing two possibly changed runtimes only.
+if hashlib.sha256(expected_multi.encode('ascii')).hexdigest() != 'cfb3c550aa4ed3bec0ec9475a8703815b28ecc9a93db86f910b11b28c9c2a729' or expected_multi_fixture != '33986d57bb67db95':
+    sys.exit('MISMATCH: v11 multi-bite vectors changed from the preserved reference.')
+headtie_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-headtie-vector'],
+                                  text=True, capture_output=True, check=True, timeout=180).stdout
+headtie_match = headtie_pattern.search(headtie_reference)
+headtie_fixture_match = headtie_fixture_pattern.search(headtie_reference)
+if not headtie_match or len(headtie_match.group(1).split(',')) != 112 or not headtie_fixture_match:
+    sys.exit('Desktop v12 matrix or controlled head-tie fixture is incomplete.')
+expected_headtie = headtie_match.group(1)
+expected_headtie_fixture = headtie_fixture_match.group(1)
 squeeze_coverage = 0
 for case in expected_squeeze.split(','):
     fields = case.split(':')
@@ -338,7 +351,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { if (Application.absoluteURL.Contains("multi=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeMultiBite()); else if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
+    private static void Run() { if (Application.absoluteURL.Contains("headtie=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeHeadTie()); else if (Application.absoluteURL.Contains("multi=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeMultiBite()); else if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -424,6 +437,18 @@ internal static class FixedVectorDiagnostic {
             sys.exit('WebGL v11 matrix or controlled multi-bite fixture is incomplete.')
         if actual_multi_match.group(1) != expected_multi or actual_multi_fixture_match.group(1) != expected_multi_fixture:
             sys.exit('MISMATCH: v11 multi-bite simulation or controlled fixture differs across runtimes.')
+        print('Running v12 head-tie vectors in a fifth muted headless browser...', flush=True)
+        headtie_result = subprocess.run(['node', str(root / 'scripts/fixed-pve-webgl-probe.cjs'), str(chrome),
+                                         'http://127.0.0.1:' + str(server.server_port) + '/?headtie=1'],
+                                        capture_output=True, text=True, timeout=240, check=False)
+        if headtie_result.returncode:
+            sys.exit('Headless v12 diagnostic failed: ' + headtie_result.stderr[-3000:])
+        actual_headtie = headtie_pattern.search(headtie_result.stdout)
+        actual_headtie_fixture = headtie_fixture_pattern.search(headtie_result.stdout)
+        if not actual_headtie or len(actual_headtie.group(1).split(',')) != 112 or not actual_headtie_fixture:
+            sys.exit('WebGL v12 matrix or controlled head-tie fixture is incomplete.')
+        if actual_headtie.group(1) != expected_headtie or actual_headtie_fixture.group(1) != expected_headtie_fixture:
+            sys.exit('MISMATCH: v12 head-tie simulation or controlled fixture differs across runtimes.')
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -483,6 +508,6 @@ internal static class FixedVectorDiagnostic {
             sys.exit('MISMATCH: squeeze-escape simulation differs across runtimes.')
         if actual_squeeze_fixture_match.group(1) != expected_squeeze_fixture:
             sys.exit('MISMATCH: squeeze lifecycle fixture differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9, 112 v10 and 112 v11 matches plus controlled bite/block, recovery-priority, squeeze and multi-bite fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9, 112 v10 and 112 v11 and 112 v12 matches plus controlled bite/block, recovery-priority, squeeze, multi-bite and head-tie fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

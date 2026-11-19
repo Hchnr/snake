@@ -1597,7 +1597,7 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.RulesVersion == PveFixedRecording.LocalStrengthHeadTieRules && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "account tutorial changed local first run");
                 var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
@@ -1624,7 +1624,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.RulesVersion == PveFixedRecording.LocalStrengthHeadTieRules && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");

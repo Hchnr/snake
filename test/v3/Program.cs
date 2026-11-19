@@ -20,11 +20,12 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
-if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal" || args[0] == "strength-recovery-priority-replay-terminal" || args[0] == "strength-squeeze-escape-replay-terminal" || args[0] == "strength-multibite-replay-terminal"))
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal" || args[0] == "strength-recovery-priority-replay-terminal" || args[0] == "strength-squeeze-escape-replay-terminal" || args[0] == "strength-multibite-replay-terminal" || args[0] == "strength-headtie-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    bool multi = args[0] == "strength-multibite-replay-terminal";
+    bool headTie = args[0] == "strength-headtie-replay-terminal";
+    bool multi = args[0] == "strength-multibite-replay-terminal" || headTie;
     bool squeeze = args[0] == "strength-squeeze-escape-replay-terminal" || multi;
     bool priority = args[0] == "strength-recovery-priority-replay-terminal" || squeeze;
     bool stableBlocked = args[0] == "strength-stable-blocked-replay-terminal" || priority;
@@ -32,11 +33,16 @@ if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "st
     bool recoverySupply = args[0] == "strength-recovery-replay-terminal" || safeRecovery;
     bool openingFood = args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || recoverySupply;
     bool openingEncounter = args[0] == "strength-encounter-replay-terminal" || recoverySupply;
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart, stableBlocked, priority, squeeze, multi)) throw new InvalidOperationException("Invalid recording");
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart, stableBlocked, priority, squeeze, multi, headTie)) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
 
+if (args.Length == 1 && args[0] == "strength-headtie-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeHeadTie());
+    return;
+}
 if (args.Length == 1 && args[0] == "strength-multibite-vector")
 {
     Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeMultiBite());
@@ -170,6 +176,7 @@ var cases = new (string name, Action run)[]
     ("strength appearance follows real defense and temporary effects", StrengthAppearanceCases),
     ("growth view follows current length and bounded preferences", GrowthViewCases),
     ("multi-bite retains snapshot ordering, event totals and replay", StrengthMultiBiteRegression.Run),
+    ("head tie handles simultaneous bites and safe separation", StrengthHeadTieRegression.Run),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("elimination feedback follows observed credited outcomes", EliminationFeedbackCases),
     ("kill feedback reflects observed growth and freezes with match ticks", KillFeedbackCases),

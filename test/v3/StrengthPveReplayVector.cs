@@ -108,9 +108,11 @@ namespace SnakeClub.Tests
 
         public static string ComputeMultiBite() => ComputeRecovery(true, true, true, true, true, true, true) + "|" + MultiBiteFixture();
 
-        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false, bool recoveryPriority = false, bool squeezeEscape = false, bool multiBite = false)
+        public static string ComputeHeadTie() => ComputeRecovery(true, true, true, true, true, true, true, true) + "|" + HeadTieFixture();
+
+        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false, bool recoveryPriority = false, bool squeezeEscape = false, bool multiBite = false, bool headTie = false)
         {
-            string prefix = multiBite ? "multi-bite=" : squeezeEscape ? "squeeze-escape=" : recoveryPriority ? "priority-recovery=" : stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
+            string prefix = headTie ? "head-tie=" : multiBite ? "multi-bite=" : squeezeEscape ? "squeeze-escape=" : recoveryPriority ? "priority-recovery=" : stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
             var result = new StringBuilder(prefix);
             foreach (int seed in squeezeEscape ? new[] { 2, 9, 35, 68, 92, 105, 192 } : recoveryPriority ? new[] { 2, 9, 68, 92, 105, 192 } : aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
@@ -119,7 +121,7 @@ namespace SnakeClub.Tests
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
                     localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned,
-                    localCappedStart: capped, localStableBlocked: stableBlocked, localRecoveryPriority: recoveryPriority, localSqueezeEscape: squeezeEscape, localMultiBite: multiBite);
+                    localCappedStart: capped, localStableBlocked: stableBlocked, localRecoveryPriority: recoveryPriority, localSqueezeEscape: squeezeEscape, localMultiBite: multiBite, localHeadTieAfterBite: headTie);
                 int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
@@ -222,6 +224,116 @@ namespace SnakeClub.Tests
             foreach(var fighter in new[]{ma,mb})foreach(var part in fighter.motion.Segments){Add(part.x);Add(part.y);}
             return "multi-fixture="+hash.ToString("x16");
         }
+
+
+        private static string HeadTieFixture()
+        {
+            hash = 14695981039346656037UL;
+            // True world Step: two AIs contact distinct segments of the player in one tick.
+            var world = new PveFixedWorld(1, false, null, true, localAdvantage:true, localOpeningFood:true, localOpeningEncounter:true,
+                localRecoverySupply:true, localSafeRecovery:true, localAlignedStart:true, localCappedStart:true,
+                localStableBlocked:true, localRecoveryPriority:true, localSqueezeEscape:true, localMultiBite:true, localHeadTieAfterBite:true);
+            var actors = (PveFixedFighter[])world.Fighters;
+            actors[0] = new PveFixedFighter("you", new PveFixedMotion(0,0,0,16));
+            actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-4500,400,16384,80));
+            actors[2] = new PveFixedFighter("bot-2", new PveFixedMotion(-11700,-400,49152,80));
+            for(int i=3;i<actors.Length;i++) actors[i].alive=false;
+            for (int step=0;step<24 && !world.Finished;step++) {
+                world.Step((byte)(step*13),false,true);
+                if (step==0 && (world.LastPlayerDamageTick!=1 || world.LastPlayerDamageCount!=6 || world.PlayerSegmentsLostToBites!=6 || !world.LastPlayerWasBitten || world.LastPlayerBiteCount!=6)) throw new InvalidOperationException("multi-damage fixture failed");
+                world.AppendReplayDiagnostics(Add);Add(world.Tick);Add(world.LastPlayerDamageTick);Add(world.LastPlayerDamageCount);Add(world.LastPlayerBiteCount);Add(world.LastPlayerWasBitten?1:0);Add(world.PlayerSegmentsLostToBites);
+                foreach(var fighter in world.Fighters) { Add(fighter.id);Add(fighter.alive?1:0);Add(fighter.motion.X);Add(fighter.motion.Y);Add(fighter.motion.Angle);Add(fighter.motion.Length);foreach(var part in fighter.motion.Segments){Add(part.x);Add(part.y);} }
+            }
+            // Resolve identical disjoint bites twice, reversing input array order.
+            foreach(bool reverse in new[]{false,true}) {
+                var a=new PveFixedFighter("a",new PveFixedMotion(-4500,800,16384,16));
+                var b=new PveFixedFighter("b",new PveFixedMotion(-11700,-800,49152,16));
+                var t=new PveFixedFighter("target",new PveFixedMotion(0,0,0,16));
+                var fighters=reverse?new[]{t,b,a}:new[]{a,b,t};
+                var inputs=new StrengthInputs[fighters.Length];
+                for(int k=0;k<fighters.Length;k++) inputs[k]=new StrengthInputs {basePower=fighters[k].id=="target"?100:300,speed=1000,baseSpeed=1000,randomFactor=1000,operationFactor=1000};
+                var bites=new StrengthBodyCombat().ResolveBuffered(0,fighters,inputs,false,true);
+                if(bites.Count!=2 || t.motion.Length!=10) throw new InvalidOperationException("separate bites fixture failed");
+                foreach(var bite in bites) {Add(bite.attacker);Add(bite.defender);Add(bite.segment);Add(bite.removed);}
+                foreach(var fighter in new[]{a,b,t}) {Add(fighter.motion.Length);foreach(var part in fighter.motion.Segments){Add(part.x);Add(part.y);}}
+            }
+            // Mutual bites preserve both snapshot decisions and award each attacker.
+            var ma=new PveFixedFighter("a",new PveFixedMotion(0,0,0,16));
+            var mb=new PveFixedFighter("b",new PveFixedMotion(-11700,0,32768,16));
+            var power=new StrengthInputs {basePower=100,speed=1000,baseSpeed=1000,randomFactor=1000,operationFactor=1000};
+            var mutual=new StrengthBodyCombat().ResolveBuffered(0,new[]{ma,mb},new[]{power,power},false,true);
+            if(mutual.Count!=2 || ma.motion.Length!=16 || mb.motion.Length!=16) throw new InvalidOperationException("mutual bite fixture failed");
+            foreach(var bite in mutual){Add(bite.attacker);Add(bite.defender);Add(bite.segment);Add(bite.removed);}
+            foreach(var fighter in new[]{ma,mb})foreach(var part in fighter.motion.Segments){Add(part.x);Add(part.y);}
+            // Actual body bite and equal head collision in the same snapshot.
+            var ta=new PveFixedFighter("ta",new PveFixedMotion(0,0,0,16));
+            var tb=new PveFixedFighter("tb",new PveFixedMotion(0,1000,0,16));
+            var tc=new PveFixedFighter("tc",new PveFixedMotion(11700,0,0,16));
+            var tf=new[]{ta,tb,tc}; var tp=new[]{power,power,power}; var headTies=new List<HeadTieContact>();
+            StrengthHeadCombat.Resolve(tf,tp,true,headTies);
+            var bodyBites=new StrengthBodyCombat().ResolveBuffered(1,tf,tp,true,true);
+            var separation=StrengthHeadCombat.SeparateTies(tf,headTies,bodyBites,true);
+            long hx=(long)ta.motion.X-tb.motion.X, hy=(long)ta.motion.Y-tb.motion.Y;
+            if(bodyBites.Count!=1 || !separation[0] || !separation[1] || hx*hx+hy*hy<1440L*1440L) throw new InvalidOperationException("v12 head tie fixture failed");
+            foreach(var actor in tf) {Add(actor.motion.X);Add(actor.motion.Y);Add(actor.motion.Angle);Add(actor.motion.Length);foreach(var part in actor.motion.Segments){Add(part.x);Add(part.y);}}
+            // A third non-contact head must not be pushed into by separation.
+            var da=new PveFixedFighter("a",new PveFixedMotion(0,0,0,16));
+            var db=new PveFixedFighter("b",new PveFixedMotion(0,1000,0,16));
+            var dd=new PveFixedFighter("d",new PveFixedMotion(0,-1500,0,16));
+            var df=new[]{da,db,dd}; var dt=new List<HeadTieContact>(); StrengthHeadCombat.Resolve(df,new[]{power,power,power},true,dt);
+            var ds=StrengthHeadCombat.SeparateTies(df,dt,new List<BodyBite>{new BodyBite("a","other",1,1,100,60)},true);
+            long dx=(long)da.motion.X-dd.motion.X,dy=(long)da.motion.Y-dd.motion.Y,ex=(long)db.motion.X-dd.motion.X,ey=(long)db.motion.Y-dd.motion.Y;
+            if (ds[0] != ds[1] || dx*dx+dy*dy<1440L*1440L || ex*ex+ey*ey<1440L*1440L || (!ds[0] && (da.motion.X!=0 || da.motion.Y!=0 || db.motion.X!=0 || db.motion.Y!=1000))) throw new InvalidOperationException("v12 third-head avoidance failed");
+            foreach(var actor in df) {Add(actor.motion.X);Add(actor.motion.Y);Add(actor.motion.Angle);}
+            var na=new PveFixedFighter("a",new PveFixedMotion(0,-10,0,16));
+            var nb=new PveFixedFighter("b",new PveFixedMotion(0,10,0,16));
+            var nf=new[]{na,nb,new PveFixedFighter("c",new PveFixedMotion(1500,0,0,16)),new PveFixedFighter("d",new PveFixedMotion(750,1299,0,16)),new PveFixedFighter("e",new PveFixedMotion(-750,1299,0,16)),new PveFixedFighter("f",new PveFixedMotion(-1500,0,0,16)),new PveFixedFighter("g",new PveFixedMotion(-750,-1299,0,16)),new PveFixedFighter("h",new PveFixedMotion(750,-1299,0,16))};
+            var nt=new List<HeadTieContact>{new HeadTieContact(0,1,new CapturePoint(0,-10),new CapturePoint(0,10),400)};
+            var ns=StrengthHeadCombat.SeparateTies(nf,nt,new List<BodyBite>{new BodyBite("a","other",1,1,100,60)},true);
+            if(ns[0] || ns[1] || na.motion.X!=0 || na.motion.Y!=-10 || nb.motion.X!=0 || nb.motion.Y!=10) throw new InvalidOperationException("v12 no-safe-option failed");
+            foreach(var actor in nf) {Add(actor.motion.X);Add(actor.motion.Y);Add(actor.motion.Angle);}
+            var ea=new PveFixedFighter("a",new PveFixedMotion(0,0,0,16));var eb=new PveFixedFighter("b",new PveFixedMotion(0,1000,0,16));var ed=new PveFixedFighter("d",new PveFixedMotion(0,-1200,0,16));
+            var ef=new[]{ea,eb,ed};var et=new List<HeadTieContact>{new HeadTieContact(0,1,new CapturePoint(0,0),new CapturePoint(0,1000),1000000)};
+            StrengthHeadCombat.SeparateTies(ef,et,new List<BodyBite>{new BodyBite("a","other",1,1,100,60)},true);
+            long e1=(long)ea.motion.X-ed.motion.X,e2=(long)ea.motion.Y-ed.motion.Y;
+            if(e1*e1+e2*e2<1200L*1200L) throw new InvalidOperationException("v12 existing overlap deepened");
+            foreach(var actor in ef) {Add(actor.motion.X);Add(actor.motion.Y);Add(actor.motion.Angle);}
+            // Body positions must be predicted with exactly the same relaxation.
+            var ba=new PveFixedFighter("a",new PveFixedMotion(0,0,0,16));
+            var bb=new PveFixedFighter("b",new PveFixedMotion(0,1000,0,16));
+            var bc=new PveFixedFighter("c",new PveFixedMotion(-3200,-1055,0,16));
+            var bf=new[]{ba,bb,bc}; var bt=new List<HeadTieContact>();
+            StrengthHeadCombat.Resolve(bf,new[]{power,power,power},true,bt);
+            var bs=StrengthHeadCombat.SeparateTies(bf,bt,new List<BodyBite>{new BodyBite("a","other",1,1,100,60)},true);
+            long nearest=long.MaxValue;
+            for(int i=1;i<ba.motion.Length;i++){var point=ba.motion.Segments[i];long x=(long)bc.motion.X-point.x,y=(long)bc.motion.Y-point.y;nearest=Math.Min(nearest,x*x+y*y);}
+            if(nearest<1116L*1116L) throw new InvalidOperationException("v12 moved body into third head");
+            foreach(var actor in bf){Add(actor.motion.X);Add(actor.motion.Y);Add(actor.motion.Angle);foreach(var point in actor.motion.Segments){Add(point.x);Add(point.y);}}
+            foreach(bool used in bs) Add(used?1:0);
+            // The two separated fighters must not create a new head/body contact with each other.
+            var pa=new PveFixedFighter("a",new PveFixedMotion(0,0,35592,16));
+            var pb=new PveFixedFighter("b",new PveFixedMotion(452,-172,17897,16));
+            var pf=new[]{pa,pb}; var pt=new List<HeadTieContact>();
+            long peerBefore=long.MaxValue; for(int i=1;i<pa.motion.Length;i++){var p=pa.motion.Segments[i];long x=(long)pb.motion.X-p.x,y=(long)pb.motion.Y-p.y;peerBefore=Math.Min(peerBefore,x*x+y*y);}
+            StrengthHeadCombat.Resolve(pf,new[]{power,power},true,pt);
+            var ps=StrengthHeadCombat.SeparateTies(pf,pt,new List<BodyBite>{new BodyBite("a","other",1,1,100,60)},true);
+            long peerAfter=long.MaxValue; for(int i=1;i<pa.motion.Length;i++){var p=pa.motion.Segments[i];long x=(long)pb.motion.X-p.x,y=(long)pb.motion.Y-p.y;peerAfter=Math.Min(peerAfter,x*x+y*y);}
+            if(peerBefore>=1116L*1116L && peerAfter<1116L*1116L) throw new InvalidOperationException("v12 created a new peer head/body contact");
+            Add(unchecked((int)peerBefore));Add(unchecked((int)peerAfter));
+            foreach(var actor in pf){Add(actor.motion.X);Add(actor.motion.Y);Add(actor.motion.Angle);foreach(var point in actor.motion.Segments){Add(point.x);Add(point.y);}}
+            foreach(bool used in ps) Add(used?1:0);
+            // Wall contact remains inside the arena even with safety checks.
+            foreach(int wall in new[]{PveFixedMotion.Edge-100,-PveFixedMotion.Edge+100}) {
+                var wa=new PveFixedFighter("a",new PveFixedMotion(wall,0,0,16));var wb=new PveFixedFighter("b",new PveFixedMotion(wall+1,1000,0,16));
+                var wf=new[]{wa,wb};var wt=new List<HeadTieContact>();StrengthHeadCombat.Resolve(wf,new[]{power,power},true,wt);
+                var ws=StrengthHeadCombat.SeparateTies(wf,wt,new List<BodyBite>{new BodyBite("a","other",1,1,100,60)},true);
+                long x=(long)wa.motion.X-wb.motion.X,y=(long)wa.motion.Y-wb.motion.Y;
+                if(!ws[0] || !ws[1] || Math.Abs(wa.motion.X)>PveFixedMotion.Edge || Math.Abs(wb.motion.X)>PveFixedMotion.Edge || x*x+y*y<1440L*1440L) throw new InvalidOperationException("v12 wall separation failed");
+                foreach(var actor in wf){Add(actor.motion.X);Add(actor.motion.Y);Add(actor.motion.Angle);foreach(var point in actor.motion.Segments){Add(point.x);Add(point.y);}}
+            }
+            return "headtie-fixture="+hash.ToString("x16");
+        }
+
 
 
         // Real seed-35 match with a deterministic script. The one-shot

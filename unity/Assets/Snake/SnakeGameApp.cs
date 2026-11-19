@@ -242,7 +242,7 @@ namespace SnakeClub
                 localAdvantage: localStrength, localOpeningFood: localStrength, localOpeningEncounter: localStrength,
                 localRecoverySupply: localStrength, localSafeRecovery: localStrength, localAlignedStart: localStrength,
                 localCappedStart: localStrength, localStableBlocked: localStrength, localRecoveryPriority: localStrength,
-                localSqueezeEscape: localStrength, localMultiBite: localStrength);
+                localSqueezeEscape: localStrength, localMultiBite: localStrength, localHeadTieAfterBite: localStrength);
             state = fixedPve.RenderState();
             strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
