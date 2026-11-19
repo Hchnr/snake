@@ -89,5 +89,43 @@ namespace SnakeClub.Tests
             }
             return result.ToString();
         }
+
+        // Separate local-rule vectors preserve the existing server matrix.
+        public static string ComputeRecovery()
+        {
+            var result = new StringBuilder("recovery=");
+            foreach (int seed in new[] { 2, 68, 73, 105 })
+            foreach (bool first in new[] { false, true })
+            for (int pattern = 0; pattern < 2; pattern++)
+            {
+                hash = 14695981039346656037UL;
+                var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
+                    localOpeningEncounter: true, localRecoverySupply: true);
+                int flags = 0;
+                while (!world.Finished)
+                {
+                    byte heading = pattern == 0 ? (byte)0 : (byte)64;
+                    world.Step(heading, false);
+                    world.AppendReplayDiagnostics(Add);
+                    Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
+                    Add(world.PlayerSegmentsEaten); Add(world.PlayerSegmentsLostToBites);
+                    foreach (var actor in world.Fighters)
+                    {
+                        Add(actor.id); Add(actor.alive ? 1 : 0); Add(actor.shieldTicks); Add(actor.kills);
+                        Add(actor.motion.Angle); Add(actor.motion.Length); Add(actor.motion.Boosting ? 1 : 0);
+                        foreach (var segment in actor.motion.Segments) { Add(segment.x); Add(segment.y); }
+                    }
+                    foreach (var fruit in world.Fruit) { Add(fruit.position.x); Add(fruit.position.y); Add(fruit.color); }
+                    if (world.RecoverySuppliesUsed > 0) flags |= 1;
+                    if (world.RecoverySupplyCollectedByPlayer > 0) flags |= 2;
+                    if (world.RecoverySupplyCollectedByOpponents > 0) flags |= 4;
+                    if (world.RecoverySuppliesUsed > 1) flags |= 8;
+                }
+                if (result.Length > 9) result.Append(',');
+                result.Append(seed).Append(':').Append(first ? 1 : 0).Append(':').Append(pattern).Append(':')
+                    .Append(world.Tick).Append(':').Append(flags).Append(':').Append(hash.ToString("x16"));
+            }
+            return result.ToString();
+        }
     }
 }

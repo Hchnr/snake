@@ -231,7 +231,7 @@ namespace SnakeClub
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             bool localStrength = run == null && (defaultStrength || api.Config.StrengthRulesPreview);
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength);
+                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength, localStrength);
             state = fixedPve.RenderState();
             strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
@@ -753,11 +753,13 @@ namespace SnakeClub
             }
             string protectionText = strengthProtectionNotice.Text(fixedPve, state, playerId, SimulationSuspended);
             bool showProtection = !string.IsNullOrEmpty(protectionText) && string.IsNullOrEmpty(strengthNotice) && string.IsNullOrEmpty(captureText);
-            bool showStrengthIntro = !showProtection && StrengthIntroVisible();
-            if (showProtection || showStrengthIntro)
+            string recoveryText = RecoverySupplyNotice.Text(fixedPve, state != null ? state.tick : -1, SimulationSuspended);
+            bool showRecovery = !showProtection && !string.IsNullOrEmpty(recoveryText);
+            bool showStrengthIntro = !showProtection && !showRecovery && StrengthIntroVisible();
+            if (showProtection || showRecovery || showStrengthIntro)
             {
                 Panel(new Rect(100, 1320, 880, 100), new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 1330, 830, 80), showProtection ? protectionText : StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted, fixedPve.LocalOpeningFood), showProtection ? 30 : 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(125, 1330, 830, 80), showProtection ? protectionText : showRecovery ? recoveryText : StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted, fixedPve.LocalOpeningFood), showProtection || showRecovery ? 30 : 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && state != null && !string.IsNullOrEmpty(state.strengthHeadThreat);
             if (strengthHeadWarning)
@@ -792,9 +794,9 @@ namespace SnakeClub
             }
             if (state != null && state.phase == "running")
             {
-                DrawNames(state, showProtection || showStrengthIntro);
+                DrawNames(state, showProtection || showRecovery || showStrengthIntro);
                 edgeObstacles.Clear();
-                if (showProtection || showStrengthIntro) edgeObstacles.Add(new EdgeObstacle(100, 1320, 880, 100));
+                if (showProtection || showRecovery || showStrengthIntro) edgeObstacles.Add(new EdgeObstacle(100, 1320, 880, 100));
                 if (strengthHeadWarning) edgeObstacles.Add(new EdgeObstacle(250, 1635, 580, 74));
                 if (strengthBodyWarning) edgeObstacles.Add(new EdgeObstacle(230, 1525, 620, 70));
                 if (!string.IsNullOrEmpty(strengthBoostHint)) edgeObstacles.Add(new EdgeObstacle(220, 1715, 640, 70));
