@@ -801,6 +801,43 @@ namespace SnakeClub.Tests.Editor
             Require(birthOnly.Text(squeezeWorld, squeezeState, "you", false) == "", "escape misidentified as birth protection");
             string squeeze = StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", false);
             Require(squeeze.Contains("脱困保护 2 秒") && squeeze.Contains("可穿过对手") && squeeze.Contains("暂不能互吃"), "escape text omitted actual semantics");
+            // Actual same-step damage + fourth blocked contact creates both
+            // escape and priority fruit; both independent timers must be visible.
+            var comboWorld = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true);
+            var comboActors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(comboWorld);
+            comboActors[0] = new PveFixedFighter("you", new PveFixedMotion(-300, 0, 0, 16));
+            comboActors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 1800, 16384, 80));
+            comboActors[2] = new PveFixedFighter("bot-2", new PveFixedMotion(-12000, 0, 0, 16));
+            for (int i = 3; i < comboActors.Length; i++) comboActors[i].alive = false;
+            typeof(PveFixedWorld).GetField("squeezeBlockedStreak", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(comboWorld, 3);
+            typeof(PveFixedWorld).GetField("squeezeBlockedDefender", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(comboWorld, "bot-1");
+            comboWorld.Step(0, false, true);
+            Require(comboWorld.SqueezeEscapeTicks == 40 && comboWorld.LastPlayerDamageCount == 3 && comboWorld.RecoverySuppliesUsed == 1,
+                "same-step damage, block and recovery fixture failed");
+            var comboState = comboWorld.RenderState();
+            string comboText = StrengthSqueezeEscapeNotice.Text(comboWorld, comboState, "you", false);
+            Require(comboText.Contains("脱困保护 2 秒") && comboText.Contains("暂不能互吃") && comboText.Contains("可穿过对手") &&
+                comboText.Contains("部分亮圈你优先 2 秒"), "simultaneous escape and recovery lost an explanation");
+            Require(StrengthSqueezeEscapeNotice.Text(comboWorld, comboState, "you", true) == "", "combined cue appeared while paused");
+            string combinedGuidance = comboText;
+            var markedFruit = (bool[])typeof(PveFixedWorld).GetField("recoveryFruit", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(comboWorld);
+            var priorityExpiry = (int[])typeof(PveFixedWorld).GetField("recoveryPriorityExpiry", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(comboWorld);
+            for (int i = 0; i < markedFruit.Length; i++) if (markedFruit[i]) priorityExpiry[i] = comboWorld.Tick + 1;
+            comboText = StrengthSqueezeEscapeNotice.Text(comboWorld, comboState, "you", false);
+            Require(comboText.Contains("脱困保护 2 秒") && comboText.Contains("部分亮圈你优先 1 秒"), "different timers were conflated");
+            for (int i = 0; i < markedFruit.Length; i++) if (markedFruit[i]) priorityExpiry[i] = comboWorld.Tick;
+            comboText = StrengthSqueezeEscapeNotice.Text(comboWorld, comboState, "you", false);
+            Require(!comboText.Contains("部分亮圈你优先") && comboText.Contains("脱困保护 2 秒"), "expired priority remained in escape cue");
+            for (int i = 0; i < markedFruit.Length; i++) if (markedFruit[i]) { priorityExpiry[i] = comboWorld.Tick + 30; markedFruit[i] = false; }
+            comboText = StrengthSqueezeEscapeNotice.Text(comboWorld, comboState, "you", false);
+            Require(!comboText.Contains("部分亮圈你优先"), "consumed fruit retained priority cue");
+            // If the escape ends first, normal recovery guidance becomes visible again.
+            markedFruit[0] = true; priorityExpiry[0] = comboWorld.Tick + 30;
+            escapeTicks.SetValue(comboActors[0], 0);
+            Require(StrengthSqueezeEscapeNotice.Text(comboWorld, comboWorld.RenderState(), "you", false) == "" &&
+                RecoverySupplyNotice.Text(comboWorld, comboWorld.Tick, false).Contains("优先吃 2 秒"), "recovery cue did not return after escape");
             var suffix = typeof(SnakeGameApp).GetMethod("ProtectionNameplateSuffix", flags);
             string Suffix(bool strength, bool own, bool escaping) => (string)suffix.Invoke(null, new object[] { strength, own, escaping });
             Require(Suffix(true, true, true) == " 脱困" && Suffix(true, true, false) == " 保护" &&
@@ -833,6 +870,11 @@ namespace SnakeClub.Tests.Editor
             obstacles.Clear(); addHeadline.Invoke(null, new object[] { obstacles, false, escapeHeadline, areaSafe, 540f, 960f });
             Require(obstacles.Count == 0, "hidden headline continued to block recovery markers");
             var prioritize = typeof(SnakeGameApp).GetMethod("PrioritizeSqueezeGuidance", flags);
+            var combinedArgs = new object[] { combinedGuidance, realProtection, realRecovery };
+            prioritize.Invoke(null, combinedArgs);
+            var combinedChoice = Choose((string)combinedArgs[1], "actual damage and rebound", "", (string)combinedArgs[2], true);
+            Require(!combinedChoice[0] && combinedChoice[1] && ((string)combinedArgs[2]).Contains("部分亮圈你优先 2 秒"),
+                "combined recovery guidance was hidden by real contact feedback");
             var choiceArgs = new object[] { squeeze, realProtection, realRecovery };
             prioritize.Invoke(null, choiceArgs);
             var squeezeChoice = Choose((string)choiceArgs[1], "actual damage and rebound", "", (string)choiceArgs[2], true);
