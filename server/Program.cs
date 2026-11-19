@@ -36,14 +36,20 @@ var rooms = new RoomManager();
 app.UseCors("game");
 if (rateLimit > 0) app.UseRateLimiter();
 GameApi.Map(app, builder.Environment.ContentRootPath);
-app.UseWebSockets();
 app.MapGet("/health", () => Results.Json(new { ok = true, service = "snake-club", version = "0.0.3.1" }));
-app.Map("/ws", async context =>
+// Realtime rooms are a development capability, not part of the first
+// production release. In particular the room service does not yet have
+// production authentication or bounded connection/room capacity.
+if (!production)
 {
-    if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
-    using var socket = await context.WebSockets.AcceptWebSocketAsync();
-    await rooms.Handle(socket, context.RequestAborted);
-});
+    app.UseWebSockets();
+    app.Map("/ws", async context =>
+    {
+        if (!context.WebSockets.IsWebSocketRequest) { context.Response.StatusCode = 400; return; }
+        using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        await rooms.Handle(socket, context.RequestAborted);
+    });
+}
 using var stop = new CancellationTokenSource();
 var loop = rooms.Run(stop.Token);
 var web = app.RunAsync();

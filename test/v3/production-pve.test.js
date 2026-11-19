@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const { spawn, execFileSync } = require('node:child_process');
 const { createHash, createHmac } = require('node:crypto');
 const fs = require('node:fs');
+const http = require('node:http');
 const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
@@ -18,7 +19,22 @@ const sign = value => {
 };
 const tokenFor = run => sign([run.id, run.playerId, run.mode, run.date, run.rules, run.seed, run.expiresAt].join(':'));
 
-test('production blocks unverified PvE while preserving completed receipts and daily starts', async () => {
+// Exercise an actual WebSocket handshake, not just an ordinary HTTP GET.
+function upgradeStatus(endpoint) {
+  return new Promise((resolve, reject) => {
+    const request = http.request(`${endpoint}/ws`, { headers: {
+      Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13',
+      'Sec-WebSocket-Key': 'dGhlIHNhbXBsZSBub25jZQ=='
+    }});
+    request.on('response', response => { response.resume(); resolve(response.statusCode); });
+    request.on('upgrade', (response, socket) => { socket.destroy(); resolve(response.statusCode); });
+    request.on('error', reject);
+    request.setTimeout(5000, () => request.destroy(new Error('WebSocket handshake timed out')));
+    request.end();
+  });
+}
+
+test('production disables development rooms and unverified PvE while preserving daily and receipts', async () => {
   const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-production-pve-'));
   let child;
   try {
@@ -47,6 +63,7 @@ test('production blocks unverified PvE while preserving completed receipts and d
       if (!ready) await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.ok(ready, `server failed to start: ${output}`);
+    assert.equal(await upgradeStatus(endpoint), 404, 'production accepted an unsupported realtime room connection');
     const session = sign(`${playerId}:${Math.floor(Date.now() / 1000) + 3600}`);
     async function request(route, body, bearer = session) {
       const response = await fetch(`${endpoint}/api/v3/${route}`, { method: body === undefined ? 'GET' : 'POST',
