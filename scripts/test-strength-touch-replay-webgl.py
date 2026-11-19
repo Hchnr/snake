@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from headless_process import run_headless
 
 root = Path(__file__).resolve().parent.parent
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
@@ -161,11 +162,11 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     thread = threading.Thread(target=server.serve_forever, daemon=True); thread.start()
     try:
         print('Playing a complete strength preview using muted headless Chrome...', flush=True)
-        result = subprocess.run(['node', str(root / 'scripts/strength-touch-replay-probe.cjs'), str(chrome),
+        result = run_headless(['node', str(root / 'scripts/strength-touch-replay-probe.cjs'), str(chrome),
                                  'http://127.0.0.1:' + str(server.server_port) + '/', str(match_timeout)],
                                 env=dict(os.environ, SNAKE_STRENGTH_OPENING_LEFT=opening_left, SNAKE_STRENGTH_REQUIRE_RECOVERY=require_recovery,
                                          SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=require_protection_cue),
-                                capture_output=True, text=True, timeout=match_timeout + 300, check=False)
+                                timeout=match_timeout + 300)
         if result.returncode:
             sys.exit('Touch replay diagnostic failed:\n' + result.stdout[-2000:] + result.stderr[-4000:])
         if opening_left == '1':
