@@ -165,6 +165,17 @@ namespace SnakeClub.Core
         // belong to the future match rules, not to this movement primitive.
         public bool TryCapture(out CaptureLoop loop) => CaptureGeometry.TryLoop(PreviousHead, segments, out loop);
 
+        // One offline opening assist: keep the body and position intact and
+        // align the head only when normal steering could not reach the target
+        // in this step. Caller owns the time window and one-use limit.
+        internal bool TryAlignOpeningTurn(byte target)
+        {
+            int delta = ((target * 256 - Angle + 98304) & 65535) - 32768;
+            if (Math.Abs(delta) <= TurnStep) return false;
+            Angle = target * 256;
+            return true;
+        }
+
         public void Step(byte target, bool boost, PveFixedBonuses bonuses)
         {
             PreviousHead = segments[0];

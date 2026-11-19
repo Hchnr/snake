@@ -2,7 +2,7 @@
 """Replay a real touch-controlled strength match across WebGL and desktop .NET.
 
 Temporary instrumentation records actual simulation inputs in a disposable build.
-An offline seed of 98 exercises protection and an actual recovery opportunity.
+An offline v6 seed of 39 is used to exercise protection and recovery.
 This does not replace device, Douyin or multitouch hardware validation.
 """
 from functools import partial
@@ -72,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     code = inject_once(code, before, after)
     before = '            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,'
     try:
-        diagnostic_seed = int(os.environ.get('SNAKE_STRENGTH_SEED', '98'))
+        diagnostic_seed = int(os.environ.get('SNAKE_STRENGTH_SEED', '39'))
     except ValueError:
         sys.exit('SNAKE_STRENGTH_SEED must be an integer.')
     if not -(2 ** 31) <= diagnostic_seed < 2 ** 31:
@@ -82,8 +82,8 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     before = '            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
     after = before + '\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
-    before = '                fixedPve.Step(heading, pointerBoost);\n                runInputs.Add(heading);'
-    after = '                fixedPve.Step(heading, pointerBoost);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'
+    before = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                runInputs.Add(heading);'
+    after = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'
     code = inject_once(code, before, after)
     before = '            if (showProtection || showRecovery || showStrengthIntro)\n'
     after = '''            string visibleProtectionCue = showProtection ? protectionText : "";
@@ -112,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             {
                 byte[] tape = runInputs.ToArray();
                 string live = SnakeClub.Tests.StrengthPveReplayVector.Terminal(fixedPve);
-                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery);
+                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart);
                 bool match = valid && SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) == live;
                 Debug.Log("SNAKE_STRENGTH_E2E " + (match ? "MATCH" : "FAIL") + " " + strengthDiagnosticSeed + " " +
                     (firstRun ? 1 : 0) + " " + fixedPve.Tick + " " + live + " " + Convert.ToBase64String(tape));
@@ -156,11 +156,14 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
         seed, first, ticks, expected, tape = fields[2:]
         import base64
         raw = base64.b64decode(tape, validate=True)
-        if len(raw) != int(ticks) * 2 or not any(raw[i] != 0 for i in range(0, len(raw), 2)) or not any(raw[i] == 1 for i in range(1, len(raw), 2)):
-            sys.exit('Recording did not include actual directional and boost input.')
+        flags = raw[1::2]
+        if (len(raw) != int(ticks) * 2 or not any(raw[i] != 0 for i in range(0, len(raw), 2)) or
+            not any(flag & 1 for flag in flags) or not any(flag & 2 for flag in flags) or
+            any(flag > 3 for flag in flags) or any((flags[i - 1] & 2) and not (flags[i] & 2) for i in range(1, len(flags)))):
+            sys.exit('Recording did not include valid persistent steering and boost input.')
         print('Replaying the actual recorded inputs in desktop .NET...', flush=True)
         ref = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--',
-                              'strength-safe-recovery-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
+                              'strength-aligned-start-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
         try:
             terminal = json.loads(ref.stdout.strip().splitlines()[-1])
         except (IndexError, json.JSONDecodeError):
