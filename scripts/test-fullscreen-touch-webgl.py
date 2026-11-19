@@ -61,8 +61,8 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
     before = '            state = fixedPve.RenderState();\n            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
     after = '            foreach (var fighter in fixedPve.Fighters) fighter.shieldTicks = 100000;\n' + before + '\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
-    before = '                fixedPve.Step(heading, pointerBoost);\n                runInputs.Add(heading);'
-    after = '                fixedPve.Step(heading, pointerBoost);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'
+    before = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                runInputs.Add(heading);'
+    after = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'
     if os.environ.get('SNAKE_GROWTH_CAPTURE_DIR'):
         after = after.replace('                runInputs.Add(heading);', '''                if (fixedPve.Tick == 40) { fixedPve.Fighters[0].motion.Grow(32); Debug.Log("SNAKE_TOUCH_GROWN"); }
                 if (fixedPve.Tick == 1 || fixedPve.Tick == 100) Debug.Log("SNAKE_TOUCH_GROWTH_ZOOM " + fixedPve.Tick + " " + Camera.main.orthographicSize.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));

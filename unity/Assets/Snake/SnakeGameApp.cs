@@ -237,7 +237,7 @@ namespace SnakeClub
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             bool localStrength = run == null && (defaultStrength || api.Config.StrengthRulesPreview);
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength, localStrength, localStrength);
+                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength);
             state = fixedPve.RenderState();
             strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
@@ -472,8 +472,9 @@ namespace SnakeClub
             while (stepTimer >= .05f && !fixedPve.Finished)
             {
                 byte heading = EncodeDirection(direction);
-                fixedPve.Step(heading, pointerBoost);
-                runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
+                bool recordedSteering = fixedPve.LocalAlignedStart && hasSteered;
+                fixedPve.Step(heading, pointerBoost, recordedSteering);
+                runInputs.Add(heading); runInputs.Add((byte)((pointerBoost ? 1 : 0) | (recordedSteering ? 2 : 0)));
                 state = fixedPve.RenderState();
                 strengthProtectionNotice.Observe(fixedPve, state, playerId);
                 matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId); killFeedback.Observe(state, playerId, fixedPve.StrengthPreview);
@@ -595,6 +596,17 @@ namespace SnakeClub
             AddRecoveryObstacle(obstacles, GameUiScreenRect(GamePauseButton, safe, width, height), padding);
         }
 
+        // The contact panel exists only while its real notice is displayed.
+        // Use its shared layout so the HUD and recovery guidance cannot drift.
+        internal static void AppendRecoveryContactObstacle(List<Rect> obstacles, bool visible, EdgeObstacle area,
+            Rect safe, float width, float height)
+        {
+            if (!visible) return;
+            SafeUiMetrics(safe, width, height, out float scale, out _, out _);
+            var rect = new Rect(area.x, area.y, area.width, area.height);
+            AddRecoveryObstacle(obstacles, GameUiScreenRect(rect, safe, width, height), RecoveryMarkerHalfSize * scale);
+        }
+
         internal static void AppendRecoveryCharacterObstacles(List<Rect> obstacles, ArenaRenderer renderer,
             ArenaState world, string playerId, float padding)
         {
@@ -710,8 +722,11 @@ namespace SnakeClub
 
         private void DrawGame()
         {
+            string strengthNotice = StrengthContactNotice.Text(fixedPve, state != null ? state.tick : -1, out bool strengthWarning);
+            bool showContactNotice = !string.IsNullOrEmpty(strengthNotice);
+            ContactNoticeLayout.TryGetArea(showContactNotice, false, out var contactNoticeArea);
             // Draw first so labels, prompts and controls always cover markers.
-            DrawOccludedRecoveryMarkers();
+            DrawOccludedRecoveryMarkers(showContactNotice, contactNoticeArea);
             Panel(GameTopBar, new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
@@ -789,11 +804,10 @@ namespace SnakeClub
                 Vector2 projected = ToVirtual(point);
                 captureVisible = point.z > 0 && projected.x >= 0 && projected.x <= 1080 && projected.y >= 0 && projected.y <= 1920;
             }
-            string strengthNotice = StrengthContactNotice.Text(fixedPve, state != null ? state.tick : -1, out bool strengthWarning);
             string captureText = CaptureNotice.Text(state, playerId, captureVisible, fixedPve != null && fixedPve.StrengthPreview);
-            bool showContactNotice = !string.IsNullOrEmpty(strengthNotice);
             bool showCaptureNotice = !showContactNotice && !string.IsNullOrEmpty(captureText);
-            bool hasContactNoticeArea = ContactNoticeLayout.TryGetArea(showContactNotice, showCaptureNotice, out var contactNoticeArea);
+            if (!showContactNotice) ContactNoticeLayout.TryGetArea(false, showCaptureNotice, out contactNoticeArea);
+            bool hasContactNoticeArea = showContactNotice || showCaptureNotice;
             if (showCaptureNotice)
                 Label(new Rect(contactNoticeArea.x, contactNoticeArea.y, contactNoticeArea.width, contactNoticeArea.height), captureText, 31, new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
             string elimination = eliminationFeedback.Current(state);
@@ -939,7 +953,7 @@ namespace SnakeClub
             if (!float.IsPositiveInfinity(nearestDistance)) markers.Add(nearest);
         }
 
-        private void DrawOccludedRecoveryMarkers()
+        private void DrawOccludedRecoveryMarkers(bool showContactNotice, EdgeObstacle contactNoticeArea)
         {
             if (Event.current.type != EventType.Repaint || fixedPve == null || !fixedPve.StrengthPreview || !fixedPve.LocalRecoverySupply || state == null ||
                 arenaRenderer == null || !arenaRenderer.TryCharacterScreenBounds(playerId, out Rect bounds)) return;
@@ -950,6 +964,7 @@ namespace SnakeClub
             SafeUiMetrics(out float uiScale, out _, out _);
             float padding = RecoveryMarkerHalfSize * uiScale;
             PrepareRecoveryHudObstacles(recoveryObstacles, safe, Screen.width, Screen.height);
+            AppendRecoveryContactObstacle(recoveryObstacles, showContactNotice, contactNoticeArea, safe, Screen.width, Screen.height);
             AppendRecoveryCharacterObstacles(recoveryObstacles, arenaRenderer, state, playerId, padding);
             Rect safeMarker = RecoveryMarkerSafeArea(safe, Screen.width, Screen.height);
             SelectOccludedRecoveryMarkers(state, true, SimulationSuspended, bounds, safeMarker,

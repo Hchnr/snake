@@ -95,20 +95,23 @@ namespace SnakeClub.Tests
 
         public static string ComputeSafeRecovery() => ComputeRecovery(true);
 
-        private static string ComputeRecovery(bool safe)
+        public static string ComputeAlignedStart() => ComputeRecovery(true, true);
+
+        private static string ComputeRecovery(bool safe, bool aligned = false)
         {
-            string prefix = safe ? "safe-recovery=" : "recovery=";
+            string prefix = aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
             var result = new StringBuilder(prefix);
-            foreach (int seed in safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
+            foreach (int seed in aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
-            for (int pattern = 0; pattern < (safe ? 3 : 2); pattern++)
+            for (int pattern = 0; pattern < (aligned ? 4 : safe ? 3 : 2); pattern++)
             {
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
-                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe);
+                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned);
                 int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
+                    if (pattern == 3) heading = world.Tick < 10 ? (byte)0 : (byte)64;
                     if (pattern == 2 && world.Tick % 8 == 0)
                     {
                         var player = world.Fighters[0].motion;
@@ -130,7 +133,10 @@ namespace SnakeClub.Tests
                             }
                         }
                     }
-                    world.Step(heading, false);
+                    // v6 includes actual steering intent in the local tape;
+                    // exercise no input, an immediate turn and a later turn.
+                    bool steered = aligned && (pattern == 1 || pattern == 3 || (pattern == 2 && world.Tick >= 6));
+                    world.Step(heading, false, steered);
                     world.AppendReplayDiagnostics(Add);
                     Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
                     Add(world.PlayerSegmentsEaten); Add(world.PlayerSegmentsLostToBites);

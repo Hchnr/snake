@@ -20,15 +20,15 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
-if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal"))
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    bool advantage = args[0] != "strength-replay-terminal", safeRecovery = args[0] == "strength-safe-recovery-replay-terminal";
+    bool advantage = args[0] != "strength-replay-terminal", alignedStart = args[0] == "strength-aligned-start-replay-terminal", safeRecovery = args[0] == "strength-safe-recovery-replay-terminal" || alignedStart;
     bool recoverySupply = args[0] == "strength-recovery-replay-terminal" || safeRecovery;
     bool openingFood = args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || recoverySupply;
     bool openingEncounter = args[0] == "strength-encounter-replay-terminal" || recoverySupply;
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery)) throw new InvalidOperationException("Invalid recording");
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart)) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
@@ -48,6 +48,12 @@ if (args.Length == 1 && args[0] == "strength-recovery-vector")
 if (args.Length == 1 && args[0] == "strength-safe-recovery-vector")
 {
     Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeSafeRecovery());
+    return;
+}
+
+if (args.Length == 1 && args[0] == "strength-aligned-start-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeAlignedStart());
     return;
 }
 
@@ -163,6 +169,7 @@ var cases = new (string name, Action run)[]
     ("offline opening opponent retains real combat and earlier rules", StrengthOpeningEncounterCases),
     ("offline recovery supply follows real bites and bounded opportunities", StrengthRecoverySupplyCases),
     ("safe recovery avoids nearby AI and preserves the v4 replay", StrengthSafeRecoveryCases),
+    ("aligned offline start follows the default direction and preserves v5", StrengthAlignedStartCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
@@ -2308,6 +2315,117 @@ static void StrengthRecordingCases()
         !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0 }, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0, 2 }, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[(60 * PveFixedWorld.TickRate + 1) * 2], out _), "malformed strength recording accepted");
+}
+
+static void StrengthAlignedStartCases()
+{
+    bool invalid = false;
+    try { _ = new PveFixedWorld(1, false, null, true, localAlignedStart: true); }
+    catch (ArgumentException) { invalid = true; }
+    Check(invalid && !PveFixedRecording.TryReplayStrength(1, false, new byte[] { 0, 0 }, out _, true, true, true, true, false, true),
+        "aligned start escaped the offline safe-recovery variant");
+    var random = typeof(PveFixedWorld).GetField("random", BindingFlags.Instance | BindingFlags.NonPublic);
+    Check(random != null, "missing RNG fixture");
+    foreach (bool first in new[] { false, true })
+    for (int seed = 1; seed <= 100; seed++)
+    {
+        var old = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
+            localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true);
+        var aligned = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
+            localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true);
+        Check(aligned.RulesVersion == PveFixedRecording.LocalStrengthAlignedStartRules && old.RulesVersion == PveFixedRecording.LocalStrengthSafeRecoveryRules &&
+            (uint)random.GetValue(old) == (uint)random.GetValue(aligned), "v6 changed the initial random stream or variant identity");
+        var a = aligned.Fighters[0].motion; var b = old.Fighters[0].motion;
+        Check(a.X == b.X && a.Y == b.Y && a.Angle == 0 && a.Length == b.Length, "aligned player start changed head or length");
+        for (int i = 0; i < a.Length; i++)
+            Check(a.Segments[i].x == a.X - i * 900 && a.Segments[i].y == a.Y, "aligned body was not built behind the head");
+        for (int i = 0; i < old.Fruit.Count; i++)
+            Check(old.Fruit[i].position.x == aligned.Fruit[i].position.x && old.Fruit[i].position.y == aligned.Fruit[i].position.y &&
+                old.Fruit[i].color == aligned.Fruit[i].color, "aligned start changed initial fruit or colors");
+        for (int i = 1; i < old.Fighters.Count; i++)
+        {
+            var x = old.Fighters[i]; var y = aligned.Fighters[i];
+            Check(x.id == y.id && x.motion.X == y.motion.X && x.motion.Y == y.motion.Y && x.motion.Angle == y.motion.Angle &&
+                x.motion.Length == y.motion.Length && x.shieldTicks == y.shieldTicks, "aligned start changed an opponent's initial state");
+            for (int j = 0; j < x.motion.Length; j++)
+                Check(x.motion.Segments[j].x == y.motion.Segments[j].x && x.motion.Segments[j].y == y.motion.Segments[j].y,
+                    "aligned start changed an opponent's body");
+        }
+        int startX = a.X, startY = a.Y;
+        for (int tick = 1; tick <= 20; tick++)
+        {
+            aligned.Step(0, false);
+            Check(a.X == startX + 300 * tick && a.Y == startY && a.Angle == 0,
+                "default direction did not produce immediate forward movement during protection");
+        }
+    }
+    var historical = new PveFixedWorld(40, false, null, true, localAdvantage: true, localOpeningFood: true,
+        localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true);
+    int originalX = historical.Fighters[0].motion.X;
+    Check(historical.Fighters[0].motion.Angle == 32768, "seed 40 v5 historical heading changed");
+    for (int i = 0; i < 10; i++) historical.Step(0, false);
+    Check(historical.Fighters[0].motion.X - originalX == -1288, "v5 historical initial movement changed");
+    PveFixedWorld Opening(bool first) => new PveFixedWorld(40, first, null, true, localAdvantage: true, localOpeningFood: true,
+        localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true);
+    foreach (bool first in new[] { false, true })
+    {
+        foreach (int turnTick in new[] { 1, 10, 20, 40 })
+        foreach (byte heading in new byte[] { 32, 64, 128, 192 })
+        {
+            var world = Opening(first); var motion = world.Fighters[0].motion;
+            for (int i = 1; i < turnTick; i++) world.Step(0, false);
+            int x = motion.X, y = motion.Y;
+            Check(!world.OpeningSteeringSeen && !world.OpeningTurnAssistUsed, "no-input movement consumed the opening assist");
+            world.Step(heading, false, true);
+            Check(world.OpeningSteeringSeen && world.OpeningTurnAssistUsed && motion.Angle == heading * 256 &&
+                motion.X - x == PveFixedMotion.DirectionX(heading) * 300 / 10000 &&
+                motion.Y - y == PveFixedMotion.DirectionY(heading) * 300 / 10000,
+                "first actual turn did not immediately follow its direction within the window");
+            Check(world.StrengthLoopTicks("you") == 0 && world.LastPlayerAttackTick < 0 && world.LastPlayerDamageTick < 0 && world.Fighters[0].shieldTicks > 0,
+                "opening assist bypassed protected combat or awarded a loop buff");
+            int firstAngle = motion.Angle;
+            world.Step((byte)(heading + 128), false, true);
+            Check(motion.Angle != ((heading + 128) & 255) * 256 && motion.Angle != firstAngle,
+                "a later direction change reused the opening assist");
+        }
+        var small = Opening(first); small.Step(1, false, true);
+        Check(small.OpeningSteeringSeen && !small.OpeningTurnAssistUsed && small.Fighters[0].motion.Angle == 256,
+            "small actual steering did not consume the opportunity with normal motion");
+        small.Step(128, false, true);
+        Check(small.Fighters[0].motion.Angle != 32768 && !small.OpeningTurnAssistUsed, "small steering allowed a later snap");
+        var right = Opening(first); right.Step(0, false, true); right.Step(128, false, true);
+        Check(right.OpeningSteeringSeen && !right.OpeningTurnAssistUsed && right.Fighters[0].motion.Angle == 65536 - 1982,
+            "first real rightward steering failed to consume the opportunity");
+        var late = Opening(first);
+        for (int i = 0; i < PveFixedWorld.OpeningTurnAssistWindowTicks; i++) late.Step(0, false);
+        Check(!late.OpeningSteeringSeen && !late.OpeningTurnAssistUsed, "no-input window falsely registered steering");
+        late.Step(128, false, true);
+        Check(late.OpeningSteeringSeen && !late.OpeningTurnAssistUsed && late.Fighters[0].motion.Angle == 65536 - 1982,
+            "late initial steering unexpectedly snapped");
+    }
+    foreach (bool first in new[] { false, true })
+    foreach (int seed in new[] { 40, 192 })
+    {
+        var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
+            localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true);
+        var tape = new List<byte>();
+        while (!world.Finished)
+        {
+            byte heading = (byte)(world.Tick / 53 * 37 + seed);
+            bool boost = world.Tick % 120 >= 95;
+            bool steered = world.Tick >= 5;
+            tape.Add(heading); tape.Add((byte)((boost ? 1 : 0) | (steered ? 2 : 0))); world.Step(heading, boost, steered);
+        }
+        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay, true, true, true, true, true, true) &&
+            StrengthStateDigest.Compute(world) == StrengthStateDigest.Compute(replay) &&
+            SnakeClub.Tests.StrengthPveReplayVector.HiddenFingerprint(world) == SnakeClub.Tests.StrengthPveReplayVector.HiddenFingerprint(replay),
+            "v6 aligned-start replay differs");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _, true, true, true, true, true), "v5 accepted v6 steering flags");
+        var invalidFlags = tape.ToArray(); invalidFlags[1] = 4;
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, invalidFlags, out _, true, true, true, true, true, true), "v6 accepted undefined input bits");
+        invalidFlags = tape.ToArray(); invalidFlags[13] &= 1; // Input had steered by this point: flag cannot go back to zero.
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, invalidFlags, out _, true, true, true, true, true, true), "v6 accepted a nonmonotonic steering flag");
+    }
 }
 
 static void StrengthSafeRecoveryCases()

@@ -25,6 +25,7 @@ if not editor.is_file() or not chrome.is_file():
 pattern = re.compile(r'strength=([0-9a-f:,]+)')
 recovery_pattern = re.compile(r'(?<![a-z-])recovery=([0-9a-f:,]+)')
 safe_recovery_pattern = re.compile(r'safe-recovery=([0-9a-f:,]+)')
+aligned_start_pattern = re.compile(r'aligned-start=([0-9a-f:,]+)')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
                            text=True, capture_output=True, check=True, timeout=180).stdout
@@ -76,6 +77,19 @@ safe_match = safe_recovery_pattern.search(safe_reference)
 if not safe_match or len(safe_match.group(1).split(',')) != 24:
     sys.exit('Desktop safe-recovery matrix is incomplete.')
 expected_safe = safe_match.group(1)
+# Captured before the aligned-start variant was introduced.
+v5_golden = (
+    '2:0:0:1800:3:1e1cff0d3046a639,2:0:1:1800:0:46fd9d29756febdb,2:0:2:1800:0:6694c1bdc138cf1d,'
+    '2:1:0:1200:0:154de1e3c5e0e912,2:1:1:1200:0:76639ebc3a175cbc,2:1:2:1139:0:7d1b1665eee31359,'
+    '68:0:0:1800:0:75de0c59b6a082d9,68:0:1:1800:3:357d54f9dcde1cc7,68:0:2:1800:0:bd35afb861a929d1,'
+    '68:1:0:1200:5:405205a2ea487ebc,68:1:1:1200:0:04ca865c114c186b,68:1:2:1200:0:84e8e78cfcdcb7b5,'
+    '105:0:0:1800:0:7a164c767ae5ca89,105:0:1:1800:15:81587e17ffc9dced,105:0:2:1800:0:3559eb722f26dfcf,'
+    '105:1:0:1200:0:fad7cdc40873e0e9,105:1:1:1200:15:fc66c92f1afee3ba,105:1:2:1200:0:2ea9c9e60ba116c0,'
+    '192:0:0:1800:7:a5a5b36090d5b26f,192:0:1:1800:0:07d294a2ec65cec5,192:0:2:1800:1:c0ba158c90af445c,'
+    '192:1:0:1200:0:a16c07a36418ec4d,192:1:1:1200:0:87979811ef464326,192:1:2:227:3:cb9285bf6a385465'
+)
+if expected_safe != v5_golden:
+    sys.exit('MISMATCH: v5 safe-recovery fingerprints changed from the preserved reference.')
 safe_coverage = 0
 for case in expected_safe.split(','):
     fields = case.split(':')
@@ -84,6 +98,20 @@ for case in expected_safe.split(','):
     safe_coverage |= int(fields[4])
 if safe_coverage != 15:
     sys.exit('Desktop safe-recovery matrix did not observe activation, player/AI pickup, and a second activation.')
+aligned_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-aligned-start-vector'],
+                                   text=True, capture_output=True, check=True, timeout=180).stdout
+aligned_match = aligned_start_pattern.search(aligned_reference)
+if not aligned_match or len(aligned_match.group(1).split(',')) != 40:
+    sys.exit('Desktop aligned-start matrix is incomplete.')
+expected_aligned = aligned_match.group(1)
+aligned_coverage = 0
+for case in expected_aligned.split(','):
+    fields = case.split(':')
+    if len(fields) != 6:
+        sys.exit('Desktop aligned-start matrix case is malformed.')
+    aligned_coverage |= int(fields[4])
+if aligned_coverage != 15:
+    sys.exit('Desktop aligned-start matrix did not observe activation, player/AI pickup, and a second activation.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -115,7 +143,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery()); }
+    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -152,6 +180,10 @@ internal static class FixedVectorDiagnostic {
         if not actual_safe_match or len(actual_safe_match.group(1).split(',')) != 24:
             sys.exit('WebGL safe-recovery matrix is incomplete.')
         actual_safe = actual_safe_match.group(1)
+        actual_aligned_match = aligned_start_pattern.search(result.stdout)
+        if not actual_aligned_match or len(actual_aligned_match.group(1).split(',')) != 40:
+            sys.exit('WebGL aligned-start matrix is incomplete.')
+        actual_aligned = actual_aligned_match.group(1)
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -173,6 +205,13 @@ internal static class FixedVectorDiagnostic {
                     print('First differing safe-recovery case: .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: local safe-recovery simulation differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4 recovery and 24 v5 recovery matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
+        print('.NET aligned start:  ' + expected_aligned + '\nWebGL aligned start: ' + actual_aligned)
+        if actual_aligned != expected_aligned:
+            for desktop, webgl in zip(expected_aligned.split(','), actual_aligned.split(',')):
+                if desktop != webgl:
+                    print('First differing aligned-start case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: local aligned-start simulation differs across runtimes.')
+        print('MATCH: 18 strength, 16 v4, 24 v5 and 40 v6 matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

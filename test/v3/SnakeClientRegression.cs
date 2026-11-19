@@ -62,6 +62,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthImpactVisual();
                 TestStrengthRecoveryVisual();
                 TestOccludedRecoveryMarkers();
+                TestRecoveryContactOcclusion();
                 TestStrengthAppearanceVisual();
                 TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
@@ -674,6 +675,80 @@ namespace SnakeClub.Tests.Editor
             Debug.Log("PASS Unity occluded recovery markers follow live fruit and projection");
         }
 
+        private static void TestRecoveryContactOcclusion()
+        {
+            var flags = BindingFlags.Static | BindingFlags.NonPublic;
+            var select = typeof(SnakeGameApp).GetMethod("SelectOccludedRecoveryMarkers", flags);
+            var prepare = typeof(SnakeGameApp).GetMethod("PrepareRecoveryHudObstacles", flags);
+            var addContact = typeof(SnakeGameApp).GetMethod("AppendRecoveryContactObstacle", flags);
+            var safeArea = typeof(SnakeGameApp).GetMethod("RecoveryMarkerSafeArea", flags);
+            var uiRect = typeof(SnakeGameApp).GetMethod("GameUiScreenRect", flags);
+            Require(select != null && prepare != null && addContact != null && safeArea != null && uiRect != null,
+                "contact obstruction fixture missing");
+            var world = new PveFixedWorld(42, false, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true);
+            var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(world);
+            actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+            actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-11700, 0, 0, 16));
+            for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+            Require(string.IsNullOrEmpty(StrengthContactNotice.Text(world, world.Tick, out _)), "contact panel appeared before damage");
+            world.Step(0, false);
+            bool visible = !string.IsNullOrEmpty(StrengthContactNotice.Text(world, world.Tick, out bool warning));
+            Require(world.RecoverySuppliesUsed == 1 && warning && visible && ContactNoticeLayout.TryGetArea(visible, false, out _),
+                "real bite did not produce recovery and a contact panel together");
+            ContactNoticeLayout.TryGetArea(visible, false, out var area);
+            var projected = world.RenderState();
+            Point first = default, second = default; int marked = 0;
+            for (int i = 0; i < projected.fruits.Count; i++) if (world.IsRecoveryFruit(i))
+            {
+                var item = projected.fruits[i];
+                if (marked == 0) first = item.position;
+                if (marked == 1) second = item.position;
+                marked++;
+            }
+            Require(marked >= 2 && (first.x != second.x || first.y != second.y), "recovery fixture has no distinct targets");
+            Vector2 firstScreen = new Vector2(270, 500), secondScreen = new Vector2(270, 675);
+            Func<Point, Vector3> project = p => p.x == first.x && p.y == first.y ? new Vector3(firstScreen.x, firstScreen.y, 1) :
+                p.x == second.x && p.y == second.y ? new Vector3(secondScreen.x, secondScreen.y, 1) : new Vector3(-100, -100, 1);
+            var obstacles = new System.Collections.Generic.List<Rect>();
+            var markers = new System.Collections.Generic.List<Vector2>();
+            Rect safe = new Rect(0, 0, 540, 960), bounds = new Rect(240, 450, 60, 100);
+            Rect markerArea = (Rect)safeArea.Invoke(null, new object[] { safe, 540f, 960f });
+            void Prepare(bool panel)
+            {
+                prepare.Invoke(null, new object[] { obstacles, safe, 540f, 960f });
+                addContact.Invoke(null, new object[] { obstacles, panel, area, safe, 540f, 960f });
+            }
+            void Select(bool suspended) => select.Invoke(null, new object[] { projected, true, suspended, bounds, markerArea,
+                new Point(0, 0), project, obstacles, markers });
+            Prepare(false); Select(false);
+            Require(markers.Count == 0, "negative control did not reproduce the hidden-panel suppression");
+            Prepare(visible); Select(false);
+            Require(markers.Count == 1 && markers[0] == firstScreen, "contact-hidden fruit suppressed the real recovery marker");
+            secondScreen = new Vector2(90, 675); Select(false);
+            Require(markers.Count == 1, "marker edge touching the contact panel was not considered obstructed");
+            secondScreen = new Vector2(350, 600); Select(false);
+            Require(markers.Count == 0, "exposed fruit failed to suppress the extra marker");
+            secondScreen = new Vector2(270, 675); Select(true);
+            Require(markers.Count == 0, "recovery marker remained while suspended");
+            bool expired = !string.IsNullOrEmpty(StrengthContactNotice.Text(world, world.Tick + PveFixedWorld.TickRate, out _));
+            Require(!expired, "contact panel fixture did not expire");
+            Prepare(expired); Select(false);
+            Require(markers.Count == 0, "expired panel continued to hide the alternative fruit");
+            firstScreen = new Vector2(270, 675); secondScreen = new Vector2(-100, -100);
+            bounds = new Rect(240, 645, 60, 60); Prepare(visible); Select(false);
+            Require(markers.Count == 0, "recovery marker itself was drawn below the contact panel");
+            Rect inset = new Rect(30, 60, 480, 800);
+            Rect projectedContact = (Rect)uiRect.Invoke(null, new object[] { new Rect(area.x, area.y, area.width, area.height), inset, 540f, 960f });
+            obstacles.Clear(); addContact.Invoke(null, new object[] { obstacles, true, area, inset, 540f, 960f });
+            Require(obstacles.Count == 1 && obstacles[0].Contains(projectedContact.center) &&
+                obstacles[0].xMin < projectedContact.xMin && obstacles[0].yMax > projectedContact.yMax,
+                "contact panel did not use the inset UI projection and full marker clearance");
+            var legacy = new PveFixedWorld(42, false, null);
+            Require(string.IsNullOrEmpty(StrengthContactNotice.Text(legacy, 0, out _)), "contact panel leaked into legacy mode");
+            Debug.Log("PASS Unity recovery guidance respects actual contact notice lifetime and layout");
+        }
+
         private static void TestStrengthAppearanceVisual()
         {
             var root = new GameObject("Strength appearance regression");
@@ -1016,9 +1091,21 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "account tutorial changed local first run");
+                var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
+                Call("AdvanceFixedPve", .05f);
+                Require(world.Tick == 1 && tape.Count == 2 && tape[1] == 0 && !world.OpeningSteeringSeen,
+                    "automatic initial movement was recorded as real steering");
+                Field("hasSteered").SetValue(app, true); Field("direction").SetValue(app, new Point(-1, 0));
+                Field("paused").SetValue(app, true); Call("AdvanceFixedPve", 1f);
+                Require(world.Tick == 1 && tape.Count == 2 && !world.OpeningSteeringSeen, "pause consumed the opening steering window");
+                Field("paused").SetValue(app, false); Call("AdvanceFixedPve", .05f);
+                Require(world.Tick == 2 && tape.Count == 4 && tape[3] == 2 && world.OpeningSteeringSeen && world.OpeningTurnAssistUsed &&
+                    world.Fighters[0].motion.Angle == 32768, "resumed actual steering was not recorded or assisted");
+                Field("pointerBoost").SetValue(app, true); Call("AdvanceFixedPve", .05f);
+                Require(world.Tick == 3 && tape.Count == 6 && tape[5] == 3, "boost and persistent steering were not independently recorded");
                 world.Fighters[0].alive = false; world.Step(0, false); Field("controlActions").SetValue(app, 1); Call("RecordResult");
                 Require(account.coins == 123 && account.experience == 200 && account.completedMatches == 0 &&
                     PlayerPrefs.GetString("snake.v3.pending", "") == pending && PlayerPrefs.GetInt(key, 0) == 1,
@@ -1027,7 +1114,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");
