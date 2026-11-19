@@ -323,6 +323,15 @@ namespace SnakeClub.Core
             var player = state.snakes.Find(s => s.id == playerId);
             if (player == null || !player.alive) return "";
             int seconds = (world.SqueezeEscapeTicks + PveFixedWorld.TickRate - 1) / PveFixedWorld.TickRate;
+            int priorityTicks = 0;
+            if (world.LocalRecoveryPriority)
+                for (int i = 0; i < world.Fruit.Count; i++)
+                    priorityTicks = Math.Max(priorityTicks, world.RecoveryPriorityTicks(i));
+            if (priorityTicks > 0)
+            {
+                int prioritySeconds = (priorityTicks + PveFixedWorld.TickRate - 1) / PveFixedWorld.TickRate;
+                return "脱困保护 " + seconds + " 秒 · 暂不能互吃\n可穿过对手 · 部分亮圈你优先 " + prioritySeconds + " 秒";
+            }
             return "脱困保护 " + seconds + " 秒\n可穿过对手 · 暂不能互吃";
         }
     }
