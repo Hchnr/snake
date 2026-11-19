@@ -64,6 +64,7 @@ namespace SnakeClub
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
         private readonly KillFeedback killFeedback = new KillFeedback();
+        private readonly StrengthProtectionNotice strengthProtectionNotice = new StrengthProtectionNotice();
         private readonly List<int> activeTouchIds = new List<int>();
         private int suppressPointerUpFrame = -1;
         private bool suppressPendingDragUp;
@@ -232,6 +233,7 @@ namespace SnakeClub
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
                 strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength);
             state = fixedPve.RenderState();
+            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
             eventOutcome.Reset(); eliminationFeedback.Reset(); eliminationFeedback.Observe(state, playerId);
             killFeedback.Reset(); killFeedback.Observe(state, playerId);
@@ -467,6 +469,7 @@ namespace SnakeClub
                 fixedPve.Step(heading, pointerBoost);
                 runInputs.Add(heading); runInputs.Add(pointerBoost ? (byte)1 : (byte)0);
                 state = fixedPve.RenderState();
+                strengthProtectionNotice.Observe(fixedPve, state, playerId);
                 matchHighlights.Observe(state, playerId); ObserveTutorial(state); eventOutcome.Observe(state, playerId); eliminationFeedback.Observe(state, playerId); killFeedback.Observe(state, playerId, fixedPve.StrengthPreview);
                 stepTimer -= .05f;
             }
@@ -748,10 +751,13 @@ namespace SnakeClub
                 Label(new Rect(205, 520, 670, 90), strengthNotice, 29,
                     strengthWarning ? new Color(1f, .88f, .65f) : new Color(.85f, 1f, .70f), TextAnchor.MiddleCenter, true);
             }
-            if (StrengthIntroVisible())
+            string protectionText = strengthProtectionNotice.Text(fixedPve, state, playerId, SimulationSuspended);
+            bool showProtection = !string.IsNullOrEmpty(protectionText) && string.IsNullOrEmpty(strengthNotice) && string.IsNullOrEmpty(captureText);
+            bool showStrengthIntro = !showProtection && StrengthIntroVisible();
+            if (showProtection || showStrengthIntro)
             {
                 Panel(new Rect(100, 1320, 880, 100), new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 1330, 830, 80), StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted, fixedPve.LocalOpeningFood), 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(125, 1330, 830, 80), showProtection ? protectionText : StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted, fixedPve.LocalOpeningFood), showProtection ? 30 : 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && state != null && !string.IsNullOrEmpty(state.strengthHeadThreat);
             if (strengthHeadWarning)
@@ -786,8 +792,9 @@ namespace SnakeClub
             }
             if (state != null && state.phase == "running")
             {
-                DrawNames(state);
+                DrawNames(state, showProtection || showStrengthIntro);
                 edgeObstacles.Clear();
+                if (showProtection || showStrengthIntro) edgeObstacles.Add(new EdgeObstacle(100, 1320, 880, 100));
                 if (strengthHeadWarning) edgeObstacles.Add(new EdgeObstacle(250, 1635, 580, 74));
                 if (strengthBodyWarning) edgeObstacles.Add(new EdgeObstacle(230, 1525, 620, 70));
                 if (!string.IsNullOrEmpty(strengthBoostHint)) edgeObstacles.Add(new EdgeObstacle(220, 1715, 640, 70));
@@ -996,7 +1003,7 @@ namespace SnakeClub
             GUI.color = previousColor;
         }
 
-        private void DrawNames(ArenaState world)
+        private void DrawNames(ArenaState world, bool strengthPromptVisible)
         {
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
             if (!paused && fixedPve != null && fixedPve.StrengthPreview && !string.IsNullOrEmpty(world.strengthHeadThreat))
@@ -1010,7 +1017,7 @@ namespace SnakeClub
                 nameplates.Reserve(220, 1715, 640, 70);
             if (!paused && string.IsNullOrEmpty(killFeedback.Current(world)) && !string.IsNullOrEmpty(StrengthLevelNotice.Text(fixedPve, world.tick)))
                 nameplates.Reserve(250, 430, 580, 110);
-            if (StrengthIntroVisible()) nameplates.Reserve(100, 1320, 880, 100);
+            if (strengthPromptVisible) nameplates.Reserve(100, 1320, 880, 100);
             else if (firstRun && tutorialHints && !online && !paused && !(fixedPve != null && fixedPve.StrengthPreview) && CanControlPlayer())
             {
                 var own = world.snakes.Find(s => s.id == playerId);

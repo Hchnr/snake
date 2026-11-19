@@ -265,6 +265,42 @@ namespace SnakeClub.Core
             state.remaining > 0 && state.remaining <= 10;
     }
 
+    // Presentation only: observe the player's actual shield transition on
+    // simulation ticks. No combat state or time is changed by this notice.
+    public sealed class StrengthProtectionNotice
+    {
+        private string observedPlayer = "";
+        private int observedTick = -1, endedTick = -1;
+        private bool wasProtected;
+
+        public void Reset() { observedPlayer = ""; observedTick = endedTick = -1; wasProtected = false; }
+
+        public void Observe(PveFixedWorld world, ArenaState state, string playerId)
+        {
+            if (world == null || !world.StrengthPreview || state == null || state.phase != "running" || string.IsNullOrEmpty(playerId))
+            { Reset(); return; }
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive) { Reset(); return; }
+            if (observedPlayer != playerId || state.tick < observedTick) Reset();
+            bool protectedNow = player.shield > 0;
+            if (observedTick >= 0 && state.tick > observedTick && wasProtected && !protectedNow) endedTick = state.tick;
+            if (protectedNow) endedTick = -1;
+            observedPlayer = playerId; observedTick = state.tick; wasProtected = protectedNow;
+        }
+
+        public string Text(PveFixedWorld world, ArenaState state, string playerId, bool suspended)
+        {
+            if (world == null || !world.StrengthPreview || state == null || state.phase != "running" || suspended ||
+                string.IsNullOrEmpty(playerId) || observedPlayer != playerId) return "";
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive) return "";
+            if (player.shield > 0)
+                return "保护 " + (int)Math.Ceiling(player.shield) + " 秒 · 暂不能与对手互吃\n先吃果实变大 · 全屏拖动转向";
+            return endedTick >= 0 && state.tick >= endedTick && state.tick - endedTick < PveFixedWorld.TickRate ?
+                "保护结束 · 金点处较弱，可尝试吞食" : "";
+        }
+    }
+
     // Short first-run prompts follow observed actions rather than completing
     // automatically as the timer advances. They do not affect input or rules.
     public static class StrengthTutorialHints

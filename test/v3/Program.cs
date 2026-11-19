@@ -139,6 +139,7 @@ var cases = new (string name, Action run)[]
     ("strength bots seek fruit near protected opponents", StrengthBotForagingCases),
     ("strength bots avoid ineligible body targets", StrengthBotTargetEligibilityCases),
     ("strength contact feedback reports the latest real outcomes", StrengthNoticeCases),
+    ("strength protection cue follows actual shield and expiry", StrengthProtectionNoticeCases),
     ("minimum-length strength boost explains why movement cannot accelerate", StrengthBoostNoticeCases),
     ("strength growth snapshots are bounded, frozen and affect combat", StrengthGrowthCases),
     ("strength replay diagnostics detect hidden-state divergence", StrengthHiddenDiagnosticsCases),
@@ -1959,6 +1960,44 @@ static void StrengthBotTargetEligibilityCases()
     Check(PveFixedMotion.DirectionX(Heading(false, false)) < 0, "eligible body was not targeted");
     Check(PveFixedMotion.DirectionX(Heading(true, false)) > 0, "bot targeted a body during cooldown");
     Check(PveFixedMotion.DirectionX(Heading(false, true)) > 0, "protected bot targeted a body it cannot eat");
+}
+
+static void StrengthProtectionNoticeCases()
+{
+    foreach (bool first in new[] { false, true })
+    {
+        var world = new PveFixedWorld(42, first, null, true, localAdvantage: true, localOpeningFood: true, localOpeningEncounter: true);
+        foreach (var opponent in world.Fighters.Skip(1)) opponent.shieldTicks = 2000;
+        var notice = new StrengthProtectionNotice();
+        var state = world.RenderState(); notice.Observe(world, state, "you");
+        string text = notice.Text(world, state, "you", false);
+        int protectionTicks = (first ? 4 : 3) * PveFixedWorld.TickRate;
+        Check(text.Contains("保护 " + (first ? 4 : 3) + " 秒") && text.Contains("不能与对手互吃") && text.Contains("果实"),
+            "opening protection did not explain actual immunity and food");
+        Check(notice.Text(world, state, "you", true) == "" && notice.Text(world, state, "bot-1", false) == "",
+            "protection cue appeared while suspended or for another player");
+        for (int tick = 1; tick <= protectionTicks; tick++)
+        {
+            world.Step(0, false); state = world.RenderState(); notice.Observe(world, state, "you");
+            text = notice.Text(world, state, "you", false);
+            if (tick < protectionTicks) Check(text.Contains("不能与对手互吃"), "protection cue ended before actual immunity");
+        }
+        Check(!world.Finished && world.Fighters[0].shieldTicks == 0 && text.Contains("保护结束") && text.Contains("金点"),
+            "actual protection expiry was not reported");
+        for (int tick = 1; tick <= PveFixedWorld.TickRate; tick++)
+        {
+            world.Step(0, false); state = world.RenderState(); notice.Observe(world, state, "you");
+        }
+        Check(notice.Text(world, state, "you", false) == "", "protection expiry notice did not end on simulation time");
+        world.Fighters[0].alive = false; state = world.RenderState(); notice.Observe(world, state, "you");
+        Check(notice.Text(world, state, "you", false) == "", "protection notice remained after player elimination");
+        var restart = new PveFixedWorld(43, first, null, true);
+        state = restart.RenderState(); notice.Reset(); notice.Observe(restart, state, "you");
+        Check(notice.Text(restart, state, "you", false).Contains("不能与对手互吃"), "protection cue did not reset for a new match");
+        var legacy = new PveFixedWorld(42, false, null);
+        state = legacy.RenderState(); notice.Observe(legacy, state, "you");
+        Check(notice.Text(legacy, state, "you", false) == "", "protection cue leaked into legacy rules");
+    }
 }
 
 static void StrengthBoostNoticeCases()

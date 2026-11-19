@@ -2,6 +2,7 @@
 """Replay a real touch-controlled strength match across WebGL and desktop .NET.
 
 Temporary instrumentation records actual simulation inputs in a disposable build.
+An offline seed of 1 makes the protection-cue fixture reproducible.
 This does not replace device, Douyin or multitouch hardware validation.
 """
 from functools import partial
@@ -60,14 +61,26 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     before = '        [NonSerialized] private bool initializedInDomain;'
     after = '        private int strengthDiagnosticSeed;\n' + before
     code = inject_once(code, before, after)
-    before = '            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,'
-    after = '            strengthDiagnosticSeed = run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks);\n            fixedPve = new PveFixedWorld(strengthDiagnosticSeed, firstRun, profile,'
+    before = '        [NonSerialized] private bool initializedInDomain;'
+    after = '        private string strengthDiagnosticCue;\n' + before
     code = inject_once(code, before, after)
-    before = '            state = fixedPve.RenderState();\n            matchHighlights.Reset();'
-    after = '            state = fixedPve.RenderState();\n            Debug.Log("SNAKE_TOUCH_READY");\n            matchHighlights.Reset();'
+    before = '            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,'
+    after = '            strengthDiagnosticSeed = run != null ? run.seed : 1;\n            fixedPve = new PveFixedWorld(strengthDiagnosticSeed, firstRun, profile,'
+    code = inject_once(code, before, after)
+    before = '            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
+    after = before + '\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
     before = '                fixedPve.Step(heading, pointerBoost);\n                runInputs.Add(heading);'
     after = '                fixedPve.Step(heading, pointerBoost);\n                Debug.Log("SNAKE_TOUCH_TICK " + fixedPve.Tick + " " + heading + " " + (pointerBoost ? 1 : 0));\n                runInputs.Add(heading);'
+    code = inject_once(code, before, after)
+    before = '            if (showProtection || showStrengthIntro)\n'
+    after = '''            string visibleProtectionCue = showProtection ? protectionText : "";
+            if (visibleProtectionCue != strengthDiagnosticCue)
+            {
+                strengthDiagnosticCue = visibleProtectionCue;
+                Debug.Log("SNAKE_TOUCH_CUE " + state.tick + " " + visibleProtectionCue.Replace("\\n", " | "));
+            }
+''' + before
     code = inject_once(code, before, after)
     app_path.write_text(code)
     shutil.copy2(root / 'test/v3/StrengthPveReplayVector.cs', project / 'Assets/Snake/StrengthPveReplayVector.cs')

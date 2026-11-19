@@ -724,13 +724,20 @@ namespace SnakeClub.Tests.Editor
                 var practice = (PlayerProgress)Field("practiceProfile").GetValue(app);
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "first strength match was not a tutorial");
                 bool IntroVisible() => (bool)type.GetMethod("StrengthIntroVisible", flags).Invoke(app, null);
+                var protection = (StrengthProtectionNotice)Field("strengthProtectionNotice").GetValue(app);
+                string ProtectionText(bool suspended = false) => protection.Text(world, (ArenaState)Field("state").GetValue(app), "you", suspended);
                 Field("tutorialHints").SetValue(app, true);
                 Require(IntroVisible(), "first strength match did not show the enabled tutorial");
                 Call("SetTutorialHints", false); Call("LoadPreferences");
-                Require(!(bool)Field("tutorialHints").GetValue(app) && !IntroVisible(), "strength tutorial ignored the saved disabled preference");
+                Require(!(bool)Field("tutorialHints").GetValue(app) && !IntroVisible() && ProtectionText().Contains("不能与对手互吃"),
+                    "strength tutorial preference or essential protection cue was wrong");
                 Call("SetTutorialHints", true);
-                Field("paused").SetValue(app, true); Require(!IntroVisible(), "strength tutorial remained visible while paused");
+                Field("paused").SetValue(app, true); Require(!IntroVisible() && ProtectionText(true) == "", "strength cue remained visible while paused");
                 Field("paused").SetValue(app, false); Require(IntroVisible(), "strength tutorial did not return after resuming");
+                for (int i = 1; i < world.Fighters.Count; i++) world.Fighters[i].shieldTicks = 2000;
+                for (int i = 0; i < 20; i++) Call("AdvanceFixedPve", .2f);
+                Require(world.Tick == 80 && world.Fighters[0].shieldTicks == 0 && ProtectionText().Contains("保护结束"),
+                    "actual fixed-step protection expiry did not reach the presentation cue");
                 var projected = (ArenaState)Field("state").GetValue(app);
                 projected.captureOwner = (string)Field("playerId").GetValue(app);
                 projected.captureTick = projected.tick;
@@ -756,7 +763,8 @@ namespace SnakeClub.Tests.Editor
                 Require(!(bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 90,
                     "later strength match did not use normal duration after reload");
                 Field("tutorialHints").SetValue(app, true);
-                Require(!IntroVisible(), "strength tutorial repeated after the first completed practice");
+                Require(!IntroVisible() && ProtectionText().Contains("保护 3 秒"),
+                    "later match repeated the tutorial or lost its protection cue");
                 api.Configure(new GameConfiguration { experimentalFixedPve = true, apiUrl = "", serverUrl = "", allowDevLogin = false });
                 Call("StartMain");
                 Require((bool)Field("firstRun").GetValue(app), "strength tutorial changed the separate fixed PvE tutorial");
