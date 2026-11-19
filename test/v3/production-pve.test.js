@@ -84,6 +84,8 @@ test('production disables development rooms and unverified PvE while preserving 
     assert.equal(profile.data.profile.coins, 73); assert.equal(profile.data.profile.experience, 29);
     assert.equal((await request('challenge/start?rules=daily-4', {})).status, 200);
     assert.equal((await request('match/start', {}, 'invalid')).status, 401);
+    const oversized = await request('challenge/submit', { runId: daily.id, token: tokenFor(daily), score: 0, inputs: 'A'.repeat(12804), actions: 1 });
+    assert.equal(oversized.status, 400); assert.equal(oversized.data.error, '回放长度无效');
     const replay = JSON.parse(execFileSync('dotnet', [coreDll, 'replay', String(daily.seed), '0', daily.rules], { encoding: 'utf8' }));
     const settled = await request('challenge/submit', { runId: daily.id, token: tokenFor(daily), score: replay.score, inputs: replay.inputs, actions: 1 });
     assert.equal(settled.status, 200); assert.equal(settled.data.verified, true);
