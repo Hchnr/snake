@@ -79,6 +79,8 @@ namespace SnakeClub
         private bool previewAttempted;
         public RenderTexture PreviewTexture => previewTexture != null && previewTexture.IsCreated() ? previewTexture : null;
         private LineRenderer marker, eventRing, captureOutline, captureFlare, reboundRipple, directionArrow, bossWarning, dangerArrow;
+        private LineRenderer fallbackOpeningBoostLine;
+        private Vector3[] fallbackOpeningBoostVertices;
         private Transform runtimeRoot;
         private GameObject starObject;
         private bool cameraReady;
@@ -447,6 +449,7 @@ namespace SnakeClub
             foreach (var list in horns) list.Clear();
             foreach (var list in fruits) list.Clear();
             eyes.Clear(); pupils.Clear(); scales.Clear(); weakPoints.Clear(); threatMarks.Clear(); trail.Clear(); sparks.Clear(); trailPulses.Clear();
+            if (fallbackOpeningBoostLine != null) fallbackOpeningBoostLine.enabled = false;
             foreach (var character in characters.Values) if (character != null) character.enabled = false;
             foreach (var referenceHead in referenceHeads.Values) if (referenceHead != null) referenceHead.enabled = false;
             foreach (var pair in characterTrails.Values) foreach (var line in pair) if (line != null) line.enabled = false;
@@ -605,6 +608,8 @@ namespace SnakeClub
                         scales.Add(Matrix4x4.TRS(positions[i] + Vector3.up * .53f, Quaternion.identity, new Vector3(scale, .17f, scale)));
                     }
                 }
+                if (characterSprite == null && StrengthBodyVisual && snake.id == playerId && OpeningBoostVisual)
+                    DrawFallbackOpeningBoost(positions, appearance);
                 for (int i = 1; i < positions.Count; i++)
                 {
                     Vector3 delta = positions[i - 1] - positions[i];
@@ -1001,6 +1006,36 @@ namespace SnakeClub
             ring.startColor = ring.endColor = expiring ? new Color(1f, .72f, .32f, 1f) : new Color(.40f, .88f, 1f, 1f);
             ring.widthMultiplier = expiring && !ReducedEffects ? .14f + .06f * (.5f + .5f * Mathf.Sin(visualClock.Time * 9f)) : .13f;
             PlaceRing(ring, center + Vector3.up * .03f, 1.12f);
+        }
+
+        private void DrawFallbackOpeningBoost(List<Vector3> positions, StrengthAppearanceValues appearance)
+        {
+            if (positions.Count < 3) return;
+            if (fallbackOpeningBoostLine == null)
+            {
+                var item = new GameObject("Fallback opening boost"); item.transform.SetParent(runtimeRoot, false);
+                fallbackOpeningBoostLine = item.AddComponent<LineRenderer>();
+                fallbackOpeningBoostLine.sharedMaterial = trailLineMaterial;
+                fallbackOpeningBoostLine.useWorldSpace = true;
+                fallbackOpeningBoostLine.numCapVertices = 4;
+                fallbackOpeningBoostLine.numCornerVertices = 3;
+                fallbackOpeningBoostLine.shadowCastingMode = ShadowCastingMode.Off;
+            }
+            fallbackOpeningBoostLine.enabled = true;
+            fallbackOpeningBoostLine.positionCount = positions.Count - 1;
+            fallbackOpeningBoostLine.widthMultiplier = .20f;
+            fallbackOpeningBoostLine.startColor = fallbackOpeningBoostLine.endColor = new Color(1f, .72f, .20f);
+            if (fallbackOpeningBoostVertices == null || fallbackOpeningBoostVertices.Length < positions.Count - 1)
+                fallbackOpeningBoostVertices = new Vector3[Mathf.Max(Arena.MaximumLength, positions.Count - 1)];
+            for (int i = 1; i < positions.Count; i++)
+            {
+                float taper = Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((positions.Count - i) / 6f));
+                float part = Mathf.Lerp(appearance.BodyWidth / .8f, appearance.BodyWidth / .8f * appearance.TailRatio,
+                    (float)i / Mathf.Max(1, positions.Count - 1));
+                Vector3 point = positions[i]; point.y += taper * part * .5f + .12f;
+                fallbackOpeningBoostVertices[i - 1] = point;
+            }
+            fallbackOpeningBoostLine.SetPositions(fallbackOpeningBoostVertices);
         }
 
         private void DrawCharacterTrail(string id, List<Vector3> positions, Color color, int firstSegment, StrengthAppearanceValues appearance, bool boosting, bool openingBoost)

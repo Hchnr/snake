@@ -639,10 +639,12 @@ namespace SnakeClub
             if (!string.IsNullOrEmpty(squeeze)) { protection = ""; recovery = squeeze; }
         }
 
-        internal static void ResolveStrengthGuidance(string protection, string contact, string capture, string recovery, bool intro,
+        internal static void ResolveStrengthGuidance(string protection, string contact, string capture, string recovery, bool intro, bool parallelExpiry,
             out bool showProtection, out bool showRecovery, out bool showIntro)
         {
-            showProtection = !string.IsNullOrEmpty(protection) && string.IsNullOrEmpty(contact) && string.IsNullOrEmpty(capture);
+            showProtection = !string.IsNullOrEmpty(protection) && (parallelExpiry
+                ? string.IsNullOrEmpty(recovery)
+                : string.IsNullOrEmpty(contact) && string.IsNullOrEmpty(capture));
             showRecovery = !showProtection && !string.IsNullOrEmpty(recovery);
             showIntro = !showProtection && !showRecovery && intro;
         }
@@ -800,7 +802,8 @@ namespace SnakeClub
             string recoveryText = RecoverySupplyNotice.Text(fixedPve, state != null ? state.tick : -1, SimulationSuspended);
             string squeezeText = StrengthSqueezeEscapeNotice.Text(fixedPve, state, playerId, SimulationSuspended);
             PrioritizeSqueezeGuidance(squeezeText, ref protectionText, ref recoveryText);
-            ResolveStrengthGuidance(protectionText, strengthNotice, captureText, recoveryText, StrengthIntroVisible(),
+            bool parallelExpiry = fixedPve != null && fixedPve.LocalOpeningBoost && strengthProtectionNotice.IsExpiryActive(fixedPve, state, playerId, SimulationSuspended);
+            ResolveStrengthGuidance(protectionText, strengthNotice, captureText, recoveryText, StrengthIntroVisible(), parallelExpiry,
                 out bool showProtection, out bool showRecovery, out bool showStrengthIntro);
             bool showGuidance = showProtection || showRecovery || showStrengthIntro;
             ContactNoticeLayout.TryGetArea(showContactNotice, false, out var contactNoticeArea);

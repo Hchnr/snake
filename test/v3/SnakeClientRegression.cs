@@ -68,6 +68,7 @@ namespace SnakeClub.Tests.Editor
                 TestOccludedRecoveryMarkers();
                 TestRecoveryContactOcclusion();
                 TestStrengthAppearanceVisual();
+                TestFallbackOpeningBoostVisual();
                 TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
                 TestStrengthLevelVisual();
@@ -837,14 +838,60 @@ namespace SnakeClub.Tests.Editor
             var addGuidance = typeof(SnakeGameApp).GetMethod("AppendRecoveryGuidanceObstacle", flags);
             var guidanceChoice = typeof(SnakeGameApp).GetMethod("ResolveStrengthGuidance", flags);
             Require(addGuidance != null && guidanceChoice != null, "guidance obstruction fixture missing");
-            bool[] Choose(string protection, string contact, string capture, string recovery, bool intro)
+            bool[] Choose(string protection, string contact, string capture, string recovery, bool intro, bool parallelExpiry = false)
             {
-                object[] args = { protection, contact, capture, recovery, intro, false, false, false };
+                object[] args = { protection, contact, capture, recovery, intro, parallelExpiry, false, false, false };
                 guidanceChoice.Invoke(null, args);
-                return new[] { (bool)args[5], (bool)args[6], (bool)args[7] };
+                return new[] { (bool)args[6], (bool)args[7], (bool)args[8] };
             }
             string realRecovery = RecoverySupplyNotice.Text(world, world.Tick, false);
             Require(!string.IsNullOrEmpty(realRecovery), "real recovery guidance missing after bite");
+            // Real v13 seed 11 eats three segments on the birth-shield expiry tick.
+            // Contact and the spatially separate expiry cue must both be chosen.
+            var live = new PveFixedWorld(11, false, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true,
+                localMultiBite: true, localHeadTieAfterBite: true, localOpeningBoost: true);
+            var liveNotice = new StrengthProtectionNotice();
+            liveNotice.Observe(live, live.RenderState(), "you");
+            for (int i = 0; i < 60; i++) { live.Step(0, false, true); liveNotice.Observe(live, live.RenderState(), "you"); }
+            var liveState = live.RenderState();
+            string expiry = liveNotice.Text(live, liveState, "you", false);
+            string contact = StrengthContactNotice.Text(live, live.Tick, out _);
+            Require(expiry == StrengthProtectionNotice.EndedText && contact.Contains("吃掉身体 3 节") &&
+                Choose(expiry, contact, "", "", true, true)[0], "real expiry and body-bite cues were not both selected");
+            Require(!Choose(expiry, contact, "", realRecovery, true, true)[0] && Choose(expiry, contact, "", realRecovery, true, true)[1],
+                "expiry cue displaced urgent recovery guidance");
+            Require(liveNotice.Text(live, liveState, "you", true) == "" && live.Tick == 60,
+                "expiry cue remained visible or advanced while paused");
+            for (int i = 0; i < 20; i++) { live.Step(0, false, true); liveNotice.Observe(live, live.RenderState(), "you"); }
+            Require(liveNotice.Text(live, live.RenderState(), "you", false) == "", "expiry cue outlived its actual time window");
+            Require(!Choose(expiry, contact, "", "", true)[0], "older rule presentation lost event priority");
+            // Natural first-run seed 29 is damaged on the actual expiry step,
+            // generating recovery. Recovery must take the shared guidance slot.
+            var hurt = new PveFixedWorld(29, true, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true,
+                localMultiBite: true, localHeadTieAfterBite: true, localOpeningBoost: true);
+            var hurtNotice = new StrengthProtectionNotice();
+            hurtNotice.Observe(hurt, hurt.RenderState(), "you");
+            for (int i = 0; i < 80; i++) { hurt.Step(0, false, true); hurtNotice.Observe(hurt, hurt.RenderState(), "you"); }
+            string hurtExpiry = hurtNotice.Text(hurt, hurt.RenderState(), "you", false);
+            string hurtContact = StrengthContactNotice.Text(hurt, hurt.Tick, out _);
+            string hurtRecovery = RecoverySupplyNotice.Text(hurt, hurt.Tick, false);
+            var hurtChoice = Choose(hurtExpiry, hurtContact, "", hurtRecovery, true, true);
+            Require(hurt.LastPlayerDamageTick == 80 && hurt.RecoverySuppliesUsed > 0 &&
+                hurtNotice.IsExpiryActive(hurt, hurt.RenderState(), "you", false) && !string.IsNullOrEmpty(hurtRecovery) &&
+                !hurtChoice[0] && hurtChoice[1], "actual recovery did not take priority on shield expiry");
+            var guidancePanel = (Rect)typeof(SnakeGameApp).GetField("StrengthGuidancePanel", flags).GetValue(null);
+            var contactRect = new Rect(area.x, area.y, area.width, area.height);
+            Require(!guidancePanel.Overlaps(contactRect), "simultaneous notices overlap in virtual layout");
+            foreach (var screenSafe in new[] { safe, new Rect(30, 60, 480, 800) })
+            {
+                var guidancePixels = (Rect)uiRect.Invoke(null, new object[] { guidancePanel, screenSafe, 540f, 960f });
+                var contactPixels = (Rect)uiRect.Invoke(null, new object[] { contactRect, screenSafe, 540f, 960f });
+                Require(!guidancePixels.Overlaps(contactPixels), "simultaneous notices overlap after safe area projection");
+            }
             var protectedWorld = new PveFixedWorld(42, false, null, true);
             var protectionNotice = new StrengthProtectionNotice();
             protectionNotice.Observe(protectedWorld, protectedWorld.RenderState(), "you");
@@ -944,6 +991,8 @@ namespace SnakeClub.Tests.Editor
             var squeezeChoice = Choose((string)choiceArgs[1], "actual damage and rebound", "", (string)choiceArgs[2], true);
             Require(!squeezeChoice[0] && squeezeChoice[1] && !squeezeChoice[2] && (string)choiceArgs[2] == squeeze,
                 "escape guidance did not remain alongside real contact feedback");
+            var squeezeWithExpiry = Choose((string)choiceArgs[1], "actual damage and rebound", "", (string)choiceArgs[2], true, true);
+            Require(!squeezeWithExpiry[0] && squeezeWithExpiry[1], "parallel expiry displaced actual escape guidance");
             escapeTicks.SetValue(squeezeActors[0], 1);
             Require(StrengthSqueezeEscapeNotice.Text(squeezeWorld, squeezeState, "you", false).Contains("1 秒"), "escape countdown rounded incorrectly");
             escapeTicks.SetValue(squeezeActors[0], 0);
@@ -1678,6 +1727,56 @@ namespace SnakeClub.Tests.Editor
                 UnityEngine.Object.DestroyImmediate(root);
                 if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
                 PlayerPrefs.Save();
+            }
+        }
+
+        private static void TestFallbackOpeningBoostVisual()
+        {
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var cache = (System.Collections.Generic.Dictionary<int, Texture2D>)typeof(SkinVisual)
+                .GetField("Textures", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            var saved = new System.Collections.Generic.Dictionary<int, Texture2D>(cache);
+            var root = new GameObject("Fallback opening boost regression");
+            try
+            {
+                for (int i = 0; i < SkinCatalog.All.Length; i++) cache[i] = null;
+                var renderer = root.AddComponent<ArenaRenderer>();
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true; renderer.OpeningBoostVisual = true;
+                var state = new ArenaState { phase = "running" };
+                var player = new SnakeState { id = "you", alive = true,
+                    segments = new System.Collections.Generic.List<Point> { new Point(0, 0), new Point(-.9f, 0), new Point(-1.8f, 0), new Point(-2.7f, 0), new Point(-3.6f, 0) } };
+                typeof(SnakeState).GetField("strengthHeadDefense", flags).SetValue(player, 156);
+                typeof(SnakeState).GetField("strengthTailDefense", flags).SetValue(player, 93);
+                var opponent = new SnakeState { id = "bot-1", alive = true, segments = new System.Collections.Generic.List<Point> { new Point(3, 0), new Point(3.9f, 0), new Point(4.8f, 0) } };
+                state.snakes.Add(player); state.snakes.Add(opponent);
+                renderer.Draw(state, "you");
+                var line = (LineRenderer)typeof(ArenaRenderer).GetField("fallbackOpeningBoostLine", flags).GetValue(renderer);
+                Require(line != null && line.enabled && line.positionCount == 4, "fallback stripe missing or attached to another body");
+                for (int i = 0; i < line.positionCount; i++)
+                {
+                    var point = line.GetPosition(i); var segment = player.segments[i + 1];
+                    Require(Mathf.Abs(point.x - segment.x) < .001f && Mathf.Abs(point.z - segment.y) < .001f && point.y > 1.1f,
+                        "fallback stripe did not follow or clear player body");
+                }
+                renderer.ReducedEffects = true; renderer.MotionPaused = true; renderer.Draw(state, "you");
+                Require(line.enabled && line.positionCount == 4, "fallback stripe missing during pause or reduced effects");
+                renderer.OpeningBoostVisual = false; renderer.Draw(state, "you"); Require(!line.enabled, "expired fallback stripe remained");
+                renderer.OpeningBoostVisual = true; player.alive = false; renderer.Draw(state, "you"); Require(!line.enabled, "dead player retained fallback stripe");
+                player.alive = true; renderer.StrengthBodyVisual = false; renderer.Draw(state, "you"); Require(!line.enabled, "legacy mode displayed fallback stripe");
+                renderer.StrengthBodyVisual = true; renderer.Draw(state, "you"); Require(line.enabled, "restarting boost did not restore fallback stripe");
+                state.snakes.Clear(); renderer.Draw(state, "you"); Require(!line.enabled, "missing player retained fallback stripe");
+                cache.Clear(); foreach (var item in saved) cache.Add(item.Key, item.Value);
+                state.snakes.Add(player); renderer.Draw(state, "you");
+                var characters = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
+                Require(characters.TryGetValue("you", out var normal) && normal.enabled && !line.enabled,
+                    "normal player sprite path received fallback stripe");
+                Debug.Log("PASS Unity fallback opening boost follows only live player and clears");
+            }
+            finally
+            {
+                cache.Clear(); foreach (var item in saved) cache.Add(item.Key, item.Value);
+                UnityEngine.Object.DestroyImmediate(root);
             }
         }
 
