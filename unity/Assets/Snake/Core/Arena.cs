@@ -272,6 +272,7 @@ namespace SnakeClub.Core
     // simulation ticks. No combat state or time is changed by this notice.
     public sealed class StrengthProtectionNotice
     {
+        public const string EndedText = "保护结束 · 金点处较弱，可尝试吞食";
         private string observedPlayer = "";
         private int observedTick = -1, endedTick = -1;
         private bool wasProtected;
@@ -299,6 +300,15 @@ namespace SnakeClub.Core
             observedPlayer = playerId; observedTick = state.tick; wasProtected = protectedNow;
         }
 
+        public bool IsExpiryActive(PveFixedWorld world, ArenaState state, string playerId, bool suspended)
+        {
+            if (world == null || !world.StrengthPreview || state == null || state.phase != "running" || suspended ||
+                string.IsNullOrEmpty(playerId) || observedPlayer != playerId) return false;
+            var player = state.snakes.Find(s => s.id == playerId);
+            return player != null && player.alive && BirthShield(world, player, playerId) <= 0 &&
+                endedTick >= 0 && state.tick >= endedTick && state.tick - endedTick < PveFixedWorld.TickRate;
+        }
+
         public string Text(PveFixedWorld world, ArenaState state, string playerId, bool suspended)
         {
             if (world == null || !world.StrengthPreview || state == null || state.phase != "running" || suspended ||
@@ -308,8 +318,7 @@ namespace SnakeClub.Core
             float shield = BirthShield(world, player, playerId);
             if (shield > 0)
                 return "保护 " + (int)Math.Ceiling(shield) + " 秒 · 暂不能与对手互吃\n先吃果实变大 · 全屏拖动转向";
-            return endedTick >= 0 && state.tick >= endedTick && state.tick - endedTick < PveFixedWorld.TickRate ?
-                "保护结束 · 金点处较弱，可尝试吞食" : "";
+            return IsExpiryActive(world, state, playerId, suspended) ? EndedText : "";
         }
     }
 
