@@ -277,6 +277,14 @@ namespace SnakeClub.Core
 
         public void Reset() { observedPlayer = ""; observedTick = endedTick = -1; wasProtected = false; }
 
+        private static float BirthShield(PveFixedWorld world, SnakeState player, string playerId)
+        {
+            if (!world.LocalSqueezeEscape) return player.shield;
+            foreach (var fighter in world.Fighters)
+                if (fighter.id == playerId) return Math.Max(0, fighter.shieldTicks) / (float)PveFixedWorld.TickRate;
+            return 0f;
+        }
+
         public void Observe(PveFixedWorld world, ArenaState state, string playerId)
         {
             if (world == null || !world.StrengthPreview || state == null || state.phase != "running" || string.IsNullOrEmpty(playerId))
@@ -284,7 +292,7 @@ namespace SnakeClub.Core
             var player = state.snakes.Find(s => s.id == playerId);
             if (player == null || !player.alive) { Reset(); return; }
             if (observedPlayer != playerId || state.tick < observedTick) Reset();
-            bool protectedNow = player.shield > 0;
+            bool protectedNow = BirthShield(world, player, playerId) > 0;
             if (observedTick >= 0 && state.tick > observedTick && wasProtected && !protectedNow) endedTick = state.tick;
             if (protectedNow) endedTick = -1;
             observedPlayer = playerId; observedTick = state.tick; wasProtected = protectedNow;
@@ -296,10 +304,26 @@ namespace SnakeClub.Core
                 string.IsNullOrEmpty(playerId) || observedPlayer != playerId) return "";
             var player = state.snakes.Find(s => s.id == playerId);
             if (player == null || !player.alive) return "";
-            if (player.shield > 0)
-                return "保护 " + (int)Math.Ceiling(player.shield) + " 秒 · 暂不能与对手互吃\n先吃果实变大 · 全屏拖动转向";
+            float shield = BirthShield(world, player, playerId);
+            if (shield > 0)
+                return "保护 " + (int)Math.Ceiling(shield) + " 秒 · 暂不能与对手互吃\n先吃果实变大 · 全屏拖动转向";
             return endedTick >= 0 && state.tick >= endedTick && state.tick - endedTick < PveFixedWorld.TickRate ?
                 "保护结束 · 金点处较弱，可尝试吞食" : "";
+        }
+    }
+
+    // The squeeze escape is distinct from birth protection and is shown
+    // only while its actual player-only timer is running.
+    public static class StrengthSqueezeEscapeNotice
+    {
+        public static string Text(PveFixedWorld world, ArenaState state, string playerId, bool suspended)
+        {
+            if (world == null || !world.StrengthPreview || !world.LocalSqueezeEscape || world.Finished ||
+                state == null || state.phase != "running" || suspended || playerId != "you" || world.SqueezeEscapeTicks <= 0) return "";
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive) return "";
+            int seconds = (world.SqueezeEscapeTicks + PveFixedWorld.TickRate - 1) / PveFixedWorld.TickRate;
+            return "脱困保护 " + seconds + " 秒\n可穿过对手 · 暂不能互吃";
         }
     }
 

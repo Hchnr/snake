@@ -30,6 +30,8 @@ capped_start_pattern = re.compile(r'capped-start=([0-9a-f:,]+)')
 stable_blocked_pattern = re.compile(r'stable-blocked=([0-9a-f:,]+)')
 priority_pattern = re.compile(r'priority-recovery=([0-9a-f:,]+)')
 priority_fixture_pattern = re.compile(r'priority-fixture=([0-9a-f]{16})')
+squeeze_pattern = re.compile(r'squeeze-escape=([0-9a-f:,]+)')
+squeeze_fixture_pattern = re.compile(r'squeeze-fixture=([0-9a-f]{16})')
 stable_fixture_pattern = re.compile(r'stable-fixture=([0-9a-f]{16})')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
@@ -232,6 +234,39 @@ if not priority_match or len(priority_match.group(1).split(',')) != 96 or not pr
     sys.exit('Desktop v9 recovery-priority matrix or controlled fixture is incomplete.')
 expected_priority = priority_match.group(1)
 expected_priority_fixture = priority_fixture_match.group(1)
+# Captured from unmodified HEAD before v10; protects v9 replays.
+v9_golden = (
+    '2:0:0:1800:35:3eebb4e849a4ed7f,2:0:1:1800:16:4525f23d40c07adb,2:0:2:1800:0:557c2e5b519ec26b,2:0:3:1800:0:7653b'
+    'f5e76088372,2:0:4:1800:16:db8afc93881bee24,2:0:5:1800:51:b7f2d4e3c9db7b35,2:0:6:309:51:82e75ac0815383bf,2:0:7:'
+    '1800:16:3baaba37b5d25cc2,2:1:0:1200:0:ead4ae80e188c908,2:1:1:1200:16:b2c4e669fe99d99f,2:1:2:1200:0:120a30a355c'
+    '9b785,2:1:3:1200:0:d806c806c5bf30bc,2:1:4:1200:16:fc6c052c77d9c7c7,2:1:5:1200:55:b079a5ae2a226d93,2:1:6:1200:5'
+    '5:e07fbdbebc4bedd1,2:1:7:1200:16:5946b19a97e83a20,9:0:0:1800:35:335bcc81cce9361b,9:0:1:1800:16:da10be5b9380772'
+    'd,9:0:2:1800:0:1caf8097841949a2,9:0:3:1800:39:01e393821cc54723,9:0:4:1800:51:547211abaae43278,9:0:5:1800:51:1e'
+    '6b0afbfb460a6b,9:0:6:1800:16:f168532d086a7069,9:0:7:334:51:55369efdce35b439,9:1:0:1200:39:427e1635875760e4,9:1'
+    ':1:1200:16:96b9bb05d7bd6c25,9:1:2:1200:0:39dbcd2a25d2696e,9:1:3:1200:0:2e7c5940a6dba8d6,9:1:4:1200:51:e5cda930'
+    '3ff77b54,9:1:5:1200:51:733fe6a2135f20df,9:1:6:1200:16:07d207ae49387cd3,9:1:7:504:59:39e3a65700a84914,68:0:0:18'
+    '00:39:16e3948202694e45,68:0:1:1800:16:b0616f21beef8037,68:0:2:1800:0:02a88581e489a35c,68:0:3:1800:0:08de47538f'
+    '9a55c0,68:0:4:1800:16:966adfa3a1e3a972,68:0:5:1800:16:443283e32e20f2a3,68:0:6:1800:55:7537682f71353bff,68:0:7:'
+    '1800:16:ad7da1e508c19efb,68:1:0:1200:0:82366205259ddbe7,68:1:1:1200:16:6df4330930b3f737,68:1:2:1200:0:6e972ba3'
+    '325b683b,68:1:3:1200:0:d4e150aadb403d8a,68:1:4:1200:16:0c66605af41b7ede,68:1:5:1200:16:ca2d168aefd4b0df,68:1:6'
+    ':1200:51:bdc3b9b6dda78785,68:1:7:1200:16:23715b028e69f5cf,92:0:0:1800:39:f561c8cbfbad5094,92:0:1:1800:51:4c54e'
+    '9b506a61d05,92:0:2:1800:0:76aa26b2e2dae57d,92:0:3:1800:39:56521938530432bf,92:0:4:1800:16:18efc431a173de1e,92:'
+    '0:5:1800:16:aa4f60df4cc0120b,92:0:6:1800:55:71566034fa626190,92:0:7:1800:16:b8c9d09338d28fa2,92:1:0:1200:35:7b'
+    '9de819806893a5,92:1:1:1200:55:756c6f54fe990849,92:1:2:1200:0:134765bb6bf94a7b,92:1:3:1200:0:bbb81e2bceb5c5aa,9'
+    '2:1:4:1200:16:4d9c2aadce8bf70d,92:1:5:1200:16:ecdddcc153338755,92:1:6:1200:55:50289139c1665f95,92:1:7:123:49:1'
+    '6ee0d24c926f154,105:0:0:1800:0:5a3c8b6fece267b0,105:0:1:1800:16:2f641dd594460a26,105:0:2:1800:0:1a9e6567ea97b3'
+    'b9,105:0:3:1800:0:2d7ac9555aff975c,105:0:4:1800:16:e394eb5f64d6ff43,105:0:5:1800:16:1b660d67643c9fb1,105:0:6:1'
+    '800:51:50587169c4afec6f,105:0:7:1800:0:fc9c28cb30fb48e9,105:1:0:1200:0:05f3dbcb2e732ac6,105:1:1:1200:16:c0c875'
+    '5dd36a15b5,105:1:2:1200:0:dfa737ce3a28d8fd,105:1:3:1200:0:62ed7aced1e48f57,105:1:4:1200:16:64409a5f2fde05fb,10'
+    '5:1:5:1200:51:db9eef946e8cba6b,105:1:6:1200:55:7a5b1c92b92cae54,105:1:7:1200:0:faab8572ddb8306d,192:0:0:1800:3'
+    '9:3887e3060c7cd736,192:0:1:1800:16:8663c94e3da56951,192:0:2:287:37:c5c91ea4bdaf22ee,192:0:3:1800:39:26a2508460'
+    '057bdc,192:0:4:1800:16:1d375d2b7fb81e2f,192:0:5:1800:16:6277da630779ad97,192:0:6:1800:16:ebbb5a9b50d66fc8,192:'
+    '0:7:168:53:4da2665305f4015c,192:1:0:1200:35:9eca42587acc0b6d,192:1:1:1200:16:c4a4088c2f3810f2,192:1:2:220:0:ac'
+    '6c3e27d44c9ac2,192:1:3:1200:0:ee0ce7779cd3c05f,192:1:4:1200:16:dcf33b765f453d39,192:1:5:1200:51:1138f037e7bb88'
+    '6b,192:1:6:1200:55:19a7d10be27d55cc,192:1:7:1200:16:a20a9635c96bc400'
+)
+if expected_priority != v9_golden or expected_priority_fixture != '165a3e0fa80e83b8':
+    sys.exit('MISMATCH: v9 matrix or priority fixture changed from the preserved reference.')
 priority_coverage = 0
 for case in expected_priority.split(','):
     fields = case.split(':')
@@ -240,6 +275,23 @@ for case in expected_priority.split(','):
     priority_coverage |= int(fields[4])
 if priority_coverage != 63:
     sys.exit('Desktop v9 cases did not observe active priority, recovery, both pickups, second activation and opening assist.')
+
+squeeze_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-squeeze-escape-vector'],
+                                   text=True, capture_output=True, check=True, timeout=180).stdout
+squeeze_match = squeeze_pattern.search(squeeze_reference)
+squeeze_fixture_match = squeeze_fixture_pattern.search(squeeze_reference)
+if not squeeze_match or len(squeeze_match.group(1).split(',')) != 112 or not squeeze_fixture_match:
+    sys.exit('Desktop v10 squeeze matrix or lifecycle fixture is incomplete.')
+expected_squeeze = squeeze_match.group(1)
+expected_squeeze_fixture = squeeze_fixture_match.group(1)
+squeeze_coverage = 0
+for case in expected_squeeze.split(','):
+    fields = case.split(':')
+    if len(fields) != 6:
+        sys.exit('Desktop v10 squeeze matrix case is malformed.')
+    squeeze_coverage |= int(fields[4])
+if squeeze_coverage & 511 != 511:
+    sys.exit('Desktop v10 samples missed recovery, pickups, repeated supply, opening assist or squeeze start/active/end.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -271,7 +323,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
+    private static void Run() { if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -334,6 +386,17 @@ internal static class FixedVectorDiagnostic {
         if not actual_priority_match or len(actual_priority_match.group(1).split(',')) != 96 or not actual_priority_fixture_match:
             sys.exit('WebGL v9 recovery-priority matrix or controlled fixture is incomplete.')
         actual_priority = actual_priority_match.group(1)
+        print('Running v10 squeeze vectors in a third muted headless browser...', flush=True)
+        squeeze_result = subprocess.run(['node', str(root / 'scripts/fixed-pve-webgl-probe.cjs'), str(chrome),
+                                         'http://127.0.0.1:' + str(server.server_port) + '/?squeeze=1'],
+                                        capture_output=True, text=True, timeout=240, check=False)
+        if squeeze_result.returncode:
+            sys.exit('Headless v10 diagnostic failed: ' + squeeze_result.stderr[-3000:])
+        actual_squeeze_match = squeeze_pattern.search(squeeze_result.stdout)
+        actual_squeeze_fixture_match = squeeze_fixture_pattern.search(squeeze_result.stdout)
+        if not actual_squeeze_match or len(actual_squeeze_match.group(1).split(',')) != 112 or not actual_squeeze_fixture_match:
+            sys.exit('WebGL v10 squeeze matrix or lifecycle fixture is incomplete.')
+        actual_squeeze = actual_squeeze_match.group(1)
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -385,6 +448,14 @@ internal static class FixedVectorDiagnostic {
             sys.exit('MISMATCH: local recovery-priority simulation differs across runtimes.')
         if actual_priority_fixture_match.group(1) != expected_priority_fixture:
             sys.exit('MISMATCH: controlled recovery-priority fixture differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8 and 96 v9 matches plus controlled bite/block and recovery-priority fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
+        if actual_squeeze != expected_squeeze:
+            for desktop, webgl in zip(expected_squeeze.split(','), actual_squeeze.split(',')):
+                if desktop != webgl:
+                    print('First differing v10 case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: squeeze-escape simulation differs across runtimes.')
+        if actual_squeeze_fixture_match.group(1) != expected_squeeze_fixture:
+            sys.exit('MISMATCH: squeeze lifecycle fixture differs across runtimes.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9 and 112 v10 matches plus controlled bite/block, recovery-priority and squeeze fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)
