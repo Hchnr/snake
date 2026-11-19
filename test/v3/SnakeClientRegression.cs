@@ -48,6 +48,7 @@ namespace SnakeClub.Tests.Editor
                 strengthServer.experimentalFixedPveServer = false; strengthServer.experimentalComparison = true; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed comparison mode");
                 strengthServer.experimentalComparison = false; strengthServer.serverUrl = "ws://127.0.0.1:2567/ws"; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed room backend");
                 Debug.Log("PASS Unity strength server preview requires explicit loopback configuration");
+                TestMusicLoadRecovery();
                 TestPendingStorageProtection();
                 TestFixedPvePreviewFlow();
                 TestStrengthPracticeFirstRun();
@@ -1351,6 +1352,49 @@ namespace SnakeClub.Tests.Editor
                 if (hadViewKey) PlayerPrefs.SetInt(viewKey, originalView); else PlayerPrefs.DeleteKey(viewKey);
                 PlayerPrefs.Save();
             }
+        }
+
+        private static void TestMusicLoadRecovery()
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            int previous = PlayerPrefs.GetInt("snake.v3.music", 1);
+            var root = new GameObject("Music load recovery");
+            try
+            {
+                PlayerPrefs.SetInt("snake.v3.music", 1);
+                var feedback = root.AddComponent<ArenaFeedback>();
+                typeof(ArenaFeedback).GetMethod("Initialize", flags).Invoke(feedback, null);
+                var loader = typeof(ArenaFeedback).GetField("musicClipLoaderOverride", flags);
+                var home = (MusicLoadRetry)typeof(ArenaFeedback).GetField("homeRetry", flags).GetValue(feedback);
+                var battle = (MusicLoadRetry)typeof(ArenaFeedback).GetField("battleRetry", flags).GetValue(feedback);
+                int homeCalls = 0, battleCalls = 0;
+                loader.SetValue(feedback, new Func<bool, AudioClip>(isBattle => {
+                    if (isBattle) { battleCalls++; throw new Exception("persistent failure"); }
+                    if (++homeCalls == 1) throw new Exception("transient failure");
+                    return Resources.Load<AudioClip>("Music/Home");
+                }));
+                void Update(bool isBattle, bool focused = true, bool paused = false) => feedback.UpdateMusic(isBattle, focused, paused, false, true);
+                void Elapse(MusicLoadRetry retry) { for (int i = 0; i < 21; i++) retry.Advance(.1f); }
+                Update(false); Require(homeCalls == 1, "initial music failure not exercised");
+                for (int i = 0; i < 10; i++) Update(false);
+                Require(homeCalls == 1, "failed music retried every frame");
+                Update(false, false); Update(false, true, true);
+                Require(homeCalls == 1 && !home.Ready, "background or pause consumed retry");
+                Elapse(home); Update(false);
+                var loaded = typeof(ArenaFeedback).GetField("homeMusic", flags).GetValue(feedback) as AudioClip;
+                Require(homeCalls == 2 && loaded != null, "transient failure did not recover loaded music");
+                Update(true); Require(battleCalls == 1, "independent battle attempt was not made");
+                for (int n = 0; n < 2; n++) { Elapse(battle); Update(true); }
+                Require(battleCalls == 3, "persistent failure retry limit not reached");
+                Elapse(battle); Update(true); Require(battleCalls == 3, "persistent failure exceeded retry limit");
+                Update(false); Update(true); Require(battleCalls == 4, "returning to a scene did not restore its retry budget");
+                feedback.MusicEnabled = false; Update(true); feedback.MusicEnabled = true; Update(true);
+                Require(battleCalls == 5, "re-enabling music did not restore retry budget");
+                feedback.MusicEnabled = false; feedback.MusicEnabled = true; Update(true);
+                Require(battleCalls == 6, "same-frame music toggle did not restore retry budget");
+                Debug.Log("PASS Unity music recovers transient errors with bounded independent retries");
+            }
+            finally { PlayerPrefs.SetInt("snake.v3.music", previous); UnityEngine.Object.DestroyImmediate(root); }
         }
 
         private static void TestStrengthViewVisibility()
