@@ -1068,6 +1068,31 @@ namespace SnakeClub
             Label(new Rect(105, 1795, 870, 70), "全屏拖动转向  ·  双指加速消耗长度  ·  撞墙反弹", 24, new Color(.80f, .87f, .90f), TextAnchor.MiddleCenter);
         }
 
+        // Gold weak points and red danger crosses can fall beneath the map
+        // even when every head is outside it. Use their actual body-segment
+        // projections; unmarked bodies do not keep the map faded indefinitely.
+        internal static bool MinimapCoversStrengthMarkers(ArenaState world, ArenaRenderer renderer, Rect mapPixels, bool strengthEnabled)
+        {
+            if (!strengthEnabled || world == null || renderer == null || mapPixels.width <= 0 || mapPixels.height <= 0) return false;
+            Vector2 padding = renderer.StrengthMarkerScreenPadding();
+            if (padding.x <= 0f || padding.y <= 0f) return false;
+            Rect expanded = Rect.MinMaxRect(mapPixels.xMin - padding.x, mapPixels.yMin - padding.y,
+                mapPixels.xMax + padding.x, mapPixels.yMax + padding.y);
+            foreach (var snake in world.snakes)
+            {
+                if (snake == null || !snake.alive || snake.segments == null) continue;
+                for (int i = 1; i < snake.segments.Count; i++)
+                {
+                    bool weak = i < snake.strengthWeakSegments.Count && snake.strengthWeakSegments[i];
+                    bool threat = i < snake.strengthThreatSegments.Count && snake.strengthThreatSegments[i];
+                    if (!weak && !threat) continue;
+                    Vector3 pixel = renderer.HeadToScreen(snake.segments[i]);
+                    if (pixel.z > 0 && expanded.Contains(new Vector2(pixel.x, pixel.y))) return true;
+                }
+            }
+            return false;
+        }
+
         private void DrawMiniMap(ArenaState world)
         {
             Rect map = GameMiniMap;
@@ -1084,6 +1109,11 @@ namespace SnakeClub
                     Vector2 a = ToVirtual(new Vector2(pixel.xMin, pixel.yMin)), b = ToVirtual(new Vector2(pixel.xMax, pixel.yMax));
                     var character = Rect.MinMaxRect(Mathf.Min(a.x, b.x), Mathf.Min(a.y, b.y), Mathf.Max(a.x, b.x), Mathf.Max(a.y, b.y));
                     if (map.Overlaps(character)) { covered = true; break; }
+                }
+                if (!covered && fixedPve != null && fixedPve.StrengthPreview)
+                {
+                    Rect pixels = GameUiScreenRect(map, Screen.safeArea, Screen.width, Screen.height);
+                    covered = MinimapCoversStrengthMarkers(world, arenaRenderer, pixels, true);
                 }
                 minimapOcclusion.Advance(world.tick, covered, Time.unscaledDeltaTime, SimulationSuspended, reducedEffects);
             }

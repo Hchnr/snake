@@ -839,6 +839,69 @@ namespace SnakeClub.Tests.Editor
                 actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(20000, 0, 0, 40));
                 for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
                 renderer.Draw(world.RenderState(), "you");
+                // Controlled projection: the head is outside the map but an
+                // actual marked body segment is under the map's opaque panel.
+                var markedState = new ArenaState();
+                var markedSnake = new SnakeState { id = "bot-marker" };
+                markedSnake.segments.Add(new Point(20, 0)); markedSnake.segments.Add(new Point(0, 0));
+                var weak = (System.Collections.Generic.List<bool>)typeof(SnakeState).GetField("strengthWeakSegments", flags).GetValue(markedSnake);
+                var threat = (System.Collections.Generic.List<bool>)typeof(SnakeState).GetField("strengthThreatSegments", flags).GetValue(markedSnake);
+                weak.Add(false); weak.Add(true);
+                markedState.snakes.Add(markedSnake);
+                Vector3 markedPixel = renderer.HeadToScreen(markedSnake.segments[1]);
+                Vector3 headPixel = renderer.HeadToScreen(markedSnake.segments[0]);
+                Rect coveredMap = new Rect(markedPixel.x - 3, markedPixel.y - 3, 6, 6);
+                Require(markedPixel.z > 0 && !coveredMap.Contains(new Vector2(headPixel.x, headPixel.y)),
+                    "controlled minimap fixture did not separate head and marked segment");
+                var covers = typeof(SnakeGameApp).GetMethod("MinimapCoversStrengthMarkers", BindingFlags.Static | BindingFlags.NonPublic);
+                bool Covers(bool strength) => (bool)covers.Invoke(null, new object[] { markedState, renderer, coveredMap, strength });
+                Require(Covers(true) && !Covers(false), "covered weak marker was not detected or leaked to old mode");
+                var camera = (Camera)typeof(ArenaRenderer).GetField("view", flags).GetValue(renderer);
+                float priorSize = camera.orthographicSize;
+                foreach (int preference in new[] { -1, 0, 1 })
+                {
+                    camera.orthographicSize = GrowthView.CameraSize(16, false, preference);
+                    markedPixel = renderer.HeadToScreen(markedSnake.segments[1]);
+                    Vector2 padding = renderer.StrengthMarkerScreenPadding();
+                    // A tiny panel over a conservative marker corner at the
+                    // heights of sprite and procedural-head markers.
+                    foreach (float height in new[] { .45f, .58f, 1.65f })
+                    {
+                        Vector3 corner = camera.WorldToScreenPoint(new Vector3(.5f, height, .5f));
+                        coveredMap = new Rect(corner.x - 1, corner.y - 1, 2, 2);
+                        Require(!coveredMap.Contains(new Vector2(markedPixel.x, markedPixel.y)) && Covers(true),
+                            "marker edge or rendered height was missed at preference " + preference);
+                    }
+                    coveredMap = new Rect(markedPixel.x + padding.x + 5, markedPixel.y, 2, 2);
+                    Require(!Covers(true), "distant marker falsely faded minimap at preference " + preference);
+                }
+                camera.orthographicSize = priorSize;
+                markedPixel = renderer.HeadToScreen(markedSnake.segments[1]);
+                coveredMap = new Rect(markedPixel.x - 3, markedPixel.y - 3, 6, 6);
+                weak[1] = false;
+                Require(!Covers(true), "unmarked body faded the minimap");
+                threat.Add(false); threat.Add(true);
+                Require(Covers(true), "covered danger marker was not detected");
+                markedSnake.alive = false; Require(!Covers(true), "dead snake faded the minimap");
+                markedSnake.alive = true; markedSnake.segments[1] = new Point(-20, 0);
+                Require(!Covers(true), "marker outside map did not release body coverage");
+                if (Environment.GetEnvironmentVariable("SNAKE_MINIMAP_BENCH") == "1")
+                {
+                    var crowded = new ArenaState();
+                    for (int n = 0; n < 8; n++)
+                    {
+                        var snake = new SnakeState { id = "bench-" + n };
+                        var marks = (System.Collections.Generic.List<bool>)typeof(SnakeState).GetField("strengthWeakSegments", flags).GetValue(snake);
+                        for (int j = 0; j < 80; j++) { snake.segments.Add(new Point(j, n)); marks.Add(true); }
+                        crowded.snakes.Add(snake);
+                    }
+                    var outside = new Rect(-100000, -100000, 10, 10);
+                    var watch = System.Diagnostics.Stopwatch.StartNew();
+                    for (int repeat = 0; repeat < 1000; repeat++)
+                        Require(!(bool)covers.Invoke(null, new object[] { crowded, renderer, outside, true }), "benchmark map unexpectedly covered");
+                    watch.Stop();
+                    Debug.Log("PASS Unity minimap worst-case benchmark 8 x 79 marked segments, 1000 scans: " + watch.Elapsed.TotalMilliseconds.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " ms");
+                }
                 if (Screen.width > 0 && Screen.height > 0)
                     Require(renderer.TryCharacterScreenBounds("you", out Rect spriteBounds) && spriteBounds.width > 0 && spriteBounds.height > 0,
                         "rendered sprite did not expose screen bounds for minimap avoidance");
