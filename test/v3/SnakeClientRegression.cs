@@ -51,6 +51,7 @@ namespace SnakeClub.Tests.Editor
                 TestPendingStorageProtection();
                 TestFixedPvePreviewFlow();
                 TestStrengthPracticeFirstRun();
+                TestStrengthViewSimulationIsolation();
                 TestOfflineCosmeticTrial();
                 TestDefaultStrengthMain();
                 TestGameplayComparison();
@@ -1092,6 +1093,132 @@ namespace SnakeClub.Tests.Editor
                 if (hadKey) PlayerPrefs.SetInt(key, original); else PlayerPrefs.DeleteKey(key);
                 if (hadHintKey) PlayerPrefs.SetInt(hintKey, originalHint); else PlayerPrefs.DeleteKey(hintKey);
                 if (hadViewKey) PlayerPrefs.SetInt(viewKey, originalView); else PlayerPrefs.DeleteKey(viewKey);
+                PlayerPrefs.Save();
+            }
+        }
+
+        private static void TestStrengthViewSimulationIsolation()
+        {
+            // Exercise the client stepping path with exactly the same injected controls;
+            // this is not a real-device touch test.
+            const string tutorialKey = "snake.v033.strengthPracticeTutorial", viewKey = "snake.v034.viewPreference";
+            bool hadTutorial = PlayerPrefs.HasKey(tutorialKey), hadView = PlayerPrefs.HasKey(viewKey);
+            int oldTutorial = PlayerPrefs.GetInt(tutorialKey, 0), oldView = PlayerPrefs.GetInt(viewKey, 0);
+            var roots = new GameObject[3]; var apps = new SnakeGameApp[3];
+            var worlds = new PveFixedWorld[3]; var renderers = new ArenaRenderer[3];
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic; var type = typeof(SnakeGameApp);
+            FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+            void Call(SnakeGameApp app, string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+            var rendererType = typeof(ArenaRenderer);
+            var append = typeof(PveFixedWorld).GetMethod("AppendReplayDiagnostics", flags);
+            string Diagnostic(PveFixedWorld world)
+            {
+                ulong hash = 14695981039346656037UL;
+                Action<int> add = value => { unchecked { for (int i = 0; i < 4; i++) { hash ^= (byte)(value >> (i * 8)); hash *= 1099511628211UL; } } };
+                append.Invoke(world, new object[] { add });
+                add(world.Tick); add(world.Finished ? 1 : 0);
+                add(world.LastPlayerAttackTick); add(world.LastPlayerAttackCount); add(world.LastPlayerDamageTick); add(world.LastPlayerDamageCount);
+                add(world.LastPlayerBlockedTick); add(world.LastPlayerHeadTieTick); add(world.PlayerSegmentsEaten); add(world.PlayerSegmentsLostToBites);
+                foreach (var fighter in world.Fighters)
+                {
+                    add(fighter.alive ? 1 : 0); add(fighter.shieldTicks); add(fighter.kills); add(fighter.motion.Angle); add(fighter.motion.Length);
+                    add(fighter.motion.ReboundTicks); add(fighter.motion.ReboundCooldown); add(fighter.motion.Boosting ? 1 : 0);
+                    add(world.StrengthBuffTicks(fighter.id)); add(world.StrengthLoopTicks(fighter.id));
+                    world.TryGetStrengthLevelProgress(fighter.id, out int level, out int xp, out int required); add(level); add(xp); add(required);
+                    foreach (var part in fighter.motion.Segments) { add(part.x); add(part.y); }
+                }
+                foreach (var fruit in world.Fruit) { add(fruit.position.x); add(fruit.position.y); add(fruit.color); }
+                return hash.ToString("x16") + (world.Finished ? ":" + StrengthStateDigest.Compute(world) : "");
+            }
+            try
+            {
+                PlayerPrefs.SetInt(tutorialKey, 1);
+                float[] zoom = new float[3];
+                for (int i = 0; i < 3; i++)
+                {
+                    roots[i] = new GameObject("View simulation isolation " + i);
+                    apps[i] = roots[i].AddComponent<SnakeGameApp>();
+                    var api = roots[i].AddComponent<GameApiClient>();
+                    api.Configure(new GameConfiguration { experimentalFixedPve = true, experimentalStrengthPve = true, apiUrl = "", serverUrl = "", allowDevLogin = false });
+                    renderers[i] = roots[i].AddComponent<ArenaRenderer>();
+                    Field("api").SetValue(apps[i], api); Field("arenaRenderer").SetValue(apps[i], renderers[i]);
+                    Field("connection").SetValue(apps[i], roots[i].AddComponent<RoomConnection>());
+                    Field("feedback").SetValue(apps[i], roots[i].AddComponent<ArenaFeedback>());
+                    Call(apps[i], "LoadPreferences"); Call(apps[i], "StartMain");
+                    worlds[i] = new PveFixedWorld(58, false, null, true, null, true, true, true, true, true, true, true, true);
+                    Field("fixedPve").SetValue(apps[i], worlds[i]); Field("state").SetValue(apps[i], worlds[i].RenderState());
+                    Field("viewPreference").SetValue(apps[i], i - 1);
+                    rendererType.GetMethod("Initialize", flags).Invoke(renderers[i], null);
+                    Field("paused").SetValue(apps[i], true); Call(apps[i], "Update");
+                    Require(renderers[i].ViewPreference == i - 1 && renderers[i].StrengthBodyVisual, "client did not forward view setting to renderer");
+                    Field("paused").SetValue(apps[i], false);
+                    zoom[i] = ((Camera)rendererType.GetField("view", flags).GetValue(renderers[i])).orthographicSize;
+                }
+                Require(zoom[0] < zoom[1] && zoom[1] < zoom[2], "three view preferences did not change actual camera size");
+                bool sawBoost = false, sawSteering = false, sawLeft = false, sawUp = false; int attacks = 0, damage = 0, blocks = 0;
+                while (!worlds[0].Finished)
+                {
+                    int tick = worlds[0].Tick;
+                    if (tick == 100)
+                    {
+                        for (int i = 0; i < 3; i++)
+                        {
+                            Field("paused").SetValue(apps[i], true); string before = Diagnostic(worlds[i]);
+                            int previousView = (int)Field("viewPreference").GetValue(apps[i]);
+                            Call(apps[i], "CycleViewPreference"); Call(apps[i], "Update");
+                            Require(renderers[i].ViewPreference != previousView && renderers[i].ViewPreference == (int)Field("viewPreference").GetValue(apps[i]) && renderers[i].MotionPaused,
+                                "paused view change did not reach the renderer");
+                            Call(apps[i], "AdvanceFixedPve", .2f);
+                            Require(worlds[i].Tick == tick && Diagnostic(worlds[i]) == before, "pause or view change advanced simulation");
+                            Field("paused").SetValue(apps[i], false); renderers[i].MotionPaused = false;
+                        }
+                    }
+                    var direction = tick % 200 < 100 ? new Point(-1, 0) : new Point(0, 1);
+                    bool boost = tick % 120 >= 90;
+                    for (int i = 0; i < 3; i++)
+                    {
+                        Require(!worlds[i].Finished && worlds[i].Tick == tick, "view runs ended at different ticks");
+                        Field("direction").SetValue(apps[i], direction); Field("pointerBoost").SetValue(apps[i], boost); Field("hasSteered").SetValue(apps[i], true);
+                        Call(apps[i], "AdvanceFixedPve", .05f);
+                        Require(worlds[i].Tick == tick + 1, "client failed to advance one simulation step");
+                    }
+                    var inputs0 = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(apps[0]);
+                    for (int i = 1; i < 3; i++)
+                    {
+                        var inputs = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(apps[i]);
+                        Require(inputs.Count == inputs0.Count && inputs[inputs.Count - 1] == inputs0[inputs0.Count - 1] && inputs[inputs.Count - 2] == inputs0[inputs0.Count - 2], "view changed recorded controls");
+                        Require(Diagnostic(worlds[i]) == Diagnostic(worlds[0]), "view changed simulation at tick " + worlds[0].Tick);
+                    }
+                    if (tick % 100 == 50)
+                    {
+                        for (int i = 0; i < 3; i++)
+                        {
+                            Field("paused").SetValue(apps[i], true); Call(apps[i], "Update");
+                            Require(renderers[i].ViewPreference == (int)Field("viewPreference").GetValue(apps[i]), "client view stopped reaching renderer");
+                            Field("paused").SetValue(apps[i], false);
+                        }
+                    }
+                    sawBoost |= (inputs0[inputs0.Count - 1] & 1) != 0; sawSteering |= (inputs0[inputs0.Count - 1] & 2) != 0;
+                    sawLeft |= inputs0[inputs0.Count - 2] == 128; sawUp |= inputs0[inputs0.Count - 2] == 64;
+                    if (worlds[0].LastPlayerAttackTick == worlds[0].Tick) attacks++;
+                    if (worlds[0].LastPlayerDamageTick == worlds[0].Tick) damage++;
+                    if (worlds[0].LastPlayerBlockedTick == worlds[0].Tick) blocks++;
+                }
+                Require(worlds[0].Tick > 100 && sawBoost && sawSteering && sawLeft && sawUp && attacks + damage + blocks > 0, "fixture missed pause, directions, boost or contact");
+                for (int i = 0; i < 3; i++)
+                {
+                    var inputs = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(apps[i]);
+                    Require(PveFixedRecording.TryReplayStrength(58, false, inputs.ToArray(), out var replay,
+                        true, true, true, true, true, true, true, true), "view recording could not replay");
+                    Require(replay.Finished && Diagnostic(replay) == Diagnostic(worlds[i]), "view recording replay ended with a different state");
+                }
+                Debug.Log("PASS Unity view settings preserve scripted client inputs, per-step state and replay through " + worlds[0].Tick + " ticks; attack/damage/block ticks=" + attacks + "/" + damage + "/" + blocks);
+            }
+            finally
+            {
+                foreach (var root in roots) if (root != null) UnityEngine.Object.DestroyImmediate(root);
+                if (hadTutorial) PlayerPrefs.SetInt(tutorialKey, oldTutorial); else PlayerPrefs.DeleteKey(tutorialKey);
+                if (hadView) PlayerPrefs.SetInt(viewKey, oldView); else PlayerPrefs.DeleteKey(viewKey);
                 PlayerPrefs.Save();
             }
         }
