@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 using SnakeClub.Core;
 
@@ -101,18 +102,20 @@ namespace SnakeClub.Tests
 
         public static string ComputeStableBlocked() => ComputeRecovery(true, true, true, true) + "|" + StableBlockedFixture();
 
-        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false)
+        public static string ComputeRecoveryPriority() => ComputeRecovery(true, true, true, true, true) + "|" + RecoveryPriorityFixture();
+
+        private static string ComputeRecovery(bool safe, bool aligned = false, bool capped = false, bool stableBlocked = false, bool recoveryPriority = false)
         {
-            string prefix = stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
+            string prefix = recoveryPriority ? "priority-recovery=" : stableBlocked ? "stable-blocked=" : capped ? "capped-start=" : aligned ? "aligned-start=" : safe ? "safe-recovery=" : "recovery=";
             var result = new StringBuilder(prefix);
-            foreach (int seed in aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
+            foreach (int seed in recoveryPriority ? new[] { 2, 9, 68, 92, 105, 192 } : aligned ? new[] { 2, 68, 92, 105, 192 } : safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
-            for (int pattern = 0; pattern < (capped ? 7 : aligned ? 4 : safe ? 3 : 2); pattern++)
+            for (int pattern = 0; pattern < (recoveryPriority ? 8 : capped ? 7 : aligned ? 4 : safe ? 3 : 2); pattern++)
             {
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
                     localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe, localAlignedStart: aligned,
-                    localCappedStart: capped, localStableBlocked: stableBlocked);
+                    localCappedStart: capped, localStableBlocked: stableBlocked, localRecoveryPriority: recoveryPriority);
                 int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
@@ -120,7 +123,7 @@ namespace SnakeClub.Tests
                     if (capped && pattern == 4) heading = 128;
                     if (capped && pattern == 5) heading = world.Tick < 30 ? (byte)0 : (byte)128;
                     if (capped && pattern == 6) heading = world.Tick < 35 ? (byte)129 : (byte)32;
-                    if (pattern == 2 && world.Tick % 8 == 0)
+                    if ((pattern == 2 || pattern == 7) && world.Tick % 8 == 0)
                     {
                         var player = world.Fighters[0].motion;
                         long nearest = long.MaxValue; int dx = 0, dy = 0;
@@ -143,7 +146,7 @@ namespace SnakeClub.Tests
                     }
                     // v6 includes actual steering intent in the local tape;
                     // exercise no input, an immediate turn and a later turn.
-                    bool steered = aligned && (pattern == 1 || pattern == 3 || (pattern == 2 && world.Tick >= 6) ||
+                    bool steered = aligned && (pattern == 1 || pattern == 3 || pattern == 7 || (pattern == 2 && world.Tick >= 6) ||
                         (capped && (pattern == 4 || pattern == 6 || (pattern == 5 && world.Tick >= 30))));
                     world.Step(heading, false, steered);
                     world.AppendReplayDiagnostics(Add);
@@ -161,12 +164,52 @@ namespace SnakeClub.Tests
                     if (world.RecoverySupplyCollectedByOpponents > 0) flags |= 4;
                     if (world.RecoverySuppliesUsed > 1) flags |= 8;
                     if (capped && world.OpeningTurnAssistUsed) flags |= 16;
+                    if (recoveryPriority) for (int i = 0; i < world.Fruit.Count; i++)
+                        if (world.RecoveryPriorityTicks(i) > 0) { flags |= 32; break; }
                 }
                 if (result.Length > prefix.Length) result.Append(',');
                 result.Append(seed).Append(':').Append(first ? 1 : 0).Append(':').Append(pattern).Append(':')
                     .Append(world.Tick).Append(':').Append(flags).Append(':').Append(hash.ToString("x16"));
             }
             return result.ToString();
+        }
+
+        // The spawned food comes from a real bite; repeated controlled AI
+        // contacts exercise the priority boundary in both runtimes.
+        private static string RecoveryPriorityFixture()
+        {
+            var world = new PveFixedWorld(42, false, null, true, localAdvantage: true, localOpeningFood: true,
+                localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true,
+                localAlignedStart: true, localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true);
+            var actors = (PveFixedFighter[])world.Fighters;
+            actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+            actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-11700, 0, 0, 16));
+            for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+            var fruits = (List<PveFixedFruit>)world.Fruit;
+            for (int i = 0; i < fruits.Count; i++) fruits[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
+            world.Step(0, false);
+            if (world.LastPlayerDamageTick != 1 || world.RecoverySuppliesUsed != 1)
+                throw new InvalidOperationException("Priority fixture did not spawn from a real bite");
+            int index = -1;
+            for (int i = 0; i < fruits.Count; i++) if (world.IsRecoveryFruit(i)) { index = i; break; }
+            if (index < 0) throw new InvalidOperationException("Priority fixture has no recovery fruit");
+            var point = fruits[index].position;
+            actors[0] = new PveFixedFighter("you", new PveFixedMotion(-50000, -50000, 0, 16)) { shieldTicks = 2000 };
+            hash = 14695981039346656037UL;
+            while (world.Tick < 1 + PveFixedWorld.RecoveryPriorityDurationTicks)
+            {
+                actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(point.x, point.y, 0, 16)) { shieldTicks = 2000 };
+                world.Step(0, false);
+                world.AppendReplayDiagnostics(Add);
+                Add(world.Tick); Add(world.RecoveryPriorityTicks(index)); Add(world.IsRecoveryFruit(index) ? 1 : 0);
+                Add(world.RecoverySupplyCollectedByOpponents);
+                if (world.Tick < 1 + PveFixedWorld.RecoveryPriorityDurationTicks &&
+                    (!world.IsRecoveryFruit(index) || world.RecoverySupplyCollectedByOpponents != 0))
+                    throw new InvalidOperationException("AI collected during recovery priority");
+            }
+            if (world.IsRecoveryFruit(index) || world.RecoverySupplyCollectedByOpponents < 1)
+                throw new InvalidOperationException("AI could not collect recovery fruit after priority expired: tick=" + world.Tick + " marked=" + world.IsRecoveryFruit(index) + " collected=" + world.RecoverySupplyCollectedByOpponents);
+            return "priority-fixture=" + hash.ToString("x16");
         }
 
         // Controlled same-frame bite + blocked contact: random match samples

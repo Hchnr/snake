@@ -547,6 +547,31 @@ namespace SnakeClub.Tests.Editor
                 world.Step(0, false); renderer.Draw(world.RenderState(), "you");
                 Require(world.RecoverySuppliesUsed == 1, "fixture did not trigger real recovery supplies");
                 Require(MarkedCount() == 1, "overlay did not identify one real spawned fruit");
+                // Simulate unavailable character art; the procedural head
+                // must still provide bounds for an obscured real supply.
+                var characters = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
+                characters.TryGetValue("you", out var ownSprite);
+                bool wasEnabled = ownSprite != null && ownSprite.enabled;
+                if (ownSprite != null) ownSprite.enabled = false;
+                var recoveryBounds = typeof(SnakeGameApp).GetMethod("TryRecoveryPlayerBounds", BindingFlags.Static | BindingFlags.NonPublic);
+                var projection = world.RenderState();
+                var player = projection.snakes.Find(s => s.id == "you");
+                var boundsArgs = new object[] { renderer, player, "you", default(Rect) };
+                Require(!renderer.TryCharacterScreenBounds("you", out _) && (bool)recoveryBounds.Invoke(null, boundsArgs),
+                    "procedural player head did not provide recovery bounds");
+                Rect fallbackBounds = (Rect)boundsArgs[3];
+                Func<Point, Vector3> hiddenByHead = p => new Vector3(fallbackBounds.center.x, fallbackBounds.center.y, 1);
+                var fallbackMarkers = new System.Collections.Generic.List<Vector2>();
+                markerSelection.Invoke(null, new object[] { projection, true, false, fallbackBounds,
+                    new Rect(fallbackBounds.xMin - 10, fallbackBounds.yMin - 10, fallbackBounds.width + 20, fallbackBounds.height + 20),
+                    player.segments[0], hiddenByHead, null, fallbackMarkers });
+                Require(fallbackMarkers.Count == 1 && fallbackBounds.Contains(fallbackMarkers[0]),
+                    "a real recovery supply hidden by the fallback head lost its marker");
+                player.alive = false;
+                Require(!(bool)recoveryBounds.Invoke(null, new object[] { renderer, player, "you", default(Rect) }),
+                    "dead player retained recovery bounds");
+                player.alive = true;
+                if (ownSprite != null) ownSprite.enabled = wasEnabled;
                 int visible = 0, sideIndex = -1;
                 for (int i = 0; i < fruit.Count; i++) if (world.IsRecoveryFruit(i))
                 {
@@ -1288,7 +1313,7 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "account tutorial changed local first run");
                 var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
@@ -1315,7 +1340,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");

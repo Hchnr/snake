@@ -28,6 +28,8 @@ safe_recovery_pattern = re.compile(r'safe-recovery=([0-9a-f:,]+)')
 aligned_start_pattern = re.compile(r'aligned-start=([0-9a-f:,]+)')
 capped_start_pattern = re.compile(r'capped-start=([0-9a-f:,]+)')
 stable_blocked_pattern = re.compile(r'stable-blocked=([0-9a-f:,]+)')
+priority_pattern = re.compile(r'priority-recovery=([0-9a-f:,]+)')
+priority_fixture_pattern = re.compile(r'priority-fixture=([0-9a-f]{16})')
 stable_fixture_pattern = re.compile(r'stable-fixture=([0-9a-f]{16})')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
@@ -184,6 +186,35 @@ if not stable_match or len(stable_match.group(1).split(',')) != 70 or not fixtur
     sys.exit('Desktop v8 matrix or controlled blocked-contact fixture is incomplete.')
 expected_stable = stable_match.group(1)
 expected_fixture = fixture_match.group(1)
+# v8 was captured from main before priority recovery; protects old replays.
+v8_golden = (
+    '2:0:0:1800:3:29c610e6164846f7,2:0:1:1800:16:89bc767cca856aef,2:0:2:1800:0:8267fc6051adbe6b,'
+    '2:0:3:1800:0:7c06a4e92a4d0c46,2:0:4:1800:16:4bed0103726513cc,2:0:5:1800:19:5b77b9f9fcb4b3b9,'
+    '2:0:6:309:19:b2298752ef1d411a,2:1:0:1200:0:83b7f5cdc9d69a78,2:1:1:1200:16:483a79460af471ff,'
+    '2:1:2:1200:0:22acc6f7f8f2fc8d,2:1:3:1200:0:79c3723fc2c2b040,2:1:4:1200:16:d03394e7e94f434b,'
+    '2:1:5:1200:23:b67fffe5f1e9bde3,2:1:6:1200:23:f4e64c9f92d4a1d9,68:0:0:1800:7:413c6300096c7189,'
+    '68:0:1:1800:16:98c5e3ff2c57138f,68:0:2:1800:0:be30fb7b31cb6e70,68:0:3:1800:0:cc342d4c4e344694,'
+    '68:0:4:1800:16:b6f31619133a2492,68:0:5:1800:16:0ee5580055089b5f,68:0:6:1800:23:15a4c328187b347b,'
+    '68:1:0:1200:0:d39230d71595968f,68:1:1:1200:16:513bcafd376542cf,68:1:2:1200:0:41458c19c791d24b,'
+    '68:1:3:1200:0:b615e1bb17c179c6,68:1:4:1200:16:7f2061989c573206,68:1:5:1200:16:9daea041816e8d6f,'
+    '68:1:6:1200:19:d091334fad09a4b9,92:0:0:1800:7:a4e1cefe9a9eb5fc,92:0:1:1800:19:566fa45f2a4ca7a4,'
+    '92:0:2:1800:0:c739b227b638a3b9,92:0:3:1800:11:c44adb45ef8d6308,92:0:4:1800:16:132e2dc4d4c4ff1a,'
+    '92:0:5:1800:16:2ac0b2f004ea568b,92:0:6:1800:23:3a4eaf94c9b647d1,92:1:0:1200:3:cd84468e19c33ef1,'
+    '92:1:1:1200:23:149047d7c5ee5034,92:1:2:1200:0:53db6e53690ced7f,92:1:3:1200:0:887fefff362cb482,'
+    '92:1:4:1200:16:cddcf423bf212ebd,92:1:5:1200:16:8fb91a92e8cb9085,92:1:6:1200:23:9a79f174e2898f28,'
+    '105:0:0:1800:0:839a6d63035c1b58,105:0:1:1800:16:c2a31e712c4ac6ea,105:0:2:1800:0:d154c13582a1dd91,'
+    '105:0:3:1800:0:91943b0d47072d28,105:0:4:1800:16:7931237ba56e3473,105:0:5:1800:16:6f4f9e0338fe8bd1,'
+    '105:0:6:1800:19:7091e5e215809af3,105:1:0:1200:0:0aea2daf3429420a,105:1:1:1200:16:4dafe79152e759a5,'
+    '105:1:2:1200:0:11c8116447042429,105:1:3:1200:0:e4f0401eb3f47b9f,105:1:4:1200:16:b20d2cf5e4a8f1fb,'
+    '105:1:5:1200:19:e017f7e0f9dd80c7,105:1:6:1200:23:44125e054f631bb0,192:0:0:1800:7:6c1598821f725caa,'
+    '192:0:1:1800:16:b3ec56f876779f41,192:0:2:1800:5:a6d4a6c58452b92d,192:0:3:1800:7:714f56d36dee3568,'
+    '192:0:4:1800:16:848c3a1f7b660967,192:0:5:1800:16:9c6ae7cfa9209d6f,192:0:6:1800:16:ebb0b4ceecfcf3bc,'
+    '192:1:0:1200:3:c716dc688c46f855,192:1:1:1200:16:d7ce0cdf15abad2e,192:1:2:220:0:10e2aa80212f6582,'
+    '192:1:3:1200:0:15b7d52c33de8c8f,192:1:4:1200:16:466e6b9c6a910409,192:1:5:1200:19:5390115cfa5c9f4f,'
+    '192:1:6:1200:23:2c6283a312ab664c'
+)
+if expected_stable != v8_golden:
+    sys.exit('MISMATCH: v8 fingerprints changed from the preserved reference.')
 stable_coverage = 0
 for case in expected_stable.split(','):
     fields = case.split(':')
@@ -192,6 +223,23 @@ for case in expected_stable.split(','):
     stable_coverage |= int(fields[4])
 if stable_coverage != 31:
     sys.exit('Desktop v8 cases did not observe steering assist, recovery, both pickups and second activation.')
+
+priority_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-recovery-priority-vector'],
+                                    text=True, capture_output=True, check=True, timeout=180).stdout
+priority_match = priority_pattern.search(priority_reference)
+priority_fixture_match = priority_fixture_pattern.search(priority_reference)
+if not priority_match or len(priority_match.group(1).split(',')) != 96 or not priority_fixture_match:
+    sys.exit('Desktop v9 recovery-priority matrix or controlled fixture is incomplete.')
+expected_priority = priority_match.group(1)
+expected_priority_fixture = priority_fixture_match.group(1)
+priority_coverage = 0
+for case in expected_priority.split(','):
+    fields = case.split(':')
+    if len(fields) != 6:
+        sys.exit('Desktop v9 recovery-priority matrix case is malformed.')
+    priority_coverage |= int(fields[4])
+if priority_coverage != 63:
+    sys.exit('Desktop v9 cases did not observe active priority, recovery, both pickups, second activation and opening assist.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -223,7 +271,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
+    private static void Run() { if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -273,6 +321,19 @@ internal static class FixedVectorDiagnostic {
         if not actual_stable_match or len(actual_stable_match.group(1).split(',')) != 70 or not actual_fixture_match:
             sys.exit('WebGL v8 matrix or controlled blocked-contact fixture is incomplete.')
         actual_stable, actual_fixture = actual_stable_match.group(1), actual_fixture_match.group(1)
+        # Unity/WebGL console messages can truncate one large combined log.
+        # Run v9 in a separate muted browser against the same isolated build.
+        print('Running v9 priority vectors in a second muted headless browser...', flush=True)
+        priority_result = subprocess.run(['node', str(root / 'scripts/fixed-pve-webgl-probe.cjs'), str(chrome),
+                                          'http://127.0.0.1:' + str(server.server_port) + '/?priority=1'],
+                                         capture_output=True, text=True, timeout=240, check=False)
+        if priority_result.returncode:
+            sys.exit('Headless v9 diagnostic failed: ' + priority_result.stderr[-3000:])
+        actual_priority_match = priority_pattern.search(priority_result.stdout)
+        actual_priority_fixture_match = priority_fixture_pattern.search(priority_result.stdout)
+        if not actual_priority_match or len(actual_priority_match.group(1).split(',')) != 96 or not actual_priority_fixture_match:
+            sys.exit('WebGL v9 recovery-priority matrix or controlled fixture is incomplete.')
+        actual_priority = actual_priority_match.group(1)
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -316,6 +377,14 @@ internal static class FixedVectorDiagnostic {
             sys.exit('MISMATCH: local stable-blocked simulation differs across runtimes.')
         if actual_fixture != expected_fixture:
             sys.exit('MISMATCH: controlled same-frame bite/block fixture differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7 and 70 v8 matches plus one controlled same-frame fixture; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
+        if actual_priority != expected_priority:
+            for desktop, webgl in zip(expected_priority.split(','), actual_priority.split(',')):
+                if desktop != webgl:
+                    print('First differing v9 case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: local recovery-priority simulation differs across runtimes.')
+        if actual_priority_fixture_match.group(1) != expected_priority_fixture:
+            sys.exit('MISMATCH: controlled recovery-priority fixture differs across runtimes.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8 and 96 v9 matches plus controlled bite/block and recovery-priority fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

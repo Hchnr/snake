@@ -238,7 +238,7 @@ namespace SnakeClub
             var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
             bool localStrength = run == null && (defaultStrength || api.Config.StrengthRulesPreview);
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
-                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength);
+                strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength, localStrength);
             state = fixedPve.RenderState();
             strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
@@ -990,12 +990,20 @@ namespace SnakeClub
             if (!float.IsPositiveInfinity(nearestDistance)) markers.Add(nearest);
         }
 
+        internal static bool TryRecoveryPlayerBounds(ArenaRenderer renderer, SnakeState player, string playerId, out Rect bounds)
+        {
+            bounds = default;
+            if (renderer == null || player == null || !player.alive || player.segments == null || player.segments.Count == 0) return false;
+            return renderer.TryCharacterScreenBounds(playerId, out bounds) ||
+                renderer.TryFallbackHeadScreenBounds(player.segments[0], out bounds);
+        }
+
         private void DrawOccludedRecoveryMarkers(bool showContactNotice, EdgeObstacle contactNoticeArea, bool showGuidance)
         {
             if (Event.current.type != EventType.Repaint || fixedPve == null || !fixedPve.StrengthPreview || !fixedPve.LocalRecoverySupply || state == null ||
-                arenaRenderer == null || !arenaRenderer.TryCharacterScreenBounds(playerId, out Rect bounds)) return;
+                arenaRenderer == null) return;
             var player = state.snakes.Find(s => s.id == playerId);
-            if (player == null || !player.alive || player.segments.Count == 0) return;
+            if (!TryRecoveryPlayerBounds(arenaRenderer, player, playerId, out Rect bounds)) return;
             Rect safe = Screen.safeArea;
             if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, Screen.width, Screen.height);
             SafeUiMetrics(out float uiScale, out _, out _);

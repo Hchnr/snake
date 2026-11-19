@@ -20,16 +20,17 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
-if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal"))
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal" || args[0] == "strength-recovery-priority-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    bool stableBlocked = args[0] == "strength-stable-blocked-replay-terminal";
+    bool priority = args[0] == "strength-recovery-priority-replay-terminal";
+    bool stableBlocked = args[0] == "strength-stable-blocked-replay-terminal" || priority;
     bool advantage = args[0] != "strength-replay-terminal", cappedStart = args[0] == "strength-capped-start-replay-terminal" || stableBlocked, alignedStart = args[0] == "strength-aligned-start-replay-terminal" || cappedStart, safeRecovery = args[0] == "strength-safe-recovery-replay-terminal" || alignedStart;
     bool recoverySupply = args[0] == "strength-recovery-replay-terminal" || safeRecovery;
     bool openingFood = args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || recoverySupply;
     bool openingEncounter = args[0] == "strength-encounter-replay-terminal" || recoverySupply;
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart, stableBlocked)) throw new InvalidOperationException("Invalid recording");
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart, stableBlocked, priority)) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
@@ -55,6 +56,12 @@ if (args.Length == 1 && args[0] == "strength-safe-recovery-vector")
 if (args.Length == 1 && args[0] == "strength-aligned-start-vector")
 {
     Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeAlignedStart());
+    return;
+}
+
+if (args.Length == 1 && args[0] == "strength-recovery-priority-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeRecoveryPriority());
     return;
 }
 
@@ -185,6 +192,7 @@ var cases = new (string name, Action run)[]
     ("aligned offline start follows the default direction and preserves v5", StrengthAlignedStartCases),
     ("capped offline opening respects steering and preserves v6 replay", StrengthCappedStartCases),
     ("stable blocked contacts track surviving snapshot segments", StableBlockedContactCases),
+    ("recovery priority protects only actual available supplies", RecoveryPriorityCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
@@ -2843,6 +2851,129 @@ static void StrengthSafeRecoveryCases()
         }
     }
     Check(sawPartial, "partial fallback fixture did not exercise a constrained placement");
+}
+
+static void RecoveryPriorityCases()
+{
+    const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var actorsField = typeof(PveFixedWorld).GetField("fighters", flags);
+    var priorityField = typeof(PveFixedWorld).GetField("recoveryPriorityExpiry", flags);
+    var place = typeof(PveFixedWorld).GetMethod("PlaceRecoverySupply", flags);
+    PveFixedWorld World(bool priority)
+    {
+        var world = new PveFixedWorld(42, false, null, true, localAdvantage: true, localOpeningFood: true,
+            localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+            localCappedStart: true, localStableBlocked: true, localRecoveryPriority: priority);
+        var actors = (PveFixedFighter[])actorsField.GetValue(world);
+        actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16)) { shieldTicks = 2000 };
+        actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-80000, -80000, 0, 16)) { shieldTicks = 2000 };
+        for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+        var fruit = (List<PveFixedFruit>)world.Fruit;
+        for (int i = 0; i < fruit.Count; i++) fruit[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
+        typeof(PveFixedWorld).GetProperty("Tick").SetValue(world, 1);
+        typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(world, 1);
+        place.Invoke(world, null);
+        Check(world.RecoverySuppliesUsed == 1, "fixture could not place recovery supply");
+        return world;
+    }
+    bool invalid = false;
+    try { _ = new PveFixedWorld(1, false, null, true, localRecoveryPriority: true); } catch (ArgumentException) { invalid = true; }
+    Check(invalid && !PveFixedRecording.TryReplayStrength(1, false, new byte[] { 0, 0 }, out _, localRecoveryPriority: true), "v9 must depend on v8");
+    var natural = new PveFixedWorld(42, false, null, true, localAdvantage: true, localOpeningFood: true,
+        localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+        localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true);
+    var naturalActors = (PveFixedFighter[])actorsField.GetValue(natural);
+    naturalActors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    naturalActors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-11700, 0, 0, 16));
+    for (int i = 2; i < naturalActors.Length; i++) naturalActors[i].alive = false;
+    var naturalFruit = (List<PveFixedFruit>)natural.Fruit;
+    for (int i = 0; i < naturalFruit.Count; i++) naturalFruit[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
+    natural.Step(0, false);
+    Check(natural.LastPlayerDamageTick == 1 && natural.RecoverySuppliesUsed == 1 &&
+        Enumerable.Range(0, natural.Fruit.Count).Any(i => natural.RecoveryPriorityTicks(i) == 40), "actual damage did not produce priority supply");
+    var w = World(true);
+    int index = Enumerable.Range(0, w.Fruit.Count).First(w.IsRecoveryFruit);
+    Check(w.RulesVersion == PveFixedRecording.LocalStrengthRecoveryPriorityRules && w.RecoveryPriorityTicks(index) == 40 &&
+        RecoverySupplyNotice.Text(w, w.Tick, false).Contains("你优先吃 2 秒") && RecoverySupplyNotice.Text(w, w.Tick, true) == "", "initial priority or notice incorrect");
+    var point = w.Fruit[index].position; var actors = (PveFixedFighter[])actorsField.GetValue(w);
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(-50000, -50000, 0, 16)) { shieldTicks = 2000 };
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(point.x, point.y, 0, 16)) { shieldTicks = 2000 };
+    w.Step(0, false);
+    Check(w.IsRecoveryFruit(index) && w.RecoverySupplyCollectedByOpponents == 0 && w.RecoveryPriorityTicks(index) == 39, "AI collected while priority was active");
+    typeof(PveFixedWorld).GetProperty("Tick").SetValue(w, 40);
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(point.x, point.y, 0, 16)) { shieldTicks = 2000 };
+    w.Step(0, false);
+    Check(!w.IsRecoveryFruit(index) && w.RecoverySupplyCollectedByOpponents >= 1 && !RecoverySupplyNotice.Text(w, w.Tick, false).Contains("你优先"), "expiry did not release marked fruit to AI: marked=" + w.IsRecoveryFruit(index) + " ai=" + w.RecoverySupplyCollectedByOpponents + " tick=" + w.Tick + " text=" + RecoverySupplyNotice.Text(w, w.Tick, false));
+    var collect = World(true); int playerIndex = Enumerable.Range(0, collect.Fruit.Count).First(collect.IsRecoveryFruit);
+    point = collect.Fruit[playerIndex].position; actors = (PveFixedFighter[])actorsField.GetValue(collect);
+    actors[0] = new PveFixedFighter("you", new PveFixedMotion(point.x, point.y, 0, 16)) { shieldTicks = 2000 };
+    collect.Step(0, false);
+    Check(!collect.IsRecoveryFruit(playerIndex) && collect.RecoverySupplyCollectedByPlayer >= 1 && collect.RecoveryPriorityTicks(playerIndex) == 0, "player could not actually collect the priority fruit");
+    var released = World(true); index = Enumerable.Range(0, released.Fruit.Count).First(released.IsRecoveryFruit);
+    point = released.Fruit[index].position; actors = (PveFixedFighter[])actorsField.GetValue(released);
+    actors[0].alive = false;
+    Check(released.RecoveryPriorityTicks(index) == 0 && !RecoverySupplyNotice.Text(released, released.Tick, false).Contains("你优先"), "death did not release priority notice");
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(point.x, point.y, 0, 16)) { shieldTicks = 2000 };
+    released.Step(0, false);
+    Check(!released.IsRecoveryFruit(index) && released.RecoverySupplyCollectedByOpponents >= 1, "AI could not take released fruit");
+    var older = World(false); index = Enumerable.Range(0, older.Fruit.Count).First(older.IsRecoveryFruit); point = older.Fruit[index].position;
+    actors = (PveFixedFighter[])actorsField.GetValue(older); actors[0] = new PveFixedFighter("you", new PveFixedMotion(-50000, -50000, 0, 16)) { shieldTicks = 2000 };
+    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(point.x, point.y, 0, 16)) { shieldTicks = 2000 };
+    older.Step(0, false);
+    Check(older.RecoverySupplyCollectedByOpponents >= 1 && older.RecoveryPriorityTicks(index) == 0, "v8 collection changed");
+    // Bots must choose another available fruit instead of tracking an inaccessible one.
+    byte BotChoice(bool priority)
+    {
+        var botWorld = World(priority); var bots = (PveFixedFighter[])actorsField.GetValue(botWorld);
+        bots[0] = new PveFixedFighter("you", new PveFixedMotion(-80000, -80000, 0, 16)) { shieldTicks = 2000 };
+        bots[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 0, 0, 16)) { shieldTicks = 2000 };
+        var fruit = (List<PveFixedFruit>)botWorld.Fruit;
+        var markers = (bool[])typeof(PveFixedWorld).GetField("recoveryFruit", flags).GetValue(botWorld);
+        Array.Clear(markers, 0, markers.Length); markers[0] = true;
+        for (int i = 0; i < fruit.Count; i++) fruit[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
+        fruit[0] = new PveFixedFruit(new CapturePoint(12000, 0), 0);
+        fruit[1] = new PveFixedFruit(new CapturePoint(-17000, 0), 0);
+        if (priority) ((int[])priorityField.GetValue(botWorld))[0] = botWorld.Tick + 40;
+        return (byte)typeof(PveFixedWorld).GetMethod("BotHeading", flags).Invoke(botWorld, new object[] { 1 });
+    }
+    Check(PveFixedMotion.DirectionX(BotChoice(true)) < 0 && PveFixedMotion.DirectionX(BotChoice(false)) > 0,
+        "bot targeting did not ignore the temporarily inaccessible recovery fruit");
+    bool foundPartial = false;
+    foreach (int radius in new[] { 5500, 6000, 6500, 7000, 7500, 8000, 8500 })
+    foreach (int offset in new[] { 0, 8, 16, 24 })
+    foreach (int count in new[] { 5, 6, 7 })
+    {
+        var partial = World(true); var combatants = (PveFixedFighter[])actorsField.GetValue(partial);
+        combatants[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+        for (int i = 1; i < combatants.Length; i++) combatants[i].alive = false;
+        for (int i = 1; i <= count; i++)
+        {
+            byte angle = (byte)(offset + (i - 1) * 256 / count);
+            combatants[i] = new PveFixedFighter("bot-" + i, new PveFixedMotion(PveFixedMotion.DirectionX(angle) * radius / 10000, PveFixedMotion.DirectionY(angle) * radius / 10000, 0, 16));
+        }
+        var markers = (bool[])typeof(PveFixedWorld).GetField("recoveryFruit", flags).GetValue(partial);
+        var expiry = (int[])priorityField.GetValue(partial);
+        Array.Clear(markers, 0, markers.Length); Array.Clear(expiry, 0, expiry.Length);
+        for (int i = 0; i < 4; i++) { markers[i] = true; expiry[i] = 10; }
+        typeof(PveFixedWorld).GetProperty("Tick").SetValue(partial, 301);
+        typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(partial, 301);
+        typeof(PveFixedWorld).GetProperty("RecoverySuppliesUsed").SetValue(partial, 1);
+        typeof(PveFixedWorld).GetProperty("LastRecoverySupplyTick").SetValue(partial, 1);
+        typeof(PveFixedWorld).GetProperty("NextRecoverySupplyTick").SetValue(partial, 301);
+        place.Invoke(partial, null);
+        int renewed = Enumerable.Range(0, 4).Count(i => expiry[i] == 341);
+        if (renewed > 0 && renewed < 4)
+        {
+            foundPartial = true;
+            Check(Enumerable.Range(0, 4).Where(i => expiry[i] == 10).All(i => partial.RecoveryPriorityTicks(i) == 0),
+                "unmoved old fruit received new priority after a partial placement");
+        }
+    }
+    Check(foundPartial, "partial placement with old marked fruit was not exercised");
+    var mixed = World(true); int[] marked = Enumerable.Range(0, mixed.Fruit.Count).Where(mixed.IsRecoveryFruit).ToArray();
+    int[] expires = (int[])priorityField.GetValue(mixed); expires[marked[0]] = mixed.Tick; expires[marked[1]] = mixed.Tick + 3;
+    Check(mixed.RecoveryPriorityTicks(marked[0]) == 0 && mixed.RecoveryPriorityTicks(marked[1]) == 3 && mixed.RecoveryPriorityTicks(marked[2]) == 40,
+        "coexisting fruits do not retain independent expiry");
 }
 
 static void StrengthRecoverySupplyCases()
