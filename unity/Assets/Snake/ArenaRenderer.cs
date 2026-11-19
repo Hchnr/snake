@@ -1076,6 +1076,15 @@ namespace SnakeClub
             return fallback;
         }
         public Vector3 HeadToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y));
+        // Conservative 2D bounds around the .72-height body projection.
+        // Camera is orthographic and pitched 70 degrees; this allows for
+        // weak/threat marker size and their different rendered heights.
+        public Vector2 StrengthMarkerScreenPadding()
+        {
+            if (view == null || !view.orthographic || view.orthographicSize <= 0f) return Vector2.zero;
+            float pixelsPerUnit = view.pixelHeight / (2f * view.orthographicSize);
+            return new Vector2(.8f * pixelsPerUnit, 1.15f * pixelsPerUnit);
+        }
         // Use the same world height as the real fruit batch. This is a visual
         // projection only; it does not change pickup or collision geometry.
         public Vector3 FruitToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .52f, point.y));
