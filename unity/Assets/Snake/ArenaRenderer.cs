@@ -100,7 +100,18 @@ namespace SnakeClub
         public int SelectedSkin { get; set; }
         public bool ReducedEffects { get; set; }
         public bool LegacyDangerWarning { get; set; } = true;
-        public bool StrengthBodyVisual { get; set; }
+        private bool strengthBodyVisual, hiddenStrengthCamera;
+        public bool StrengthBodyVisual
+        {
+            get => strengthBodyVisual;
+            set
+            {
+                // A hidden strength world can be replaced by a legacy world
+                // before the next draw. Preserve the legacy reset in that case.
+                if (!value && hiddenStrengthCamera) { cameraReady = false; adjustingPausedView = false; hiddenStrengthCamera = false; }
+                strengthBodyVisual = value;
+            }
+        }
         public int ViewPreference { get; set; }
         public bool MotionPaused { get; set; }
         public bool VisualFallback { get; private set; }
@@ -111,7 +122,15 @@ namespace SnakeClub
             {
                 if (view == null || view.enabled == value) return;
                 view.enabled = value;
-                if (!value) { cameraReady = false; adjustingPausedView = false; eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); strengthReactions.Clear(); reactionSource = null; presentationTick = -1; }
+                if (!value)
+                {
+                    // Backgrounding the same strength match must not discard an
+                    // in-progress paused zoom or snap its following camera.
+                    // New worlds and changes of render target reset separately.
+                    hiddenStrengthCamera = StrengthBodyVisual;
+                    if (!StrengthBodyVisual) { cameraReady = false; adjustingPausedView = false; }
+                    eliminations.Reset(); exitPoses.Clear(); characterMotions.Clear(); strengthReactions.Clear(); reactionSource = null; presentationTick = -1;
+                }
             }
         }
 
@@ -144,6 +163,16 @@ namespace SnakeClub
             }
             RenderTexture target = PreviewTexture;
             if (view.targetTexture != target) { view.targetTexture = target; cameraReady = false; }
+        }
+
+        // Kept separate so paused-resume behavior can be checked with an
+        // explicit frame interval without depending on editor frame timing.
+        private void AdvanceCameraZoom(float targetSize, bool newStrengthWorld, float frameDelta)
+        {
+            float zoomDelta = !MotionPaused || (StrengthBodyVisual && adjustingPausedView) ? frameDelta : 0f;
+            if (newStrengthWorld) view.orthographicSize = targetSize;
+            else view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));
+            if (Mathf.Abs(view.orthographicSize - targetSize) < .01f) adjustingPausedView = false;
         }
 
         private void Awake() => Initialize();
@@ -395,6 +424,7 @@ namespace SnakeClub
         public void Draw(ArenaState state, string playerId)
         {
             if (state == null) return;
+            hiddenStrengthCamera = false;
             if (visualFrame != Time.frameCount)
             {
                 visualFrame = Time.frameCount;
@@ -461,13 +491,7 @@ namespace SnakeClub
                 if (newStrengthWorld) { observedViewPreference = preference; adjustingPausedView = false; }
                 else if (preference != observedViewPreference) { observedViewPreference = preference; adjustingPausedView = MotionPaused; }
                 float targetSize = StrengthBodyVisual ? GrowthView.CameraSize(focus.segments.Count, focus.boosting, preference) : focus.boosting ? 22f : 20f;
-                float zoomDelta = !MotionPaused || (StrengthBodyVisual && adjustingPausedView) ? Time.deltaTime : 0f;
-                if (newStrengthWorld) view.orthographicSize = targetSize;
-                else
-                {
-                    view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));
-                }
-                if (Mathf.Abs(view.orthographicSize - targetSize) < .01f) adjustingPausedView = false;
+                AdvanceCameraZoom(targetSize, newStrengthWorld, Time.deltaTime);
                 cameraReady = true;
             }
             for (int i = 0; i < crystals.Count; i++)

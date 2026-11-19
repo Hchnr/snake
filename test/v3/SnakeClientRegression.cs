@@ -52,6 +52,7 @@ namespace SnakeClub.Tests.Editor
                 TestFixedPvePreviewFlow();
                 TestStrengthPracticeFirstRun();
                 TestStrengthViewSimulationIsolation();
+                TestStrengthViewVisibility();
                 TestOfflineCosmeticTrial();
                 TestDefaultStrengthMain();
                 TestGameplayComparison();
@@ -1288,6 +1289,59 @@ namespace SnakeClub.Tests.Editor
                 if (hadViewKey) PlayerPrefs.SetInt(viewKey, originalView); else PlayerPrefs.DeleteKey(viewKey);
                 PlayerPrefs.Save();
             }
+        }
+
+        private static void TestStrengthViewVisibility()
+        {
+            var root = new GameObject("Strength view hide and resume");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>();
+                const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                var camera = (Camera)typeof(ArenaRenderer).GetField("view", flags).GetValue(renderer);
+                var adjusting = typeof(ArenaRenderer).GetField("adjustingPausedView", flags);
+                var ready = typeof(ArenaRenderer).GetField("cameraReady", flags);
+                var advanceZoom = typeof(ArenaRenderer).GetMethod("AdvanceCameraZoom", flags);
+                var world = new PveFixedWorld(58, false, null, true, localAdvantage: true);
+                var state = world.RenderState();
+                renderer.StrengthBodyVisual = true; renderer.Visible = true;
+                renderer.ViewPreference = 0; renderer.MotionPaused = true; renderer.Draw(state, "you");
+                renderer.ViewPreference = 1; renderer.Draw(state, "you");
+                Require((bool)adjusting.GetValue(renderer), "fixture did not start paused zoom");
+                float target = GrowthView.CameraSize(state.snakes.Find(s => s.id == "you").segments.Count, false, 1);
+                camera.orthographicSize = (camera.orthographicSize + target) * .5f;
+                float intermediateZoom = camera.orthographicSize;
+                camera.transform.position += new Vector3(5f, 0, 0);
+                var before = camera.transform.position;
+                renderer.Visible = false; renderer.Visible = true; renderer.Draw(state, "you");
+                Require((bool)adjusting.GetValue(renderer), "hiding canceled an unfinished paused view change");
+                Require(Vector3.Distance(before, camera.transform.position) < .001f, "paused camera jumped on visibility restoration");
+                for (int i = 0; i < 120; i++) advanceZoom.Invoke(renderer, new object[] { target, false, .016f });
+                Require(camera.orthographicSize > intermediateZoom && Mathf.Abs(camera.orthographicSize - target) < .011f && !(bool)adjusting.GetValue(renderer),
+                    "paused zoom did not continue to the selected view");
+                state.phase = "ended";
+                renderer.Visible = false; renderer.Visible = true; renderer.Draw(state, "you");
+                Require(Vector3.Distance(before, camera.transform.position) < .001f, "settlement visibility caused a paused camera jump");
+                renderer.SetPreviewMode(true);
+                Require(!(bool)ready.GetValue(renderer), "wardrobe target switch retained match camera");
+                renderer.SetPreviewMode(false);
+                var next = new PveFixedWorld(59, false, null, true, localAdvantage: true).RenderState();
+                renderer.Draw(next, "you");
+                Point head = next.snakes.Find(s => s.id == "you").segments[0];
+                Require(Vector3.Distance(camera.transform.position, new Vector3(head.x, 29, head.y - 10.5f)) < .001f &&
+                    Mathf.Abs(camera.orthographicSize - GrowthView.CameraSize(next.snakes.Find(s => s.id == "you").segments.Count, false, 1)) < .01f,
+                    "new strength match did not reset camera");
+                renderer.StrengthBodyVisual = false;
+                var legacyPaused = camera.transform.position;
+                renderer.Draw(state, "you");
+                Require(Vector3.Distance(camera.transform.position, legacyPaused) < .001f, "legacy paused camera behavior changed");
+                renderer.StrengthBodyVisual = true; renderer.Draw(next, "you");
+                renderer.Visible = false; renderer.Visible = true; renderer.StrengthBodyVisual = false;
+                Require(!(bool)ready.GetValue(renderer), "hidden strength to legacy switch retained stale camera");
+                Debug.Log("PASS Unity paused view survives hide and resets for new worlds");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
         private static void TestStrengthViewSimulationIsolation()
