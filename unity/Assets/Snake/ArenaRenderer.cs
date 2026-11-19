@@ -1076,6 +1076,9 @@ namespace SnakeClub
             return fallback;
         }
         public Vector3 HeadToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .72f, point.y));
+        // Use the same world height as the real fruit batch. This is a visual
+        // projection only; it does not change pickup or collision geometry.
+        public Vector3 FruitToScreen(Point point) => view.WorldToScreenPoint(new Vector3(point.x, .52f, point.y));
 
         private void DrawBatch(List<Matrix4x4> matrices, Material material, Mesh mesh = null)
         {

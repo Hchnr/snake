@@ -61,6 +61,7 @@ namespace SnakeClub.Tests.Editor
                 TestProtectionWarningVisual();
                 TestStrengthImpactVisual();
                 TestStrengthRecoveryVisual();
+                TestOccludedRecoveryMarkers();
                 TestStrengthAppearanceVisual();
                 TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
@@ -522,10 +523,20 @@ namespace SnakeClub.Tests.Editor
                 var fruit = (System.Collections.Generic.List<PveFixedFruit>)world.Fruit;
                 for (int i = 0; i < fruit.Count; i++) fruit[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
                 var rings = (LineRenderer[])typeof(ArenaRenderer).GetField("recoverySupplyRings", flags).GetValue(renderer);
+                var markerSelection = typeof(SnakeGameApp).GetMethod("SelectOccludedRecoveryMarkers", BindingFlags.Static | BindingFlags.NonPublic);
+                var projectedMarkers = new System.Collections.Generic.List<Vector2>();
+                Func<Point, Vector3> overlappingProjection = p => new Vector3(5, 5, 1);
+                int MarkedCount()
+                {
+                    markerSelection.Invoke(null, new object[] { world.RenderState(), true, false, new Rect(0, 0, 10, 10), new Rect(0, 0, 10, 10), new Point(0, 0), overlappingProjection, projectedMarkers });
+                    return projectedMarkers.Count;
+                }
                 renderer.Draw(world.RenderState(), "you");
                 for (int i = 0; i < rings.Length; i++) Require(!rings[i].enabled, "supply marker appeared before a real bite");
+                Require(MarkedCount() == 0, "overlay appeared before a real bite");
                 world.Step(0, false); renderer.Draw(world.RenderState(), "you");
                 Require(world.RecoverySuppliesUsed == 1, "fixture did not trigger real recovery supplies");
+                Require(MarkedCount() == 1, "overlay did not identify one real spawned fruit");
                 int visible = 0, sideIndex = -1;
                 for (int i = 0; i < fruit.Count; i++) if (world.IsRecoveryFruit(i))
                 {
@@ -540,16 +551,59 @@ namespace SnakeClub.Tests.Editor
                 renderer.MotionPaused = true; renderer.Draw(world.RenderState(), "you");
                 Require(world.RecoverySupplyCollectedByPlayer == 3 && world.IsRecoveryFruit(sideIndex) && rings[0].enabled && !rings[1].enabled,
                     "collected forward fruit or remaining side marker was wrong");
+                Require(MarkedCount() == 1, "overlay did not remove the three actually collected fruit");
                 var side = fruit[sideIndex].position;
                 actors[0] = new PveFixedFighter("you", new PveFixedMotion(side.x - 1500, side.y, 0, world.Fighters[0].motion.Length)) { shieldTicks = 2000 };
                 world.Step(0, false); renderer.Draw(world.RenderState(), "you");
                 Require(world.RecoverySupplyCollectedByPlayer == 4, "fixture did not actually collect the side fruit");
+                Require(MarkedCount() == 0, "overlay remained after all fruit were actually collected");
                 for (int i = 0; i < rings.Length; i++) Require(!rings[i].enabled, "collected supply kept its marker");
                 renderer.StrengthBodyVisual = false; renderer.Draw(world.RenderState(), "you");
                 for (int i = 0; i < rings.Length; i++) Require(!rings[i].enabled, "supply markers leaked into another mode");
                 Debug.Log("PASS Unity recovery markers follow actual supply fruit");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestOccludedRecoveryMarkers()
+        {
+            var select = typeof(SnakeGameApp).GetMethod("SelectOccludedRecoveryMarkers", BindingFlags.Static | BindingFlags.NonPublic);
+            var mark = typeof(FruitState).GetField("recoverySupply", BindingFlags.Instance | BindingFlags.NonPublic);
+            Require(select != null && mark != null, "recovery marker selection fixture missing");
+            var world = new ArenaState { phase = "running" };
+            var hidden = new FruitState { position = new Point(2, 3) };
+            var tied = new FruitState { position = new Point(3, 2) };
+            var farther = new FruitState { position = new Point(4, 5) };
+            var exposed = new FruitState { position = new Point(20, 30) };
+            var ordinary = new FruitState { position = new Point(4, 5) };
+            var behind = new FruitState { position = new Point(-1, -1) };
+            mark.SetValue(hidden, true); mark.SetValue(tied, true); mark.SetValue(farther, true);
+            mark.SetValue(exposed, true); mark.SetValue(behind, true);
+            world.fruits.Add(hidden); world.fruits.Add(tied); world.fruits.Add(farther);
+            world.fruits.Add(exposed); world.fruits.Add(ordinary); world.fruits.Add(behind);
+            var markers = new System.Collections.Generic.List<Vector2>();
+            Func<Point, Vector3> project = p => new Vector3(p.x * 10, p.y * 10, p.x < 0 ? -1 : 1);
+            Rect bounds = new Rect(0, 0, 100, 100);
+            Rect screen = new Rect(0, 0, 400, 400);
+            void Select(bool enabled, bool suspended) => select.Invoke(null, new object[] { world, enabled, suspended, bounds, screen, new Point(0, 0), project, markers });
+            Select(true, false);
+            Require(markers.Count == 0, "a separate on-screen supply should suppress the character marker");
+            screen = new Rect(0, 0, 100, 100); Select(true, false);
+            Require(markers.Count == 1 && markers[0] == new Vector2(20, 30), "nearest occluded fruit or stable tie selection was wrong");
+            Select(false, false); Require(markers.Count == 0, "markers leaked into a disabled mode");
+            Select(true, true); Require(markers.Count == 0, "markers remained during suspension");
+            world.phase = "ended"; Select(true, false); Require(markers.Count == 0, "markers remained after the round");
+            world.phase = "running";
+            project = p => new Vector3(p.x * 20, p.y * 20, p.x < 0 ? -1 : 1);
+            Select(true, false);
+            Require(markers.Count == 1 && markers[0] == new Vector2(40, 60), "marker did not follow the changed projection");
+            bounds = new Rect(0, 0, 35, 50); Select(true, false);
+            Require(markers.Count == 0, "a fruit outside resized character bounds did not suppress the marker");
+            bounds = new Rect(0, 0, 100, 100); mark.SetValue(hidden, false); Select(true, false);
+            Require(markers.Count == 1 && markers[0] == new Vector2(60, 40), "marker did not switch to the next actual fruit after collection");
+            mark.SetValue(tied, false); Select(true, false);
+            Require(markers.Count == 0, "fruit outside the screen should not have an overlay");
+            Debug.Log("PASS Unity occluded recovery markers follow live fruit and projection");
         }
 
         private static void TestStrengthAppearanceVisual()

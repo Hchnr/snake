@@ -61,6 +61,7 @@ namespace SnakeClub
         private struct NameplateEntry { public Rect box; public Vector2 anchor; public Color color; public string label; }
         private readonly List<NameplateEntry> nameplateEntries = new List<NameplateEntry>(8);
         private readonly List<EdgeObstacle> edgeObstacles = new List<EdgeObstacle>(9);
+        private readonly List<Vector2> occludedRecoveryMarkers = new List<Vector2>(PveFixedWorld.RecoverySupplyCount);
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
         private readonly KillFeedback killFeedback = new KillFeedback();
@@ -658,6 +659,8 @@ namespace SnakeClub
 
         private void DrawGame()
         {
+            // Draw first so labels, prompts and controls always cover markers.
+            DrawOccludedRecoveryMarkers();
             Panel(new Rect(48, 50, 984, 188), new Color(.035f, .065f, .12f, .90f));
             SnakeState me = state == null ? null : state.snakes.Find(s => s.id == playerId);
             Label(new Rect(88, 70, 330, 58), online ? (mode == "pvp" ? "真人对战" : "混合对战") : fixedPve != null ? (fixedPve.StrengthPreview ? "强弱吞食试玩" : "整数规则试玩") : comparisonVariant >= 0 && api.Config.ComparisonPreview ? "对照方案 " + (char)('A' + comparisonVariant) : depthMode ? "秘境深潜 " + depthRoom + "/3" : daily != null ? "每日挑战" : "单人挑战", 32, Color.white, TextAnchor.MiddleLeft, true);
@@ -853,6 +856,68 @@ namespace SnakeClub
                 if (strengthGuide && Button(new Rect(525, 1120, 365, 75), "视野：" + GrowthView.PreferenceLabel(viewPreference), new Color(.12f, .35f, .40f))) CycleViewPreference();
             }
             else DrawControls();
+        }
+
+        // Screen coordinates here have Unity's bottom-left origin, matching
+        // the renderer's sprite bounds and the actual projected fruit center.
+        internal static void SelectOccludedRecoveryMarkers(ArenaState world, bool enabled, bool suspended,
+            Rect playerBounds, Rect screenBounds, Point playerHead, Func<Point, Vector3> project, List<Vector2> markers)
+        {
+            markers.Clear();
+            if (!enabled || suspended || world == null || world.phase != "running" || project == null ||
+                playerBounds.width <= 0 || playerBounds.height <= 0 || screenBounds.width <= 0 || screenBounds.height <= 0) return;
+            float nearestDistance = float.PositiveInfinity;
+            Vector2 nearest = default;
+            foreach (var fruit in world.fruits)
+            {
+                if (!fruit.recoverySupply) continue;
+                Vector3 point = project(fruit.position);
+                var screen = new Vector2(point.x, point.y);
+                if (point.z <= 0 || !screenBounds.Contains(screen)) continue;
+                // A clearly separate on-screen supply already gives the
+                // player somewhere to go; avoid putting marks over the art.
+                if (!playerBounds.Contains(screen)) return;
+                float dx = fruit.position.x - playerHead.x, dy = fruit.position.y - playerHead.y;
+                float distance = dx * dx + dy * dy;
+                if (distance < nearestDistance) { nearestDistance = distance; nearest = screen; }
+            }
+            if (!float.IsPositiveInfinity(nearestDistance)) markers.Add(nearest);
+        }
+
+        private void DrawOccludedRecoveryMarkers()
+        {
+            if (fixedPve == null || !fixedPve.StrengthPreview || !fixedPve.LocalRecoverySupply || state == null ||
+                arenaRenderer == null || !arenaRenderer.TryCharacterScreenBounds(playerId, out Rect bounds)) return;
+            var player = state.snakes.Find(s => s.id == playerId);
+            if (player == null || !player.alive || player.segments.Count == 0) return;
+            SelectOccludedRecoveryMarkers(state, true, SimulationSuspended, bounds, new Rect(0, 0, Screen.width, Screen.height),
+                player.segments[0], arenaRenderer.FruitToScreen, occludedRecoveryMarkers);
+            if (occludedRecoveryMarkers.Count == 0) return;
+            Color oldColor = GUI.color;
+            foreach (Vector2 screen in occludedRecoveryMarkers)
+            {
+                Vector2 p = ToVirtual(screen);
+                // Four open corners identify the real position rather than
+                // drawing another fruit or an offset pickup target. A dark
+                // outline keeps the pale corners visible over bright art.
+                const float r = 20, length = 10, width = 3, outline = 3;
+                for (int pass = 0; pass < 2; pass++)
+                {
+                    GUI.color = pass == 0 ? new Color(.015f, .055f, .045f, .96f) : new Color(.90f, 1f, .76f, 1f);
+                    float pad = pass == 0 ? outline : 0;
+                    for (int x = -1; x <= 1; x += 2)
+                    for (int y = -1; y <= 1; y += 2)
+                    {
+                        float left = p.x + x * r - (x < 0 ? 0 : length);
+                        float top = p.y + y * r - (y < 0 ? 0 : width);
+                        GUI.DrawTexture(new Rect(left - pad, top - pad, length + 2 * pad, width + 2 * pad), Texture2D.whiteTexture);
+                        left = p.x + x * r - (x < 0 ? 0 : width);
+                        top = p.y + y * r - (y < 0 ? 0 : length);
+                        GUI.DrawTexture(new Rect(left - pad, top - pad, width + 2 * pad, length + 2 * pad), Texture2D.whiteTexture);
+                    }
+                }
+            }
+            GUI.color = oldColor;
         }
 
         private void DrawResult(SnakeState me)
