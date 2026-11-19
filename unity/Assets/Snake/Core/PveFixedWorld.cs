@@ -1233,23 +1233,26 @@ namespace SnakeClub.Core
             int blocked = Recent(world.LastPlayerBlockedTick), tie = Recent(world.LastPlayerHeadTieTick);
             int latest = Math.Max(Math.Max(attack, damage), Math.Max(blocked, tie));
             if (latest < 0) return "";
+            // A head tie can resolve on the same step as a body bite or
+            // blocked body contact. Mention both only for the actual tie tick.
+            string headTie = tie == latest ? " · 正面弹开" : "";
             if (world.LocalStableBlocked && attack == latest && blocked == latest)
             {
                 warning = true;
-                return damage == latest
-                    ? "互吃 +" + world.LastPlayerAttackCount + "/-" + world.LastPlayerDamageCount + " · 弹开"
-                    : "吃 " + world.LastPlayerAttackCount + " 节 · 遇强弹开";
+                return (damage == latest
+                    ? "互吃 +" + world.LastPlayerAttackCount + "/-" + world.LastPlayerDamageCount + (tie == latest ? " · 遇强弹开" : " · 弹开")
+                    : "吃 " + world.LastPlayerAttackCount + " 节 · 遇强弹开") + headTie;
             }
             if (world.LocalStableBlocked && damage == latest && blocked == latest)
-            { warning = true; return "身体被吃 " + world.LastPlayerDamageCount + " 节 · 遇强弹开"; }
+            { warning = true; return "身体被吃 " + world.LastPlayerDamageCount + " 节 · 遇强弹开" + headTie; }
             if (damage == latest && attack == latest)
-            { warning = true; return "互相吞食 · 吃 " + world.LastPlayerAttackCount + " 节 / 失 " + world.LastPlayerDamageCount + " 节"; }
-            if (damage == latest) { warning = true; return "身体被吃掉 " + world.LastPlayerDamageCount + " 节"; }
-            if (attack == latest) return "吃掉身体 " + world.LastPlayerAttackCount + " 节！";
+            { warning = true; return "互相吞食 · 吃 " + world.LastPlayerAttackCount + " 节 / 失 " + world.LastPlayerDamageCount + " 节" + headTie; }
+            if (damage == latest) { warning = true; return "身体被吃掉 " + world.LastPlayerDamageCount + " 节" + headTie; }
+            if (attack == latest) return "吃掉身体 " + world.LastPlayerAttackCount + " 节" + (tie == latest ? headTie : "！");
             warning = true;
             if (blocked == latest && world.LocalSqueezeEscape && world.SqueezeEscapeTicks > 0)
-                return "遇强弹开 · 脱困保护中";
-            return blocked == latest ? "强度不足 · 试试更弱的部位" : "势均力敌 · 双方弹开";
+                return "遇强弹开 · 脱困保护中" + headTie;
+            return blocked == latest ? "强度不足 · 试试更弱的部位" + headTie : "势均力敌 · 双方弹开";
         }
     }
 }
