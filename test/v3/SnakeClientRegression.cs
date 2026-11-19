@@ -62,6 +62,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
                 TestStrengthImpactVisual();
+                TestStrengthMultiImpactVisual();
                 TestStrengthRecoveryVisual();
                 TestOccludedRecoveryMarkers();
                 TestRecoveryContactOcclusion();
@@ -443,6 +444,61 @@ namespace SnakeClub.Tests.Editor
                 Require(!arrow.enabled, "strength warning appeared without an eligible threat");
                 state.phase = "ended"; renderer.Draw(state, "you"); Require(!arrow.enabled, "finished match kept the danger arrow");
                 Debug.Log("PASS Unity protection expiry stays legible with reduced effects");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestStrengthMultiImpactVisual()
+        {
+            var root = new GameObject("Strength multi-impact regression");
+            try
+            {
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var renderer = root.AddComponent<ArenaRenderer>();
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true;
+                PveFixedWorld World()
+                {
+                    var world = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+                        localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                        localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true,
+                        localMultiBite: true);
+                    var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+                    actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+                    actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-4500, 400, 16384, 80));
+                    actors[2] = new PveFixedFighter("bot-2", new PveFixedMotion(-11700, -400, 49152, 80));
+                    for (int i = 3; i < actors.Length; i++) actors[i].alive = false;
+                    return world;
+                }
+                var primary = (LineRenderer)typeof(ArenaRenderer).GetField("strengthDamageRing", flags).GetValue(renderer);
+                var extra = (LineRenderer[])typeof(ArenaRenderer).GetField("additionalDamageRings", flags).GetValue(renderer);
+                var clock = (ArenaVisualClock)typeof(ArenaRenderer).GetField("visualClock", flags).GetValue(renderer);
+                var world = World(); var state = world.RenderState(); renderer.Draw(state, "you");
+                Require(!primary.enabled && extra[0] == null, "additional impact ring was created before a bite");
+                world.Step(0, false, true); state = world.RenderState(); renderer.Draw(state, "you");
+                var impactPoints = (System.Collections.Generic.List<Point>)typeof(ArenaState).GetField("strengthDamagePoints", flags).GetValue(state);
+                Require(world.LastPlayerDamageCount == 6 && impactPoints.Count == 2 && primary.enabled && extra[0].enabled && extra[1] == null,
+                    "actual simultaneous damage did not produce two impact rings");
+                Require(Mathf.Abs(primary.GetPosition(0).x - .35f - impactPoints[0].x) < .01f &&
+                    Mathf.Abs(extra[0].GetPosition(0).x - .35f - impactPoints[1].x) < .01f,
+                    "multi-impact rings did not use the actual hit locations");
+                renderer.MotionPaused = true; var frozen = extra[0].GetPosition(0);
+                clock.Advance(1f, true); renderer.Draw(state, "you");
+                Require(extra[0].enabled && extra[0].GetPosition(0) == frozen, "paused multi-impact did not freeze");
+                renderer.Visible = false; renderer.Visible = true; renderer.Draw(state, "you");
+                Require(extra[0].enabled && extra[0].GetPosition(0) == frozen, "paused hide/restore did not preserve impact");
+                renderer.MotionPaused = false; renderer.ReducedEffects = true; renderer.Draw(state, "you");
+                Require(primary.enabled && extra[0].enabled && extra[0].widthMultiplier > 0, "reduced effects hid a real impact");
+                clock.Advance(1f, false); renderer.Draw(state, "you");
+                Require(!primary.enabled && !extra[0].enabled, "expired impact remained visible");
+                world = World(); state = world.RenderState(); renderer.Draw(state, "you");
+                Require(!extra[0].enabled, "new match inherited an impact");
+                renderer.MotionPaused = true; world.Step(0, false, true); renderer.Draw(world.RenderState(), "you");
+                renderer.MotionPaused = false; renderer.Draw(world.RenderState(), "you");
+                Require(!primary.enabled && !extra[0].enabled, "impact observed during pause replayed on resume");
+                renderer.StrengthBodyVisual = false; renderer.Draw(state, "you");
+                Require(!primary.enabled && !extra[0].enabled, "impact leaked into another mode");
+                Debug.Log("PASS Unity multi-impact rings follow simultaneous actual damage");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

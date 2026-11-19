@@ -96,6 +96,9 @@ namespace SnakeClub
         private int seenStrengthAttackTick = -1, seenStrengthDamageTick = -1, seenStrengthLevelTick = -1;
         private float strengthAttackStarted = -10f, strengthDamageStarted = -10f, strengthLevelStarted = -10f;
         private Point strengthAttackPoint, strengthDamagePoint;
+        private readonly Point[] additionalDamagePoints = new Point[6];
+        private readonly LineRenderer[] additionalDamageRings = new LineRenderer[6];
+        private int additionalDamageCount;
         private Vector3 reboundPosition;
         public int SelectedSkin { get; set; }
         public bool ReducedEffects { get; set; }
@@ -759,6 +762,7 @@ namespace SnakeClub
             {
                 strengthImpactSource = state; seenStrengthAttackTick = seenStrengthDamageTick = seenStrengthLevelTick = -1;
                 strengthAttackStarted = strengthDamageStarted = strengthLevelStarted = -10f;
+                additionalDamageCount = 0;
             }
             if (StrengthBodyVisual && !MotionPaused)
             {
@@ -776,6 +780,13 @@ namespace SnakeClub
                 {
                     seenStrengthDamageTick = state.strengthDamageTick; strengthDamageStarted = visualClock.Time;
                     strengthDamagePoint = state.strengthDamagePoint;
+                    additionalDamageCount = System.Math.Min(additionalDamagePoints.Length, System.Math.Max(0, state.strengthDamagePoints.Count - 1));
+                    for (int i = 0; i < additionalDamageCount; i++)
+                    {
+                        additionalDamagePoints[i] = state.strengthDamagePoints[i + 1];
+                        if (additionalDamageRings[i] == null)
+                            additionalDamageRings[i] = MakeEffectRing("Strength damage impact " + (i + 2), new Color(1f, .32f, .25f, 1f));
+                    }
                 }
             }
             else if (StrengthBodyVisual && MotionPaused)
@@ -797,6 +808,12 @@ namespace SnakeClub
             }
             DrawStrengthImpact(strengthAttackRing, strengthAttackPoint, strengthAttackStarted);
             DrawStrengthImpact(strengthDamageRing, strengthDamagePoint, strengthDamageStarted);
+            for (int i = 0; i < additionalDamageRings.Length; i++)
+            {
+                if (additionalDamageRings[i] == null) continue;
+                if (i < additionalDamageCount) DrawStrengthImpact(additionalDamageRings[i], additionalDamagePoints[i], strengthDamageStarted);
+                else additionalDamageRings[i].enabled = false;
+            }
             float reboundAge = visualClock.Time - reboundStarted;
             reboundRipple.enabled = !ReducedEffects && reboundAge >= 0f && reboundAge < .5f;
             if (reboundRipple.enabled)

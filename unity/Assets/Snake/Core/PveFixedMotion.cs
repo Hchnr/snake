@@ -107,6 +107,22 @@ namespace SnakeClub.Core
             }
             return removed;
         }
+        internal void RemoveBodySegmentsBatch(bool[] removed)
+        {
+            if (removed.Length < Length || removed[0]) throw new ArgumentException("invalid snapshot mask");
+            int first = Length;
+            for (int i = Length - 1; i >= 1; i--)
+                if (removed[i]) { segments.RemoveAt(i); first = i; }
+            if (Length < MinimumLength) throw new ArgumentException("minimum length");
+            for (int i = first; i < Length; i++)
+            {
+                var a = segments[i - 1]; var b = segments[i];
+                int dx = a.x - b.x, dy = a.y - b.y, distance = Distance(dx, dy);
+                if (distance > Spacing)
+                    segments[i] = new CapturePoint(a.x - (int)((long)dx * Spacing / distance),
+                        a.y - (int)((long)dy * Spacing / distance));
+            }
+        }
         // Push the head away from a rejected body contact. Keep the remaining
         // segments connected and choose a deterministic heading for exact overlap.
         internal void SeparateFrom(CapturePoint point, CapturePoint tangent)

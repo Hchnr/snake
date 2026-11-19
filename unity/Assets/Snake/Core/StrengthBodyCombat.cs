@@ -148,6 +148,8 @@ namespace SnakeClub.Core
         }
         private StrengthInputs[] powersBuffer = Array.Empty<StrengthInputs>();
         private bool[] usedAttackersBuffer = Array.Empty<bool>(), usedDefendersBuffer = Array.Empty<bool>();
+        private bool[][] masksBuffer = Array.Empty<bool[]>();
+        private int[] budgetsBuffer = Array.Empty<int>();
         private readonly List<Candidate> candidatesBuffer = new List<Candidate>();
         private readonly List<Candidate> chosenBuffer = new List<Candidate>();
         private readonly List<BodyBite> bitesBuffer = new List<BodyBite>();
@@ -176,7 +178,7 @@ namespace SnakeClub.Core
             => new List<BodyBite>(ResolveBuffered(tick, fighters, inputs));
 
         // The result belongs to this match and remains valid until its next step.
-        internal List<BodyBite> ResolveBuffered(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs, bool collectAllBlocked = false)
+        internal List<BodyBite> ResolveBuffered(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs, bool collectAllBlocked = false, bool multi = false)
         {
             if (tick < 0 || tick <= lastTick || tick > long.MaxValue - CooldownTicks) throw new ArgumentOutOfRangeException(nameof(tick));
             if (fighters == null || inputs == null || fighters.Length != inputs.Length) throw new ArgumentException("Fighters and strengths must have matching lengths");
@@ -257,17 +259,45 @@ namespace SnakeClub.Core
             var usedAttackers = usedAttackersBuffer; var usedDefenders = usedDefendersBuffer;
             Array.Clear(usedAttackers, 0, usedAttackers.Length); Array.Clear(usedDefenders, 0, usedDefenders.Length);
             var chosen = chosenBuffer; chosen.Clear();
+            var masks = masksBuffer; var budgets = budgetsBuffer;
+            if (multi)
+            {
+                if (masks.Length != fighters.Length)
+                {
+                    masks = masksBuffer = new bool[fighters.Length][];
+                    budgets = budgetsBuffer = new int[fighters.Length];
+                    for (int i = 0; i < fighters.Length; i++) masks[i] = new bool[Arena.MaximumLength];
+                }
+                for (int i = 0; i < fighters.Length; i++)
+                {
+                    Array.Clear(masks[i], 0, masks[i].Length);
+                    budgets[i] = fighters[i].motion.Length - PveFixedMotion.MinimumLength;
+                }
+            }
             foreach (var candidate in candidates)
             {
-                if (usedAttackers[candidate.attacker] || usedDefenders[candidate.defender]) continue;
+                if (usedAttackers[candidate.attacker] || (!multi && usedDefenders[candidate.defender])) continue;
+                if (multi)
+                {
+                    int count = 0; var mask = masks[candidate.defender];
+                    while (count < candidate.count && count < budgets[candidate.defender] && !mask[candidate.segment + count]) count++;
+                    if (count == 0) continue;
+                    candidate.count = count;
+                    for (int i = 0; i < count; i++) mask[candidate.segment + i] = true;
+                    budgets[candidate.defender] -= count;
+                }
                 usedAttackers[candidate.attacker] = usedDefenders[candidate.defender] = true;
                 chosen.Add(candidate);
             }
             var bites = bitesBuffer; bites.Clear();
+            if (multi)
+                for (int i = 0; i < fighters.Length; i++)
+                    if (budgets[i] < fighters[i].motion.Length - PveFixedMotion.MinimumLength)
+                        fighters[i].motion.RemoveBodySegmentsBatch(masks[i]);
             foreach (var c in chosen)
             {
                 var attacker = fighters[c.attacker]; var defender = fighters[c.defender];
-                int removed = defender.motion.RemoveBodySegments(c.segment, c.count);
+                int removed = multi ? c.count : defender.motion.RemoveBodySegments(c.segment, c.count);
                 if (removed <= 0) continue;
                 nextHit[Key(attacker.id, defender.id)] = tick + CooldownTicks;
                 bites.Add(new BodyBite(attacker.id, defender.id, c.segment, removed, c.attack, c.defense, c.point));
@@ -289,7 +319,7 @@ namespace SnakeClub.Core
             => Apply(fighters, bites, contacts, separatedHeads, out _);
 
         internal static bool Apply(PveFixedFighter[] fighters, IReadOnlyList<BodyBite> bites,
-            IReadOnlyList<BlockedBodyContact> contacts, bool[] separatedHeads, out string playerDefender)
+            IReadOnlyList<BlockedBodyContact> contacts, bool[] separatedHeads, out string playerDefender, bool multi = false)
         {
             playerDefender = null;
             string resolved = ""; bool hasResolved = false, playerBlocked = false;
@@ -302,7 +332,18 @@ namespace SnakeClub.Core
                 if (ai < 0 || di < 0 || !fighters[ai].alive || !fighters[di].alive || fighters[ai].ProtectionTicks > 0 ||
                     fighters[di].ProtectionTicks > 0 || fighters[di].motion.Length <= PveFixedMotion.MinimumLength || separatedHeads[ai]) continue;
                 int segment = contact.segment;
-                foreach (var bite in bites) if (bite.defender == contact.defender)
+                if (multi)
+                {
+                    int beforeCount = 0;
+                    foreach (var bite in bites) if (bite.defender == contact.defender)
+                    {
+                        if (contact.segment >= bite.segment && contact.segment < bite.segment + bite.removed)
+                        { segment = -1; break; }
+                        if (bite.segment + bite.removed <= contact.segment) beforeCount += bite.removed;
+                    }
+                    if (segment >= 0) segment -= beforeCount;
+                }
+                else foreach (var bite in bites) if (bite.defender == contact.defender)
                 {
                     if (segment >= bite.segment && segment < bite.segment + bite.removed) { segment = -1; break; }
                     if (segment >= bite.segment + bite.removed) segment -= bite.removed;
