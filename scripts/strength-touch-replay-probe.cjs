@@ -85,15 +85,20 @@ async function main() {
   await delay(600); await capture('home'); await tap(270, 640);
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_READY'), 'start match');
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
+  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃')), 'visible protection explanation');
+  await capture('protection');
   let index = events.length;
-  await touch('touchStart', [point(250, 500, 1)]); await delay(100);
-  await touch('touchMove', [point(250, 420, 1)]);
+  // The explanation is not a control pad: drag from inside it.
+  await touch('touchStart', [point(250, 680, 1)]); await delay(100);
+  await touch('touchMove', [point(250, 600, 1)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ 64 0(?:\s|$)/.test(e)), 'actual steering');
   index = events.length;
-  await touch('touchStart', [point(250, 420, 1), point(350, 500, 2)]);
+  await touch('touchStart', [point(250, 600, 1), point(350, 500, 2)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)), 'actual boost');
   await capture('battle');
   await touch('touchEnd', [point(350, 500, 2)]); await delay(150); await touch('touchEnd', []);
+  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 10000);
+  await capture('protection-ended');
   await waitFor(() => hasSince(0, 'SNAKE_STRENGTH_E2E '), 'complete actual-touch match and local replay', 180000);
   await delay(1000); await capture('result');
   const line = events.find(e => e.includes('SNAKE_STRENGTH_E2E '));
