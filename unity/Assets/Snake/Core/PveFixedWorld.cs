@@ -26,14 +26,15 @@ namespace SnakeClub.Core
         public const string LocalStrengthOpeningRules = "strength-local-advantage-2";
         public const string LocalStrengthEncounterRules = "strength-local-advantage-3";
         public const string LocalStrengthRecoveryRules = "strength-local-advantage-4";
+        public const string LocalStrengthSafeRecoveryRules = "strength-local-advantage-5";
         public const int MaxTicks = 90 * PveFixedWorld.TickRate;
         public static bool TryReplay(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, out PveFixedWorld result)
             => TryReplayInternal(seed, firstRun, profile, inputs, false, null, out result);
 
         // Diagnostic only: explicit flags select offline development variants.
         // They must not be used to verify accounts, rankings, or rewards.
-        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false)
-            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result, localAdvantage, localOpeningFood, localOpeningEncounter, localRecoverySupply);
+        public static bool TryReplayStrength(int seed, bool firstRun, byte[] inputs, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false)
+            => TryReplayInternal(seed, firstRun, null, inputs, true, null, out result, localAdvantage, localOpeningFood, localOpeningEncounter, localRecoverySupply, localSafeRecovery);
 
         public static bool TryReplayStrength(int seed, StrengthEvalStartConfig snapshot, byte[] inputs, out PveFixedWorld result)
         {
@@ -42,14 +43,14 @@ namespace SnakeClub.Core
             return TryReplayInternal(seed, snapshot.firstRun, null, inputs, true, snapshot, out result);
         }
 
-        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false)
+        private static bool TryReplayInternal(int seed, bool firstRun, PlayerProgress profile, byte[] inputs, bool strength, StrengthEvalStartConfig snapshot, out PveFixedWorld result, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false)
         {
             result = null;
             int limit = (firstRun ? 60 : 90) * PveFixedWorld.TickRate;
             if (inputs == null || inputs.Length == 0 || inputs.Length % 2 != 0 || inputs.Length > limit * 2) return false;
             for (int i = 1; i < inputs.Length; i += 2) if (inputs[i] > 1) return false;
-            if ((localOpeningFood && !localAdvantage) || (localOpeningEncounter && !localOpeningFood) || (localRecoverySupply && !localOpeningEncounter)) return false;
-            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot, localAdvantage: localAdvantage, localOpeningFood: localOpeningFood, localOpeningEncounter: localOpeningEncounter, localRecoverySupply: localRecoverySupply);
+            if ((localOpeningFood && !localAdvantage) || (localOpeningEncounter && !localOpeningFood) || (localRecoverySupply && !localOpeningEncounter) || (localSafeRecovery && !localRecoverySupply)) return false;
+            var world = new PveFixedWorld(seed, firstRun, profile, strengthPreview: strength, strengthSnapshot: snapshot, localAdvantage: localAdvantage, localOpeningFood: localOpeningFood, localOpeningEncounter: localOpeningEncounter, localRecoverySupply: localRecoverySupply, localSafeRecovery: localSafeRecovery);
             for (int i = 0; i < inputs.Length; i += 2)
             {
                 if (world.Finished) return false;
@@ -95,7 +96,9 @@ namespace SnakeClub.Core
         public bool LocalOpeningFood { get; }
         public bool LocalOpeningEncounter { get; }
         public bool LocalRecoverySupply { get; }
+        public bool LocalSafeRecovery { get; }
         public string RulesVersion => !StrengthPreview ? PveFixedRecording.ExperimentalRules :
+            LocalSafeRecovery ? PveFixedRecording.LocalStrengthSafeRecoveryRules :
             LocalRecoverySupply ? PveFixedRecording.LocalStrengthRecoveryRules :
             LocalOpeningEncounter ? PveFixedRecording.LocalStrengthEncounterRules :
             LocalOpeningFood ? PveFixedRecording.LocalStrengthOpeningRules :
@@ -152,7 +155,7 @@ namespace SnakeClub.Core
         public int Tick { get; private set; }
         public bool Finished { get; private set; }
         public string Winner { get; private set; } = "";
-        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false)
+        public PveFixedWorld(int seed, bool firstRun, PlayerProgress profile, bool strengthPreview = false, StrengthEvalStartConfig strengthSnapshot = null, bool localAdvantage = false, bool localOpeningFood = false, bool localOpeningEncounter = false, bool localRecoverySupply = false, bool localSafeRecovery = false)
         {
             if (strengthSnapshot != null && (!strengthPreview || !strengthSnapshot.Supported || strengthSnapshot.firstRun != firstRun))
                 throw new ArgumentException("Invalid strength snapshot", nameof(strengthSnapshot));
@@ -164,12 +167,15 @@ namespace SnakeClub.Core
                 throw new ArgumentException("Opening encounter requires offline opening food", nameof(localOpeningEncounter));
             if (localRecoverySupply && !localOpeningEncounter)
                 throw new ArgumentException("Recovery supplies require offline opening encounter", nameof(localRecoverySupply));
+            if (localSafeRecovery && !localRecoverySupply)
+                throw new ArgumentException("Safe recovery requires offline recovery supplies", nameof(localSafeRecovery));
             for (int i = 0; i < fighters.Length; i++) strengthAttackTicks[i] = strengthDamageTicks[i] = -1;
             StrengthPreview = strengthPreview;
             LocalStrengthAdvantage = localAdvantage;
             LocalOpeningFood = localOpeningFood;
             LocalOpeningEncounter = localOpeningEncounter;
             LocalRecoverySupply = localRecoverySupply;
+            LocalSafeRecovery = localSafeRecovery;
             recoveryFruit = localRecoverySupply ? new bool[Arena.FruitCount] : null;
             StrengthBasePower = strengthSnapshot != null ? strengthSnapshot.EffectivePower : localAdvantage ? 120 : 100;
             StrengthHardness = strengthSnapshot != null ? strengthSnapshot.EffectiveHardness : localAdvantage ? 80 : 0;
@@ -212,22 +218,10 @@ namespace SnakeClub.Core
                 fighters[0].motion.Length > RecoverySupplyLengthLimit || RecoverySuppliesUsed >= RecoverySupplyLimit || Tick < NextRecoverySupplyTick) return;
             var player = fighters[0].motion;
             int[] selected = new int[RecoverySupplyCount];
+            int placed = 0;
             int heading = player.Angle >> 8;
             for (int part = 0; part < RecoverySupplyCount; part++)
             {
-                int chosen = -1; long bestScore = -1;
-                for (int candidate = 0; candidate < fruit.Count; candidate++)
-                {
-                    bool used = false;
-                    for (int prior = 0; prior < part; prior++) if (selected[prior] == candidate) { used = true; break; }
-                    if (used) continue;
-                    int x = fruit[candidate].position.x - player.X, y = fruit[candidate].position.y - player.Y;
-                    // Move any uncollected previous supply before ordinary
-                    // distant fruit, keeping at most four marked at once.
-                    long score = recoveryFruit[candidate] ? long.MaxValue : DistanceSquared(x, y);
-                    if (score > bestScore) { bestScore = score; chosen = candidate; }
-                }
-                selected[part] = chosen;
                 int radius = part < 3 ? 3000 + part * 1500 : 6000;
                 byte direction = (byte)heading;
                 if (part == 3)
@@ -244,10 +238,50 @@ namespace SnakeClub.Core
                 // never collapses the fruit onto the player's head.
                 if (player.X + dx > PveFixedMotion.Edge || player.X + dx < -PveFixedMotion.Edge) dx = -dx;
                 if (player.Y + dy > PveFixedMotion.Edge || player.Y + dy < -PveFixedMotion.Edge) dy = -dy;
-                fruit[chosen] = new PveFixedFruit(new CapturePoint(player.X + dx, player.Y + dy), fruit[chosen].color);
+                var position = new CapturePoint(player.X + dx, player.Y + dy);
+                if (LocalSafeRecovery && !TryFindSafeRecoveryPoint(player, direction, radius, selected, placed, out position)) continue;
+                int chosen = -1; long bestScore = -1;
+                for (int candidate = 0; candidate < fruit.Count; candidate++)
+                {
+                    bool used = false;
+                    for (int prior = 0; prior < placed; prior++) if (selected[prior] == candidate) { used = true; break; }
+                    if (used) continue;
+                    int x = fruit[candidate].position.x - player.X, y = fruit[candidate].position.y - player.Y;
+                    long score = recoveryFruit[candidate] ? long.MaxValue : DistanceSquared(x, y);
+                    if (score > bestScore) { bestScore = score; chosen = candidate; }
+                }
+                if (chosen < 0) break;
+                selected[placed++] = chosen;
+                fruit[chosen] = new PveFixedFruit(position, fruit[chosen].color);
                 recoveryFruit[chosen] = true;
             }
-            RecoverySuppliesUsed++; LastRecoverySupplyTick = Tick; NextRecoverySupplyTick = Tick + RecoverySupplyCooldownTicks;
+            if (placed > 0) { RecoverySuppliesUsed++; LastRecoverySupplyTick = Tick; NextRecoverySupplyTick = Tick + RecoverySupplyCooldownTicks; }
+        }
+        private static readonly int[] RecoveryAngleOffsets = { 0, 16, -16, 32, -32, 48, -48, 64, -64, 96, -96, 128 };
+        // Conservative margin around each living AI. Collision resolution
+        // can still move a head farther on the following step.
+        public const int RecoverySafetyDistance = 5000;
+        private bool TryFindSafeRecoveryPoint(PveFixedMotion player, byte direction, int baseRadius, int[] selected, int placed, out CapturePoint point)
+        {
+            for (int ring = 0; ring < 3; ring++)
+            foreach (int offset in RecoveryAngleOffsets)
+            {
+                int radius = baseRadius + ring * 1500;
+                byte angle = unchecked((byte)(direction + offset));
+                int dx = PveFixedMotion.DirectionX(angle) * radius / 10000, dy = PveFixedMotion.DirectionY(angle) * radius / 10000;
+                if (player.X + dx > PveFixedMotion.Edge || player.X + dx < -PveFixedMotion.Edge) dx = -dx;
+                if (player.Y + dy > PveFixedMotion.Edge || player.Y + dy < -PveFixedMotion.Edge) dy = -dy;
+                int x = player.X + dx, y = player.Y + dy; bool clear = true;
+                for (int i = 1; i < fighters.Length; i++)
+                    if (fighters[i].alive && DistanceSquared(x - fighters[i].motion.X, y - fighters[i].motion.Y) <= (long)RecoverySafetyDistance * RecoverySafetyDistance)
+                    { clear = false; break; }
+                if (!clear) continue;
+                for (int i = 0; i < placed; i++)
+                    if (DistanceSquared(x - fruit[selected[i]].position.x, y - fruit[selected[i]].position.y) < 1250L * 1250L)
+                    { clear = false; break; }
+                if (clear) { point = new CapturePoint(x, y); return true; }
+            }
+            point = default; return false;
         }
         private int Next(int max)
         {
@@ -790,6 +824,9 @@ namespace SnakeClub.Core
                 add(RecoverySupplyCollectedByPlayer); add(RecoverySupplyCollectedByOpponents);
                 for (int i = 0; i < recoveryFruit.Length; i++) add(recoveryFruit[i] ? 1 : 0);
             }
+            // Identical current states can have different future placement
+            // rules; retain every existing v4 vector and distinguish v5.
+            if (LocalSafeRecovery) add(5);
         }
 
         public bool TryGetStrength(string id, out StrengthValues head, out int tailDefense)
@@ -957,7 +994,8 @@ namespace SnakeClub.Core
             }
             // Preserve every existing s1 receipt; only the new offline opening
             // is domain-separated from earlier local and server variants.
-            if (world.LocalRecoverySupply) AddString(PveFixedRecording.LocalStrengthRecoveryRules);
+            if (world.LocalSafeRecovery) AddString(PveFixedRecording.LocalStrengthSafeRecoveryRules);
+            else if (world.LocalRecoverySupply) AddString(PveFixedRecording.LocalStrengthRecoveryRules);
             else if (world.LocalOpeningEncounter) AddString(PveFixedRecording.LocalStrengthEncounterRules);
             else if (world.LocalOpeningFood) AddString(PveFixedRecording.LocalStrengthOpeningRules);
             AddInt(world.Tick); AddString(world.Winner); AddInt(world.StrengthBasePower); AddInt(world.StrengthHardness);

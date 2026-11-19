@@ -23,7 +23,8 @@ if not editor.is_file() or not chrome.is_file():
     sys.exit('Unity Editor or Chrome not found; set UNITY_EDITOR and SNAKE_CHROME to their executable paths.')
 
 pattern = re.compile(r'strength=([0-9a-f:,]+)')
-recovery_pattern = re.compile(r'recovery=([0-9a-f:,]+)')
+recovery_pattern = re.compile(r'(?<![a-z-])recovery=([0-9a-f:,]+)')
+safe_recovery_pattern = re.compile(r'safe-recovery=([0-9a-f:,]+)')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
                            text=True, capture_output=True, check=True, timeout=180).stdout
@@ -47,6 +48,20 @@ recovery_match = recovery_pattern.search(recovery_reference)
 if not recovery_match or len(recovery_match.group(1).split(',')) != 16:
     sys.exit('Desktop recovery matrix is incomplete.')
 expected_recovery = recovery_match.group(1)
+# Captured from the v4 implementation before the safe-placement variant.
+# Comparing both runtimes only with each other would miss a shared regression.
+v4_golden = (
+    '2:0:0:1800:3:296f9ac0e06bd105,2:0:1:1800:0:1c6d40846bb499df,'
+    '2:1:0:1200:0:cf1a7b9bc4beaaa6,2:1:1:1200:0:4515b11d59e7e36c,'
+    '68:0:0:1800:0:d4c2493cff8017f1,68:0:1:1800:3:0b1e63fe63d6b97f,'
+    '68:1:0:1200:7:90c856bffc4af5b7,68:1:1:1200:0:6d8c4a0e72422f37,'
+    '73:0:0:1800:0:1df1751bdb92d449,73:0:1:1800:0:9e19330aaf7bfb88,'
+    '73:1:0:1200:0:840a7b4d3edce4b6,73:1:1:1200:3:2cb6b78ca480d66c,'
+    '105:0:0:1800:0:b36ffe6c82e3aab1,105:0:1:1800:15:62ef755a2a25f3e1,'
+    '105:1:0:1200:0:55ca8d74a169c331,105:1:1:1200:15:bc04c5bf941a69f6'
+)
+if expected_recovery != v4_golden:
+    sys.exit('MISMATCH: v4 recovery fingerprints changed from the preserved reference.')
 recovery_coverage = 0
 for case in expected_recovery.split(','):
     fields = case.split(':')
@@ -55,6 +70,20 @@ for case in expected_recovery.split(','):
     recovery_coverage |= int(fields[4])
 if recovery_coverage != 15:
     sys.exit('Desktop recovery matrix did not observe activation, player/AI pickup, and a second activation.')
+safe_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-safe-recovery-vector'],
+                                text=True, capture_output=True, check=True, timeout=180).stdout
+safe_match = safe_recovery_pattern.search(safe_reference)
+if not safe_match or len(safe_match.group(1).split(',')) != 24:
+    sys.exit('Desktop safe-recovery matrix is incomplete.')
+expected_safe = safe_match.group(1)
+safe_coverage = 0
+for case in expected_safe.split(','):
+    fields = case.split(':')
+    if len(fields) != 6:
+        sys.exit('Desktop safe-recovery matrix case is malformed.')
+    safe_coverage |= int(fields[4])
+if safe_coverage != 15:
+    sys.exit('Desktop safe-recovery matrix did not observe activation, player/AI pickup, and a second activation.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -86,7 +115,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery()); }
+    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -119,6 +148,10 @@ internal static class FixedVectorDiagnostic {
         if not actual_recovery_match or len(actual_recovery_match.group(1).split(',')) != 16:
             sys.exit('WebGL recovery matrix is incomplete.')
         actual_recovery = actual_recovery_match.group(1)
+        actual_safe_match = safe_recovery_pattern.search(result.stdout)
+        if not actual_safe_match or len(actual_safe_match.group(1).split(',')) != 24:
+            sys.exit('WebGL safe-recovery matrix is incomplete.')
+        actual_safe = actual_safe_match.group(1)
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -133,6 +166,13 @@ internal static class FixedVectorDiagnostic {
                     print('First differing recovery case: .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: local recovery simulation differs across runtimes.')
-        print('MATCH: 18 strength and 16 recovery matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
+        print('.NET safe recovery:  ' + expected_safe + '\nWebGL safe recovery: ' + actual_safe)
+        if actual_safe != expected_safe:
+            for desktop, webgl in zip(expected_safe.split(','), actual_safe.split(',')):
+                if desktop != webgl:
+                    print('First differing safe-recovery case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: local safe-recovery simulation differs across runtimes.')
+        print('MATCH: 18 strength, 16 v4 recovery and 24 v5 recovery matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)
