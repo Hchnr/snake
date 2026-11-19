@@ -91,20 +91,45 @@ namespace SnakeClub.Tests
         }
 
         // Separate local-rule vectors preserve the existing server matrix.
-        public static string ComputeRecovery()
+        public static string ComputeRecovery() => ComputeRecovery(false);
+
+        public static string ComputeSafeRecovery() => ComputeRecovery(true);
+
+        private static string ComputeRecovery(bool safe)
         {
-            var result = new StringBuilder("recovery=");
-            foreach (int seed in new[] { 2, 68, 73, 105 })
+            string prefix = safe ? "safe-recovery=" : "recovery=";
+            var result = new StringBuilder(prefix);
+            foreach (int seed in safe ? new[] { 2, 68, 105, 192 } : new[] { 2, 68, 73, 105 })
             foreach (bool first in new[] { false, true })
-            for (int pattern = 0; pattern < 2; pattern++)
+            for (int pattern = 0; pattern < (safe ? 3 : 2); pattern++)
             {
                 hash = 14695981039346656037UL;
                 var world = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
-                    localOpeningEncounter: true, localRecoverySupply: true);
-                int flags = 0;
+                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: safe);
+                int flags = 0; byte heading = pattern == 1 ? (byte)64 : (byte)0;
                 while (!world.Finished)
                 {
-                    byte heading = pattern == 0 ? (byte)0 : (byte)64;
+                    if (pattern == 2 && world.Tick % 8 == 0)
+                    {
+                        var player = world.Fighters[0].motion;
+                        long nearest = long.MaxValue; int dx = 0, dy = 0;
+                        foreach (var opponent in world.Fighters)
+                        {
+                            if (opponent.id == "you" || !opponent.alive || opponent.motion.Length <= PveFixedMotion.MinimumLength) continue;
+                            var tail = opponent.motion.Segments[opponent.motion.Length - 1];
+                            int x = tail.x - player.X, y = tail.y - player.Y; long distance = (long)x * x + (long)y * y;
+                            if (distance < nearest) { nearest = distance; dx = x; dy = y; }
+                        }
+                        if (nearest < long.MaxValue)
+                        {
+                            long best = long.MinValue;
+                            for (int i = 0; i < 256; i++)
+                            {
+                                long dot = (long)dx * PveFixedMotion.DirectionX((byte)i) + (long)dy * PveFixedMotion.DirectionY((byte)i);
+                                if (dot > best) { best = dot; heading = (byte)i; }
+                            }
+                        }
+                    }
                     world.Step(heading, false);
                     world.AppendReplayDiagnostics(Add);
                     Add(world.Tick); Add(world.Finished ? 1 : 0); Add(world.Winner);
@@ -121,7 +146,7 @@ namespace SnakeClub.Tests
                     if (world.RecoverySupplyCollectedByOpponents > 0) flags |= 4;
                     if (world.RecoverySuppliesUsed > 1) flags |= 8;
                 }
-                if (result.Length > 9) result.Append(',');
+                if (result.Length > prefix.Length) result.Append(',');
                 result.Append(seed).Append(':').Append(first ? 1 : 0).Append(':').Append(pattern).Append(':')
                     .Append(world.Tick).Append(':').Append(flags).Append(':').Append(hash.ToString("x16"));
             }
