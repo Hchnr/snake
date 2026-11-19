@@ -60,6 +60,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
                 TestStrengthImpactVisual();
+                TestStrengthRecoveryVisual();
                 TestStrengthAppearanceVisual();
                 TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
@@ -503,6 +504,54 @@ namespace SnakeClub.Tests.Editor
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
+        private static void TestStrengthRecoveryVisual()
+        {
+            var root = new GameObject("Strength recovery supply regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true; renderer.ReducedEffects = true;
+                var world = new PveFixedWorld(42, false, null, true, localAdvantage: true, localOpeningFood: true,
+                    localOpeningEncounter: true, localRecoverySupply: true);
+                var actors = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+                actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+                actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-11700, 0, 0, 16));
+                for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+                var fruit = (System.Collections.Generic.List<PveFixedFruit>)world.Fruit;
+                for (int i = 0; i < fruit.Count; i++) fruit[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
+                var rings = (LineRenderer[])typeof(ArenaRenderer).GetField("recoverySupplyRings", flags).GetValue(renderer);
+                renderer.Draw(world.RenderState(), "you");
+                for (int i = 0; i < rings.Length; i++) Require(!rings[i].enabled, "supply marker appeared before a real bite");
+                world.Step(0, false); renderer.Draw(world.RenderState(), "you");
+                Require(world.RecoverySuppliesUsed == 1, "fixture did not trigger real recovery supplies");
+                int visible = 0, sideIndex = -1;
+                for (int i = 0; i < fruit.Count; i++) if (world.IsRecoveryFruit(i))
+                {
+                    var point = fruit[i].position; var ring = rings[visible++];
+                    if (Math.Abs(point.y - world.Fighters[0].motion.Y) > 1000) sideIndex = i;
+                    Require(ring.enabled && Mathf.Abs(ring.GetPosition(0).x - .85f - point.x / 1000f) < .01f &&
+                        Mathf.Abs(ring.GetPosition(0).z - point.y / 1000f) < .01f, "recovery marker did not follow its real fruit");
+                }
+                Require(visible == PveFixedWorld.RecoverySupplyCount && sideIndex >= 0, "actual supplies did not receive their visible markers");
+                actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-80000, -80000, 0, 16)) { shieldTicks = 2000 };
+                for (int i = 0; i < 25; i++) world.Step(0, false);
+                renderer.MotionPaused = true; renderer.Draw(world.RenderState(), "you");
+                Require(world.RecoverySupplyCollectedByPlayer == 3 && world.IsRecoveryFruit(sideIndex) && rings[0].enabled && !rings[1].enabled,
+                    "collected forward fruit or remaining side marker was wrong");
+                var side = fruit[sideIndex].position;
+                actors[0] = new PveFixedFighter("you", new PveFixedMotion(side.x - 1500, side.y, 0, world.Fighters[0].motion.Length)) { shieldTicks = 2000 };
+                world.Step(0, false); renderer.Draw(world.RenderState(), "you");
+                Require(world.RecoverySupplyCollectedByPlayer == 4, "fixture did not actually collect the side fruit");
+                for (int i = 0; i < rings.Length; i++) Require(!rings[i].enabled, "collected supply kept its marker");
+                renderer.StrengthBodyVisual = false; renderer.Draw(world.RenderState(), "you");
+                for (int i = 0; i < rings.Length; i++) Require(!rings[i].enabled, "supply markers leaked into another mode");
+                Debug.Log("PASS Unity recovery markers follow actual supply fruit");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
         private static void TestStrengthAppearanceVisual()
         {
             var root = new GameObject("Strength appearance regression");
@@ -845,7 +894,7 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60, "account tutorial changed local first run");
                 world.Fighters[0].alive = false; world.Step(0, false); Field("controlActions").SetValue(app, 1); Call("RecordResult");
@@ -856,7 +905,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");

@@ -86,7 +86,8 @@ async function main() {
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_READY'), 'start match');
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
   await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃')), 'visible protection explanation');
-  await capture('protection');
+  // Let a few real ticks elapse so the seeded touch path is reproducible.
+  await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= 6; }), 'opening ticks');
   let index = events.length;
   // The explanation is not a control pad: drag from inside it.
   await touch('touchStart', [point(250, 680, 1)]); await delay(100);
@@ -95,10 +96,12 @@ async function main() {
   index = events.length;
   await touch('touchStart', [point(250, 600, 1), point(350, 500, 2)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)), 'actual boost');
-  await capture('battle');
   await touch('touchEnd', [point(350, 500, 2)]); await delay(150); await touch('touchEnd', []);
+  await capture('protection'); await capture('battle');
   await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 10000);
   await capture('protection-ended');
+  await waitFor(() => events.some(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 25000);
+  await capture('recovery-supply');
   await waitFor(() => hasSince(0, 'SNAKE_STRENGTH_E2E '), 'complete actual-touch match and local replay', 180000);
   await delay(1000); await capture('result');
   const line = events.find(e => e.includes('SNAKE_STRENGTH_E2E '));
@@ -108,6 +111,16 @@ async function main() {
 }
 main().then(() => { ws.close(); chrome.kill('SIGTERM'); }).catch(async error => {
   console.error(error.message); process.exitCode = 1;
+  let lastInput = '';
+  const changes = [];
+  for (const event of events) {
+    const match = event.match(/SNAKE_TOUCH_TICK (\d+) (\d+) ([01])/);
+    if (match && match[2] + ':' + match[3] !== lastInput) {
+      lastInput = match[2] + ':' + match[3]; changes.push(match[1] + ':' + lastInput);
+    }
+  }
+  console.error('Observed input changes (tick:heading:boost): ' + changes.slice(0, 30).join(', '));
+  console.error('Recovery notices: ' + events.filter(e => e.includes('SNAKE_TOUCH_RECOVERY')).slice(0, 12).join(' | '));
   try {
     if (ws && ws.readyState === WebSocket.OPEN) {
       const screenshot = await call('Page.captureScreenshot', { format: 'png' });

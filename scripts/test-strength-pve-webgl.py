@@ -23,6 +23,7 @@ if not editor.is_file() or not chrome.is_file():
     sys.exit('Unity Editor or Chrome not found; set UNITY_EDITOR and SNAKE_CHROME to their executable paths.')
 
 pattern = re.compile(r'strength=([0-9a-f:,]+)')
+recovery_pattern = re.compile(r'recovery=([0-9a-f:,]+)')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
                            text=True, capture_output=True, check=True, timeout=180).stdout
@@ -40,6 +41,20 @@ for case in expected.split(','):
     coverage |= int(fields[4])
 if coverage != 31:
     sys.exit('Desktop cases did not observe pickup spawn, player bite, pickup buff, loop buff and level growth.')
+recovery_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-recovery-vector'],
+                                    text=True, capture_output=True, check=True, timeout=180).stdout
+recovery_match = recovery_pattern.search(recovery_reference)
+if not recovery_match or len(recovery_match.group(1).split(',')) != 16:
+    sys.exit('Desktop recovery matrix is incomplete.')
+expected_recovery = recovery_match.group(1)
+recovery_coverage = 0
+for case in expected_recovery.split(','):
+    fields = case.split(':')
+    if len(fields) != 6:
+        sys.exit('Desktop recovery matrix case is malformed.')
+    recovery_coverage |= int(fields[4])
+if recovery_coverage != 15:
+    sys.exit('Desktop recovery matrix did not observe activation, player/AI pickup, and a second activation.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -71,7 +86,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute()); }
+    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -100,6 +115,10 @@ internal static class FixedVectorDiagnostic {
         actual = actual_match.group(1)
         if len(actual.split(',')) != 18:
             sys.exit('WebGL strength matrix is incomplete.')
+        actual_recovery_match = recovery_pattern.search(result.stdout)
+        if not actual_recovery_match or len(actual_recovery_match.group(1).split(',')) != 16:
+            sys.exit('WebGL recovery matrix is incomplete.')
+        actual_recovery = actual_recovery_match.group(1)
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -107,6 +126,13 @@ internal static class FixedVectorDiagnostic {
                     print('First differing matrix case: .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: strength preview differs across runtimes; do not enable replay-based rewards.')
-        print('MATCH: 18 sampled strength-preview matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
+        print('.NET recovery:  ' + expected_recovery + '\nWebGL recovery: ' + actual_recovery)
+        if actual_recovery != expected_recovery:
+            for desktop, webgl in zip(expected_recovery.split(','), actual_recovery.split(',')):
+                if desktop != webgl:
+                    print('First differing recovery case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: local recovery simulation differs across runtimes.')
+        print('MATCH: 18 strength and 16 recovery matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

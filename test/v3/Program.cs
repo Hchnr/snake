@@ -20,12 +20,14 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
-if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal"))
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    bool advantage = args[0] != "strength-replay-terminal", openingFood = args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal", openingEncounter = args[0] == "strength-encounter-replay-terminal";
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter)) throw new InvalidOperationException("Invalid recording");
+    bool advantage = args[0] != "strength-replay-terminal", recoverySupply = args[0] == "strength-recovery-replay-terminal";
+    bool openingFood = args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || recoverySupply;
+    bool openingEncounter = args[0] == "strength-encounter-replay-terminal" || recoverySupply;
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply)) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
@@ -33,6 +35,12 @@ if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "st
 if (args.Length == 1 && args[0] == "strength-pve-vector")
 {
     Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.Compute());
+    return;
+}
+
+if (args.Length == 1 && args[0] == "strength-recovery-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeRecovery());
     return;
 }
 
@@ -146,6 +154,7 @@ var cases = new (string name, Action run)[]
     ("strength preview complete recordings reproduce the match", StrengthRecordingCases),
     ("offline opening food gives real reachable early growth", StrengthOpeningFoodCases),
     ("offline opening opponent retains real combat and earlier rules", StrengthOpeningEncounterCases),
+    ("offline recovery supply follows real bites and bounded opportunities", StrengthRecoverySupplyCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
@@ -2172,13 +2181,13 @@ static void StrengthRecordingCases()
 {
     foreach (int seed in new[] { 1, 73, 12345 })
     foreach (bool first in new[] { false, true })
-    foreach (int variant in new[] { 0, 1, 2, 3 })
+    foreach (int variant in new[] { 0, 1, 2, 3, 4 })
     {
-        bool advantage = variant > 0, openingFood = variant >= 2, openingEncounter = variant == 3;
-        var live = new PveFixedWorld(seed, first, null, strengthPreview: true, localAdvantage: advantage, localOpeningFood: openingFood, localOpeningEncounter: openingEncounter);
+        bool advantage = variant > 0, openingFood = variant >= 2, openingEncounter = variant >= 3, recoverySupply = variant == 4;
+        var live = new PveFixedWorld(seed, first, null, strengthPreview: true, localAdvantage: advantage, localOpeningFood: openingFood, localOpeningEncounter: openingEncounter, localRecoverySupply: recoverySupply);
         Check(live.LocalStrengthAdvantage == advantage && live.StrengthBasePower == (advantage ? 120 : 100) && live.StrengthHardness == (advantage ? 80 : 0),
             "offline advantage did not apply only when requested");
-        Check(live.LocalOpeningFood == openingFood && live.LocalOpeningEncounter == openingEncounter && live.RulesVersion == (openingEncounter ? PveFixedRecording.LocalStrengthEncounterRules : openingFood ? PveFixedRecording.LocalStrengthOpeningRules : advantage ? PveFixedRecording.LocalStrengthAdvantageRules : PveFixedRecording.ExperimentalStrengthRules),
+        Check(live.LocalOpeningFood == openingFood && live.LocalOpeningEncounter == openingEncounter && live.LocalRecoverySupply == recoverySupply && live.RulesVersion == (recoverySupply ? PveFixedRecording.LocalStrengthRecoveryRules : openingEncounter ? PveFixedRecording.LocalStrengthEncounterRules : openingFood ? PveFixedRecording.LocalStrengthOpeningRules : advantage ? PveFixedRecording.LocalStrengthAdvantageRules : PveFixedRecording.ExperimentalStrengthRules),
             "local practice rules were not identified separately");
         Check(live.TryGetStrength("you", out var own, out _) && live.TryGetStrength("bot-1", out var bot, out _) &&
             (advantage ? own.attack > bot.attack && own.defense > bot.defense : own.attack == bot.attack && own.defense == bot.defense),
@@ -2190,7 +2199,7 @@ static void StrengthRecordingCases()
             bool boost = tick % 120 >= 95;
             tape.Add(heading); tape.Add(boost ? (byte)1 : (byte)0); live.Step(heading, boost);
         }
-        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay, advantage, openingFood, openingEncounter) && replay.StrengthPreview &&
+        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay, advantage, openingFood, openingEncounter, recoverySupply) && replay.StrengthPreview &&
             live.Tick == replay.Tick && live.Winner == replay.Winner && live.StrengthPickupVisible == replay.StrengthPickupVisible &&
             live.StrengthPickupPosition.x == replay.StrengthPickupPosition.x && live.StrengthPickupPosition.y == replay.StrengthPickupPosition.y,
             "completed strength recording did not reproduce match outcome");
@@ -2224,6 +2233,14 @@ static void StrengthRecordingCases()
             bool oldFinished = PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var oldReplay, true, true);
             Check(!oldFinished || !StrengthStateDigest.Matches(oldReplay, digest), "previous opening recording was confused with the encounter variant");
         }
+        if (recoverySupply)
+        {
+            bool oldFinished = PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var oldReplay, true, true, true);
+            Check(!oldFinished || !StrengthStateDigest.Matches(oldReplay, digest), "encounter recording was confused with recovery variant");
+            Check(live.RecoverySuppliesUsed == replay.RecoverySuppliesUsed && live.LastRecoverySupplyTick == replay.LastRecoverySupplyTick &&
+                live.NextRecoverySupplyTick == replay.NextRecoverySupplyTick && live.RecoverySupplyCollectedByPlayer == replay.RecoverySupplyCollectedByPlayer &&
+                live.RecoverySupplyCollectedByOpponents == replay.RecoverySupplyCollectedByOpponents, "recovery state changed after replay");
+        }
         Check(digest.StartsWith("s1-") && StrengthStateDigest.Matches(replay, digest) && !StrengthStateDigest.Matches(replay, "") &&
             !StrengthStateDigest.Matches(replay, "s1-0000000000000000"), "strength digest was not verified correctly");
         var replayFruit = (List<PveFixedFruit>)replay.Fruit;
@@ -2236,15 +2253,114 @@ static void StrengthRecordingCases()
         Check(live.Fruit.Count == replay.Fruit.Count, "strength recording changed fruit count");
         for (int i = 0; i < live.Fruit.Count; i++)
             Check(live.Fruit[i].position.x == replay.Fruit[i].position.x && live.Fruit[i].position.y == replay.Fruit[i].position.y &&
-                live.Fruit[i].color == replay.Fruit[i].color, "strength recording changed fruit state");
-        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _, advantage, openingFood, openingEncounter), "unfinished strength recording accepted");
+                live.Fruit[i].color == replay.Fruit[i].color && live.IsRecoveryFruit(i) == replay.IsRecoveryFruit(i), "strength recording changed fruit state");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _, advantage, openingFood, openingEncounter, recoverySupply), "unfinished strength recording accepted");
         tape.Add(0); tape.Add(0);
-        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _, advantage, openingFood, openingEncounter), "trailing strength input accepted");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out _, advantage, openingFood, openingEncounter, recoverySupply), "trailing strength input accepted");
     }
     Check(!PveFixedRecording.TryReplayStrength(1, true, null, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0 }, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[] { 0, 2 }, out _) &&
         !PveFixedRecording.TryReplayStrength(1, true, new byte[(60 * PveFixedWorld.TickRate + 1) * 2], out _), "malformed strength recording accepted");
+}
+
+static void StrengthRecoverySupplyCases()
+{
+    bool invalid = false;
+    try { _ = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true, localRecoverySupply: true); }
+    catch (ArgumentException) { invalid = true; }
+    Check(invalid && !PveFixedRecording.TryReplayStrength(1, false, new byte[] { 0, 0 }, out _, true, true, false, true),
+        "recovery supplies escaped the isolated encounter rules");
+    var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+    var fightersField = typeof(PveFixedWorld).GetField("fighters", flags);
+    var place = typeof(PveFixedWorld).GetMethod("PlaceRecoverySupply", flags);
+    PveFixedWorld Fixture(bool recovery, int length = 16)
+    {
+        var world = new PveFixedWorld(42, false, null, true, localAdvantage: true, localOpeningFood: true, localOpeningEncounter: true, localRecoverySupply: recovery);
+        var fighters = (PveFixedFighter[])fightersField.GetValue(world);
+        fighters[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, length));
+        fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-(length - 3) * 900, 0, 0, 16));
+        for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+        var fruit = (List<PveFixedFruit>)world.Fruit;
+        for (int i = 0; i < fruit.Count; i++) fruit[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
+        return world;
+    }
+    int[] Marked(PveFixedWorld world) => Enumerable.Range(0, world.Fruit.Count).Where(world.IsRecoveryFruit).ToArray();
+    var previous = Fixture(false); var current = Fixture(true);
+    previous.Step(0, false); current.Step(0, false);
+    Check(current.LastPlayerDamageTick == 1 && current.PlayerSegmentsLostToBites > 0 && current.Fighters[0].alive &&
+        current.Fighters[0].motion.Length <= PveFixedWorld.RecoverySupplyLengthLimit && current.RecoverySuppliesUsed == 1 &&
+        previous.PlayerSegmentsLostToBites == current.PlayerSegmentsLostToBites && previous.Fighters[0].motion.Length == current.Fighters[0].motion.Length &&
+        previous.RecoverySuppliesUsed == 0 && Marked(previous).Length == 0,
+        "a real bite failed to produce isolated supplies or changed combat outcome");
+    Check(current.Fruit.Count == Arena.FruitCount && Marked(current).Length == PveFixedWorld.RecoverySupplyCount &&
+        current.RecoverySupplyCollectedByPlayer == 0 && current.RecoverySupplyCollectedByOpponents == 0 &&
+        RecoverySupplyNotice.Text(current, current.Tick, false).Contains("1/2") && RecoverySupplyNotice.Text(current, current.Tick, true) == "" &&
+        RecoverySupplyNotice.Text(current, current.Tick + 4 * PveFixedWorld.TickRate, false) == "",
+        "supply count, cooldown notice, or nonautomatic collection was wrong");
+    var projected = current.RenderState();
+    for (int i = 0; i < current.Fruit.Count; i++)
+        Check(projected.fruits[i].recoverySupply == current.IsRecoveryFruit(i) && current.Fruit[i].color == previous.Fruit[i].color,
+            "supply projection or original fruit color was wrong");
+    int sideIndex = Marked(current).Single(i => Math.Abs(current.Fruit[i].position.y - current.Fighters[0].motion.Y) > 1000);
+    int beforeGrowth = current.Fighters[0].motion.Length;
+    var currentActors = (PveFixedFighter[])fightersField.GetValue(current);
+    currentActors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-80000, -80000, 0, 16)) { shieldTicks = 2000 };
+    for (int i = 0; i < 25; i++) current.Step(0, false);
+    Check(current.RecoverySupplyCollectedByPlayer == 3 && current.RecoverySupplyCollectedByOpponents == 0 && Marked(current).SequenceEqual(new[] { sideIndex }) &&
+        current.Fighters[0].motion.Length >= beforeGrowth + 3 && RecoverySupplyNotice.Text(current, current.Tick, false) != "",
+        "straight movement did not collect the forward supply or preserve the visible side fruit");
+    var sidePoint = current.Fruit[sideIndex].position;
+    currentActors[0] = new PveFixedFighter("you", new PveFixedMotion(sidePoint.x - 1500, sidePoint.y, 0, current.Fighters[0].motion.Length)) { shieldTicks = 2000 };
+    current.Step(0, false);
+    Check(current.RecoverySupplyCollectedByPlayer == 4 && Marked(current).Length == 0 && RecoverySupplyNotice.Text(current, current.Tick, false) == "",
+        "actual player contact did not collect the side fruit or clear its notice");
+    var stolen = Fixture(true); stolen.Step(0, false);
+    int supplyIndex = Marked(stolen)[0]; var supplyPoint = stolen.Fruit[supplyIndex].position;
+    var stolenActors = (PveFixedFighter[])fightersField.GetValue(stolen);
+    stolenActors[0] = new PveFixedFighter("you", new PveFixedMotion(-50000, -50000, 0, 13)) { shieldTicks = 2000 };
+    stolenActors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(supplyPoint.x, supplyPoint.y, 0, 16)) { shieldTicks = 2000 };
+    stolen.Step(0, false);
+    Check(stolen.RecoverySupplyCollectedByOpponents >= 1 && !stolen.IsRecoveryFruit(supplyIndex), "opponents could not collect marked normal fruit");
+    var longPlayer = Fixture(true, 25); longPlayer.Step(0, false);
+    Check(longPlayer.PlayerSegmentsLostToBites > 0 && longPlayer.Fighters[0].motion.Length > PveFixedWorld.RecoverySupplyLengthLimit &&
+        longPlayer.RecoverySuppliesUsed == 0, "a still-large player incorrectly received comeback supplies");
+    var cooldown = Fixture(true); cooldown.Step(0, false);
+    void TryAgain(int tick)
+    {
+        typeof(PveFixedWorld).GetProperty("Tick").SetValue(cooldown, tick);
+        typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(cooldown, tick);
+        place.Invoke(cooldown, null);
+    }
+    TryAgain(1 + PveFixedWorld.RecoverySupplyCooldownTicks - 1);
+    Check(cooldown.RecoverySuppliesUsed == 1, "recovery cooldown was bypassed");
+    TryAgain(1 + PveFixedWorld.RecoverySupplyCooldownTicks);
+    Check(cooldown.RecoverySuppliesUsed == 2 && Marked(cooldown).Length == 4, "second supply did not replace remaining marked fruit");
+    TryAgain(1 + 2 * PveFixedWorld.RecoverySupplyCooldownTicks);
+    Check(cooldown.RecoverySuppliesUsed == 2 && Marked(cooldown).Length == 4, "supply limit was bypassed");
+    foreach (int x in new[] { -PveFixedMotion.Edge, -PveFixedMotion.Edge + 1500, 0, PveFixedMotion.Edge - 1500, PveFixedMotion.Edge })
+    foreach (int y in new[] { -PveFixedMotion.Edge, 0, PveFixedMotion.Edge })
+    for (int direction = 0; direction < 256; direction += 32)
+    {
+        var edge = Fixture(true); var actors = (PveFixedFighter[])fightersField.GetValue(edge);
+        actors[0] = new PveFixedFighter("you", new PveFixedMotion(x, y, direction * 256, 16));
+        typeof(PveFixedWorld).GetProperty("Tick").SetValue(edge, 1);
+        typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(edge, 1);
+        place.Invoke(edge, null);
+        Check(Marked(edge).Length == 4, "edge placement omitted recovery fruit");
+        foreach (int index in Marked(edge))
+        {
+            var p = edge.Fruit[index].position; long dx = (long)p.x - x, dy = (long)p.y - y;
+            long distance = dx * dx + dy * dy;
+            Check(Math.Abs(p.x) <= PveFixedMotion.Edge && Math.Abs(p.y) <= PveFixedMotion.Edge &&
+                distance >= 2990L * 2990L && distance <= 6010L * 6010L,
+                "edge placement moved supply outside the arena or onto the player's head");
+        }
+    }
+    var boostOnly = Fixture(true);
+    foreach (var actor in boostOnly.Fighters) actor.shieldTicks = 2000;
+    for (int i = 0; i < 80; i++) boostOnly.Step(0, true);
+    Check(boostOnly.PlayerSegmentsLostToBites == 0 && boostOnly.RecoverySuppliesUsed == 0, "boost loss alone spawned recovery supplies");
 }
 
 static void StrengthOpeningEncounterCases()
