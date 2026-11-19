@@ -823,6 +823,26 @@ namespace SnakeClub.Tests.Editor
                         "nameplate anchor did not follow the actual sprite bounds");
                     Require(renderer.NameplateAnchor("absent", new Point(0, 0)) == renderer.WorldToScreen(new Point(0, 0)),
                         "missing sprite did not fall back to the procedural head anchor");
+                    var reservePlayer = typeof(SnakeGameApp).GetMethod("ReservePlayerNameplateBounds", BindingFlags.Static | BindingFlags.NonPublic);
+                    var toVirtual = typeof(SnakeGameApp).GetMethod("NameplateVirtualBounds", BindingFlags.Static | BindingFlags.NonPublic);
+                    var toScreen = typeof(SnakeGameApp).GetMethod("GameUiScreenRect", BindingFlags.Static | BindingFlags.NonPublic);
+                    Require(reservePlayer != null && toVirtual != null && toScreen != null, "player nameplate reservation helpers missing");
+                    var inset = new Rect(30, 60, 480, 800); var pixels = new Rect(220, 300, 80, 120);
+                    var virtualBounds = (Rect)toVirtual.Invoke(null, new object[] { pixels, inset, 540f, 960f });
+                    var roundTrip = (Rect)toScreen.Invoke(null, new object[] { virtualBounds, inset, 540f, 960f });
+                    Require(Mathf.Abs(roundTrip.x - pixels.x) < .01f && Mathf.Abs(roundTrip.y - pixels.y) < .01f &&
+                        Mathf.Abs(roundTrip.width - pixels.width) < .01f && Mathf.Abs(roundTrip.height - pixels.height) < .01f,
+                        "player bounds did not round-trip through inset UI coordinates");
+                    var reservedNames = new NameplateLayout();
+                    bool Reserve(ArenaState current, string id) => (bool)reservePlayer.Invoke(null, new object[] {
+                        reservedNames, renderer, current, id, Screen.safeArea, (float)Screen.width, (float)Screen.height });
+                    Require(Reserve(world.RenderState(), "you"), "strength practice did not reserve the real player sprite");
+                    renderer.StrengthBodyVisual = false; renderer.Draw(world.RenderState(), "you");
+                    Require(Reserve(world.RenderState(), "you"), "legacy mode lost the player sprite reservation");
+                    Require(!Reserve(world.RenderState(), "absent"), "a missing player reserved unrelated geometry");
+                    actors[0].alive = false;
+                    Require(!Reserve(world.RenderState(), "you"), "an eliminated player reserved a stale sprite");
+                    actors[0].alive = true; renderer.StrengthBodyVisual = true; renderer.Draw(world.RenderState(), "you");
                 }
                 if (Screen.width > 0 && Screen.height > 0)
                     Require(renderer.TryFallbackHeadScreenBounds(new Point(0, 0), out Rect fallbackBounds) && fallbackBounds.width > 0 && fallbackBounds.height > 0,

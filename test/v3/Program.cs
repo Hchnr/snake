@@ -471,6 +471,28 @@ static void ContactNoticeLayoutCases()
 static void NameplateCases()
 {
     var layout = new NameplateLayout();
+    // The opponent's anchor may be below the player's sprite top while its
+    // otherwise valid label falls across the player's actual illustration.
+    var playerTop = new Point(538, 610); var crowdedOpponent = new Point(600, 816);
+    layout.BeginFrame(1); layout.AddAnchor(playerTop); layout.AddAnchor(crowdedOpponent);
+    Check(layout.TryPlace("you", playerTop, out var baselineOwn) && baselineOwn.y == 542 &&
+        layout.TryPlace("bot", crowdedOpponent, out var baselineBot) && baselineBot.y == 748,
+        "natural-overlap fixture did not place the bot over the player illustration");
+    layout.ClearHistory(); layout.BeginFrame(1); layout.AddAnchor(playerTop); layout.AddAnchor(crowdedOpponent);
+    layout.Reserve(456, 610, 164, 276);
+    Check(layout.TryPlace("you", playerTop, out var protectedOwn) && protectedOwn.y == 542,
+        "protecting the player illustration moved its own priority nameplate");
+    bool placedBot = layout.TryPlace("bot", crowdedOpponent, out var protectedBot);
+    Check(!placedBot || protectedBot.y + NameplateLayout.Height + 6 <= 610 || protectedBot.y >= 886 + 6 ||
+        protectedBot.x + NameplateLayout.Width + 6 <= 456 || protectedBot.x >= 620 + 6,
+        "an opponent nameplate covered the player illustration");
+    layout.BeginFrame(2); layout.AddAnchor(playerTop); layout.AddAnchor(crowdedOpponent);
+    layout.Reserve(30, 400, 1020, 1050);
+    Check(!layout.TryPlace("bot", crowdedOpponent, out _), "a crowded layout forced a label onto a protected illustration");
+    layout.BeginFrame(50); layout.AddAnchor(playerTop); layout.AddAnchor(crowdedOpponent);
+    Check(layout.TryPlace("you", playerTop, out _) && layout.TryPlace("bot", crowdedOpponent, out var returnedBot) && returnedBot.y == 748,
+        "opponent nameplate did not return after the player illustration moved away");
+    layout.ClearHistory();
     var center = new Point(540, 800);
     for (int i = 0; i < 8; i++) layout.AddAnchor(center);
     var boxes = new List<Point>();

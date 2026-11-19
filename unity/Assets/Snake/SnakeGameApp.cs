@@ -574,6 +574,27 @@ namespace SnakeClub
                 rect.width * scale, rect.height * scale);
         }
 
+        // Projected sprite bounds use bottom-left screen pixels; nameplate
+        // layout uses top-left virtual UI units, including the safe-area inset.
+        internal static Rect NameplateVirtualBounds(Rect pixels, Rect safe, float width, float height)
+        {
+            SafeUiMetrics(safe, width, height, out float scale, out float left, out float top);
+            return new Rect((pixels.xMin - left) / scale, (height - pixels.yMax - top) / scale,
+                pixels.width / scale, pixels.height / scale);
+        }
+
+        internal static bool ReservePlayerNameplateBounds(NameplateLayout layout, ArenaRenderer renderer,
+            ArenaState world, string playerId, Rect safe, float width, float height)
+        {
+            if (layout == null || renderer == null || world == null || width <= 0 || height <= 0) return false;
+            var own = world.snakes.Find(s => s.id == playerId && s.alive && s.segments != null && s.segments.Count > 0);
+            if (own == null || (!renderer.TryCharacterScreenBounds(playerId, out Rect bounds) &&
+                !renderer.TryFallbackHeadScreenBounds(own.segments[0], out bounds))) return false;
+            Rect area = NameplateVirtualBounds(bounds, safe, width, height);
+            layout.Reserve(area.x, area.y, area.width, area.height);
+            return true;
+        }
+
         internal static Rect RecoveryMarkerSafeArea(Rect safe, float width, float height)
         {
             if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, width, height);
@@ -1171,6 +1192,7 @@ namespace SnakeClub
         private void DrawNames(ArenaState world, bool strengthPromptVisible, bool hasContactNoticeArea, EdgeObstacle contactNoticeArea)
         {
             nameplates.BeginFrame(world.tick); nameplateEntries.Clear();
+            ReservePlayerNameplateBounds(nameplates, arenaRenderer, world, playerId, Screen.safeArea, Screen.width, Screen.height);
             if (hasContactNoticeArea) nameplates.Reserve(contactNoticeArea.x, contactNoticeArea.y, contactNoticeArea.width, contactNoticeArea.height);
             if (!paused && fixedPve != null && fixedPve.StrengthPreview && !string.IsNullOrEmpty(world.strengthHeadThreat))
                 nameplates.Reserve(250, 1635, 580, 74);
