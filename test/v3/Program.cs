@@ -177,6 +177,7 @@ var cases = new (string name, Action run)[]
     ("growth view follows current length and bounded preferences", GrowthViewCases),
     ("multi-bite retains snapshot ordering, event totals and replay", StrengthMultiBiteRegression.Run),
     ("head tie handles simultaneous bites and safe separation", StrengthHeadTieRegression.Run),
+    ("simultaneous contact notices reflect real resolved events", StrengthContactCombinationRegression.Run),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),
     ("elimination feedback follows observed credited outcomes", EliminationFeedbackCases),
     ("kill feedback reflects observed growth and freezes with match ticks", KillFeedbackCases),
