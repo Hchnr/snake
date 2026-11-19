@@ -20,15 +20,16 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
-if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal"))
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    bool advantage = args[0] != "strength-replay-terminal", cappedStart = args[0] == "strength-capped-start-replay-terminal", alignedStart = args[0] == "strength-aligned-start-replay-terminal" || cappedStart, safeRecovery = args[0] == "strength-safe-recovery-replay-terminal" || alignedStart;
+    bool stableBlocked = args[0] == "strength-stable-blocked-replay-terminal";
+    bool advantage = args[0] != "strength-replay-terminal", cappedStart = args[0] == "strength-capped-start-replay-terminal" || stableBlocked, alignedStart = args[0] == "strength-aligned-start-replay-terminal" || cappedStart, safeRecovery = args[0] == "strength-safe-recovery-replay-terminal" || alignedStart;
     bool recoverySupply = args[0] == "strength-recovery-replay-terminal" || safeRecovery;
     bool openingFood = args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || recoverySupply;
     bool openingEncounter = args[0] == "strength-encounter-replay-terminal" || recoverySupply;
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart)) throw new InvalidOperationException("Invalid recording");
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart, stableBlocked)) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
@@ -54,6 +55,12 @@ if (args.Length == 1 && args[0] == "strength-safe-recovery-vector")
 if (args.Length == 1 && args[0] == "strength-aligned-start-vector")
 {
     Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeAlignedStart());
+    return;
+}
+
+if (args.Length == 1 && args[0] == "strength-stable-blocked-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.StrengthPveReplayVector.ComputeStableBlocked());
     return;
 }
 
@@ -177,6 +184,7 @@ var cases = new (string name, Action run)[]
     ("safe recovery avoids nearby AI and preserves the v4 replay", StrengthSafeRecoveryCases),
     ("aligned offline start follows the default direction and preserves v5", StrengthAlignedStartCases),
     ("capped offline opening respects steering and preserves v6 replay", StrengthCappedStartCases),
+    ("stable blocked contacts track surviving snapshot segments", StableBlockedContactCases),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
@@ -2454,6 +2462,137 @@ static void StrengthAlignedStartCases()
         Check(!PveFixedRecording.TryReplayStrength(seed, first, invalidFlags, out _, true, true, true, true, true, true), "v6 accepted undefined input bits");
         invalidFlags = tape.ToArray(); invalidFlags[13] &= 1; // Input had steered by this point: flag cannot go back to zero.
         Check(!PveFixedRecording.TryReplayStrength(seed, first, invalidFlags, out _, true, true, true, true, true, true), "v6 accepted a nonmonotonic steering flag");
+    }
+}
+
+static void StableBlockedContactCases()
+{
+    const BindingFlags flags = BindingFlags.NonPublic | BindingFlags.Instance;
+    PveFixedWorld World(bool stable)
+    {
+        var w = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+            localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true,
+            localAlignedStart: true, localCappedStart: true, localStableBlocked: stable);
+        var f = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(w);
+        f[0] = new PveFixedFighter("you", new PveFixedMotion(-300, 0, 0, 16));
+        f[1] = new PveFixedFighter("bot-1", new PveFixedMotion(0, 1800, 16384, 80));
+        f[2] = new PveFixedFighter("bot-2", new PveFixedMotion(13500, 0, 0, 16));
+        for (int i = 3; i < f.Length; i++) f[i].alive = false;
+        return w;
+    }
+    var old = World(false); var current = World(true);
+    old.Step(0, false); current.Step(0, false);
+    Check(old.LastPlayerAttackTick == 1 && old.LastPlayerAttackCount == 1 && old.LastPlayerBlockedTick == -1,
+        "v7 simultaneous-bite baseline changed");
+    Check(current.LastPlayerAttackTick == 1 && current.LastPlayerAttackCount == 1 && current.LastPlayerBlockedTick == 1,
+        "v8 did not retain the actual bite and resolve the independent blocked contact");
+    long Nearest(PveFixedWorld w)
+    {
+        var a = w.Fighters[0].motion; var b = w.Fighters[1].motion; long nearest = long.MaxValue;
+        for (int i = 1; i < b.Length; i++) { long dx = (long)a.X - b.Segments[i].x, dy = (long)a.Y - b.Segments[i].y; nearest = Math.Min(nearest, dx * dx + dy * dy); }
+        return nearest;
+    }
+    Check(Nearest(old) < 1116L * 1116 && Nearest(current) >= 1116L * 1116, "resolved head remained inside selected body");
+    Check(StrengthContactNotice.Text(current, 1, out bool warning) == "吃 1 节 · 遇强弹开" && warning,
+        "v8 simultaneous bite and rebound did not report both actual outcomes");
+    typeof(PveFixedWorld).GetProperty("LastPlayerBlockedTick").SetValue(old, 1);
+    Check(StrengthContactNotice.Text(old, 1, out warning) == "吃掉身体 1 节！" && !warning,
+        "v7 simultaneous feedback priority changed");
+    var recordNoticeBite = typeof(PveFixedWorld).GetMethod("RecordStrengthBite", flags);
+    recordNoticeBite.Invoke(current, new object[] { new BodyBite("bot-1", "you", 1, 2, 100, 50) });
+    Check(StrengthContactNotice.Text(current, 1, out warning) == "互吃 +1/-2 · 弹开" && warning,
+        "v8 simultaneous mutual bite and rebound omitted an outcome");
+    typeof(PveFixedWorld).GetProperty("LastPlayerAttackTick").SetValue(current, -1);
+    Check(StrengthContactNotice.Text(current, 1, out warning) == "身体被吃掉 2 节" && warning,
+        "v8 damage feedback priority changed");
+    typeof(PveFixedWorld).GetProperty("LastPlayerDamageTick").SetValue(current, -1);
+    Check(StrengthContactNotice.Text(current, 1, out warning) == "强度不足 · 试试更弱的部位" && warning,
+        "v8 pure rebound feedback changed");
+    var original = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    var target = new PveFixedFighter("bot-a", new PveFixedMotion(0, 1800, 16384, 16));
+    var contact = new BlockedBodyContact("you", "bot-a", target.motion.Segments[2], new CapturePoint(0, -1800), 0, 2);
+    Check(target.motion.RemoveBodySegments(2, 1) == 1, "removed-segment fixture failed");
+    var lost = new[] { new BodyBite("third", "bot-a", 2, 1, 200, 100) };
+    Check(!StableBlockedSeparation.Apply(new[] { original, target }, lost, new[] { contact }, new bool[2]) && original.motion.X == 0 && original.motion.Y == 0,
+        "removed segment produced a phantom bounce");
+    original = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    target = new PveFixedFighter("bot-a", new PveFixedMotion(0, 2700, 16384, 16));
+    contact = new BlockedBodyContact("you", "bot-a", target.motion.Segments[3], new CapturePoint(0, -1800), 0, 3);
+    Check(target.motion.RemoveBodySegments(1, 1) == 1, "shifted-segment fixture failed");
+    var shifted = new[] { new BodyBite("third", "bot-a", 1, 1, 200, 100) };
+    Check(StableBlockedSeparation.Apply(new[] { original, target }, shifted, new[] { contact }, new bool[2]),
+        "surviving shifted segment was not revalidated");
+    original = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    target = new PveFixedFighter("bot-a", new PveFixedMotion(0, 1800, 16384, 16));
+    contact = new BlockedBodyContact("you", "bot-a", target.motion.Segments[2], new CapturePoint(0, -1800), 0, 2);
+    Check(!StableBlockedSeparation.Apply(new[] { original, target }, Array.Empty<BodyBite>(), new[] { contact }, new[] { true, false }),
+        "head-tie separation was overwritten");
+    // A bite involving a tied head continues to suppress head-tie separation;
+    // v8 changes blocked-body handling, not this existing precedence rule.
+    var tiePeer = new PveFixedFighter("bot-tie", new PveFixedMotion(400, 0, 0, 16));
+    var tieActors = new[] { original, tiePeer };
+    var ties = new List<HeadTieContact> { new HeadTieContact(0, 1, new CapturePoint(0, 0), new CapturePoint(400, 0), 160000) };
+    var tieUsed = StrengthHeadCombat.SeparateTies(tieActors, ties, new List<BodyBite> { new BodyBite("you", "other", 4, 1, 150, 100) });
+    Check(!tieUsed[0] && !tieUsed[1] && original.motion.X == 0 && tiePeer.motion.X == 400,
+        "bite-involved head tie changed its established behavior");
+    // Nearest snapshot candidate disappears; a later, still-contacting
+    // candidate may be selected, and at most one rebound is applied.
+    original = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    var deleted = new PveFixedFighter("bot-a", new PveFixedMotion(0, 1800, 16384, 16));
+    var surviving = new PveFixedFighter("bot-b", new PveFixedMotion(1800, 0, 0, 16));
+    var firstContact = new BlockedBodyContact("you", "bot-a", deleted.motion.Segments[2], new CapturePoint(0, -1800), 0, 2);
+    var nextContact = new BlockedBodyContact("you", "bot-b", surviving.motion.Segments[2], new CapturePoint(-1800, 0), 1, 2);
+    deleted.motion.RemoveBodySegments(2, 1);
+    Check(StableBlockedSeparation.Apply(new[] { original, deleted, surviving }, lost, new[] { firstContact, nextContact }, new bool[3]),
+        "valid fallback contact was lost after the nearest segment was deleted");
+    long postX = original.motion.X, postY = original.motion.Y;
+    Check(postX * postX + postY * postY >= 1116L * 1116, "fallback did not separate the head");
+    original = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+    target = new PveFixedFighter("bot-a", new PveFixedMotion(0, 1800, 16384, 16));
+    contact = new BlockedBodyContact("you", "bot-a", target.motion.Segments[2], new CapturePoint(0, -1800), 0, 2);
+    target.motion.PlaceSeparatedHead(5000, 5000, 1, 0);
+    Check(!StableBlockedSeparation.Apply(new[] { original, target }, Array.Empty<BodyBite>(), new[] { contact }, new bool[2]),
+        "a segment that moved away produced a phantom bounce");
+    (string order, int x, int y) MultiBlocked(bool permute)
+    {
+        var you = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16));
+        var a = new PveFixedFighter("bot-a", new PveFixedMotion(0, 1800, 16384, 16));
+        var b = new PveFixedFighter("bot-b", new PveFixedMotion(1800, 0, 0, 16));
+        var actors = permute ? new[] { b, you, a } : new[] { you, a, b };
+        var values = actors.Select(f => new StrengthInputs { basePower = f.id == "you" ? 100 : 300,
+            length = 16, speed = 1000, baseSpeed = 1000, randomFactor = 1000, operationFactor = 1000 }).ToArray();
+        var combat = new StrengthBodyCombat();
+        var bites = combat.ResolveBuffered(1, actors, values, true);
+        var order = string.Join(",", combat.AllBlockedContacts.Where(c => c.attacker == "you").Select(c => c.defender));
+        Check(StableBlockedSeparation.Apply(actors, bites, combat.AllBlockedContacts, new bool[3]), "multiple blocked contacts did not resolve");
+        return (order, you.motion.X, you.motion.Y);
+    }
+    var ordered = MultiBlocked(false); var shuffled = MultiBlocked(true);
+    Check(ordered.order == "bot-a,bot-b" && ordered == shuffled,
+        "equal-distance blocked contacts depended on fighter array order");
+    bool invalid = false; try { _ = new PveFixedWorld(1, false, null, true, localStableBlocked: true); } catch (ArgumentException) { invalid = true; }
+    Check(invalid, "v8 escaped its local v7 prerequisites");
+    foreach (bool first in new[] { false, true })
+    for (int seed = 1; seed <= 8; seed++)
+    {
+        var live = new PveFixedWorld(seed, first, null, true, localAdvantage: true, localOpeningFood: true,
+            localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true,
+            localAlignedStart: true, localCappedStart: true, localStableBlocked: true);
+        var tape = new List<byte>();
+        while (!live.Finished)
+        {
+            byte heading = live.Tick < 10 ? (byte)0 : (byte)(seed * 17 + live.Tick / 50 * 31);
+            bool boost = live.Tick % 90 >= 70, steered = live.Tick >= 10;
+            tape.Add(heading); tape.Add((byte)((boost ? 1 : 0) | (steered ? 2 : 0)));
+            live.Step(heading, boost, steered);
+        }
+        Check(PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var replay, true, true, true, true, true, true, true, true) &&
+            replay.RulesVersion == PveFixedRecording.LocalStrengthStableBlockedRules &&
+            StrengthStateDigest.Compute(replay) == StrengthStateDigest.Compute(live), "v8 complete recording failed to replay");
+        Check(!PveFixedRecording.TryReplayStrength(seed, first, tape.Take(tape.Count - 2).ToArray(), out _, true, true, true, true, true, true, true, true),
+            "incomplete v8 recording was accepted");
+        if (PveFixedRecording.TryReplayStrength(seed, first, tape.ToArray(), out var previous, true, true, true, true, true, true, true))
+            Check(StrengthStateDigest.Compute(previous) != StrengthStateDigest.Compute(live), "v7 and v8 digests were confused");
     }
 }
 

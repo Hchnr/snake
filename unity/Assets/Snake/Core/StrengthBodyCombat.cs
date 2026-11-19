@@ -121,8 +121,9 @@ namespace SnakeClub.Core
         public readonly string attacker, defender;
         public readonly CapturePoint point, tangent;
         public readonly long distanceSquared;
-        public BlockedBodyContact(string attacker, string defender, CapturePoint point, CapturePoint tangent, long distanceSquared)
-        { this.attacker = attacker; this.defender = defender; this.point = point; this.tangent = tangent; this.distanceSquared = distanceSquared; }
+        public readonly int segment;
+        public BlockedBodyContact(string attacker, string defender, CapturePoint point, CapturePoint tangent, long distanceSquared, int segment = -1)
+        { this.attacker = attacker; this.defender = defender; this.point = point; this.tangent = tangent; this.distanceSquared = distanceSquared; this.segment = segment; }
     }
 
     // Independent experimental body combat for the isolated preview.
@@ -137,6 +138,8 @@ namespace SnakeClub.Core
         public IReadOnlyList<string> BlockedAttackers => blockedAttackers;
         private readonly List<BlockedBodyContact> blockedContacts = new List<BlockedBodyContact>();
         public IReadOnlyList<BlockedBodyContact> BlockedContacts => blockedContacts;
+        private readonly List<BlockedBodyContact> allBlockedContacts = new List<BlockedBodyContact>();
+        internal IReadOnlyList<BlockedBodyContact> AllBlockedContacts => allBlockedContacts;
         private sealed class Candidate
         {
             public int attacker, defender, segment, count, attack, defense;
@@ -173,7 +176,7 @@ namespace SnakeClub.Core
             => new List<BodyBite>(ResolveBuffered(tick, fighters, inputs));
 
         // The result belongs to this match and remains valid until its next step.
-        internal List<BodyBite> ResolveBuffered(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs)
+        internal List<BodyBite> ResolveBuffered(long tick, PveFixedFighter[] fighters, StrengthInputs[] inputs, bool collectAllBlocked = false)
         {
             if (tick < 0 || tick <= lastTick || tick > long.MaxValue - CooldownTicks) throw new ArgumentOutOfRangeException(nameof(tick));
             if (fighters == null || inputs == null || fighters.Length != inputs.Length) throw new ArgumentException("Fighters and strengths must have matching lengths");
@@ -193,6 +196,7 @@ namespace SnakeClub.Core
             lastTick = tick;
             blockedAttackers.Clear();
             blockedContacts.Clear();
+            allBlockedContacts.Clear();
             var candidates = candidatesBuffer; candidates.Clear();
             for (int i = 0; i < fighters.Length; i++)
             {
@@ -218,7 +222,8 @@ namespace SnakeClub.Core
                         var before = defender.motion.Segments[segment - 1];
                         var after = defender.motion.Segments[Math.Min(segment + 1, defender.motion.Length - 1)];
                         var contact = new BlockedBodyContact(attacker.id, defender.id, defender.motion.Segments[segment],
-                            new CapturePoint(after.x - before.x, after.y - before.y), nearest);
+                            new CapturePoint(after.x - before.x, after.y - before.y), nearest, segment);
+                        if (collectAllBlocked) allBlockedContacts.Add(contact);
                         int existing = blockedContacts.FindIndex(c => c.attacker == attacker.id);
                         if (existing < 0) blockedContacts.Add(contact);
                         else if (nearest < blockedContacts[existing].distanceSquared ||
@@ -238,6 +243,11 @@ namespace SnakeClub.Core
                         advantage = (long)attackingPower.attack * 100 - (long)defendingPower.defense * 105 });
                 }
             }
+            if (collectAllBlocked) allBlockedContacts.Sort((a, b) => {
+                int order = string.CompareOrdinal(a.attacker, b.attacker);
+                if (order == 0) order = a.distanceSquared.CompareTo(b.distanceSquared);
+                return order == 0 ? string.CompareOrdinal(a.defender, b.defender) : order;
+            });
             if (candidates.Count > 1) candidates.Sort((a, b) => {
                 int order = b.advantage.CompareTo(a.advantage);
                 if (order == 0) order = string.CompareOrdinal(fighters[a.attacker].id, fighters[b.attacker].id);
@@ -266,6 +276,43 @@ namespace SnakeClub.Core
             foreach (var bite in bites)
                 for (int i = 0; i < fighters.Length; i++) if (fighters[i].id == bite.attacker) { fighters[i].motion.Grow(bite.removed); break; }
             return bites;
+        }
+    }
+
+    // v8 only: the blocked decision is frozen before bites, but a deleted or
+    // displaced segment cannot cause an imaginary rebound after resolution.
+    internal static class StableBlockedSeparation
+    {
+        private const long RadiusSquared = 1116L * 1116L;
+        internal static bool Apply(PveFixedFighter[] fighters, IReadOnlyList<BodyBite> bites,
+            IReadOnlyList<BlockedBodyContact> contacts, bool[] separatedHeads)
+        {
+            string resolved = ""; bool hasResolved = false, playerBlocked = false;
+            foreach (var contact in contacts)
+            {
+                if (hasResolved && contact.attacker == resolved) continue;
+                int ai = -1, di = -1;
+                for (int i = 0; i < fighters.Length; i++)
+                { if (fighters[i].id == contact.attacker) ai = i; if (fighters[i].id == contact.defender) di = i; }
+                if (ai < 0 || di < 0 || !fighters[ai].alive || !fighters[di].alive || fighters[ai].shieldTicks > 0 ||
+                    fighters[di].shieldTicks > 0 || fighters[di].motion.Length <= PveFixedMotion.MinimumLength || separatedHeads[ai]) continue;
+                int segment = contact.segment;
+                foreach (var bite in bites) if (bite.defender == contact.defender)
+                {
+                    if (segment >= bite.segment && segment < bite.segment + bite.removed) { segment = -1; break; }
+                    if (segment >= bite.segment + bite.removed) segment -= bite.removed;
+                }
+                var motion = fighters[di].motion;
+                if (segment < 1 || segment >= motion.Length) continue;
+                var point = motion.Segments[segment];
+                long dx = (long)fighters[ai].motion.X - point.x, dy = (long)fighters[ai].motion.Y - point.y;
+                if (dx * dx + dy * dy >= RadiusSquared) continue;
+                var before = motion.Segments[segment - 1]; var after = motion.Segments[Math.Min(segment + 1, motion.Length - 1)];
+                fighters[ai].motion.SeparateFrom(point, new CapturePoint(after.x - before.x, after.y - before.y));
+                resolved = contact.attacker; hasResolved = true;
+                if (resolved == "you") playerBlocked = true;
+            }
+            return playerBlocked;
         }
     }
 }

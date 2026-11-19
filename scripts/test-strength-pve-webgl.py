@@ -27,6 +27,8 @@ recovery_pattern = re.compile(r'(?<![a-z-])recovery=([0-9a-f:,]+)')
 safe_recovery_pattern = re.compile(r'safe-recovery=([0-9a-f:,]+)')
 aligned_start_pattern = re.compile(r'aligned-start=([0-9a-f:,]+)')
 capped_start_pattern = re.compile(r'capped-start=([0-9a-f:,]+)')
+stable_blocked_pattern = re.compile(r'stable-blocked=([0-9a-f:,]+)')
+stable_fixture_pattern = re.compile(r'stable-fixture=([0-9a-f]{16})')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
                            text=True, capture_output=True, check=True, timeout=180).stdout
@@ -134,6 +136,35 @@ capped_match = capped_start_pattern.search(capped_reference)
 if not capped_match or len(capped_match.group(1).split(',')) != 70:
     sys.exit('Desktop capped-start matrix is incomplete.')
 expected_capped = capped_match.group(1)
+# Captured from unmodified v7 HEAD before introducing v8.
+v7_golden = (
+    '2:0:0:1800:3:1f4512487cdc1bd7,2:0:1:1800:16:278d0b68b18d785f,2:0:2:1800:0:a340305091cb08df,'
+    '2:0:3:1800:0:a77264b1191855a6,2:0:4:1800:16:a957d9f2f295022c,2:0:5:1800:19:6ab51bf7be5218d9,'
+    '2:0:6:309:19:d307a3537b8cc492,2:1:0:1200:0:466a99fdb1979218,2:1:1:1200:16:51552d60c5e8ac4f,'
+    '2:1:2:1200:0:2951d34a2052739d,2:1:3:1200:0:12c38f1584669950,2:1:4:1200:16:e308b442e98fa9fb,'
+    '2:1:5:1200:23:31bde90002d14c63,2:1:6:1200:23:d6b824fb0d5f6eb0,68:0:0:1800:7:329d890711569eb9,'
+    '68:0:1:1800:16:a965e3f2d1b9a4ff,68:0:2:1800:0:2636043ad68b1720,68:0:3:1800:0:7a7863e085587fd4,'
+    '68:0:4:1800:16:97b9393fd7e4b032,68:0:5:1800:16:d87467a99f2a8d0f,68:0:6:1800:23:82e88834ffaa3c2b,'
+    '68:1:0:1200:0:afeb8d8f0d5ae00f,68:1:1:1200:16:73df45223462f50f,68:1:2:1200:0:d95cb0f0b291843b,'
+    '68:1:3:1200:0:ff625729ec0a5096,68:1:4:1200:16:adfc1ba5ab452316,68:1:5:1200:16:22d9ccf0b291d17f,'
+    '68:1:6:1200:19:17ee608dda3c7809,92:0:0:1800:7:4a737248a847cf9c,92:0:1:1800:19:b98467ee99c7f9d4,'
+    '92:0:2:1800:0:950e1c8f39885109,92:0:3:1800:11:299b3915976bb988,92:0:4:1800:16:994867db1085bb7a,'
+    '92:0:5:1800:16:329f1455b5e5994b,92:0:6:1800:19:27cce626179215bc,92:1:0:1200:3:4a54086509398601,'
+    '92:1:1:1200:23:f7e0007a78a29bc4,92:1:2:1200:0:7d6fa949806297ef,92:1:3:1200:0:ca051284f3ae80f2,'
+    '92:1:4:1200:16:701b8439171df14d,92:1:5:1200:16:e84dc3cc0c769175,92:1:6:1200:19:84f02ca42199fa4e,'
+    '105:0:0:1800:0:e9e745f1960dcd38,105:0:1:1800:16:091e56f820013a0a,105:0:2:1800:0:c3ef876076f1c4c1,'
+    '105:0:3:1800:0:df87f6fca9f1f008,105:0:4:1800:16:a9073dd890f07043,105:0:5:1800:16:cbdf7465176b7021,'
+    '105:0:6:1800:19:3bb2c583b7dbe993,105:1:0:1200:0:368570b1fc7b889a,105:1:1:1200:16:b36e3cd97165a035,'
+    '105:1:2:1200:0:920ac4540fb41089,105:1:3:1200:0:b2ab1534cdb9e46f,105:1:4:1200:16:9bc79e4e6ffb547b,'
+    '105:1:5:1200:19:b1e15a9839aa8237,105:1:6:1200:23:86dc8d4b81b45fd0,192:0:0:1800:7:d61a8b383729826a,'
+    '192:0:1:1800:16:5e73ddb15d2d4a11,192:0:2:1800:5:7164757c30f5e7ed,192:0:3:1800:7:3f3e90a0d084ef48,'
+    '192:0:4:1800:16:7047d86083d03267,192:0:5:1800:16:d5dc012b2712354f,192:0:6:1800:16:1f82f63ea9ead3cc,'
+    '192:1:0:1200:3:1fe56ae373482165,192:1:1:1200:16:7c68e203f815c70e,192:1:2:220:0:4ea32b6481f6b832,'
+    '192:1:3:1200:0:255b9bace040210f,192:1:4:1200:16:ec547456ee8e3fb9,192:1:5:1200:19:7038c364671abdaf,'
+    '192:1:6:1200:23:c2bd8e0b8a3427cc'
+)
+if expected_capped != v7_golden:
+    sys.exit('MISMATCH: v7 capped-start fingerprints changed from the preserved reference.')
 capped_coverage = 0
 for case in expected_capped.split(','):
     fields = case.split(':')
@@ -144,6 +175,23 @@ for case in expected_capped.split(','):
         sys.exit('Capped-start reversal did not exercise the actual opening assist.')
 if capped_coverage != 31:
     sys.exit('Desktop capped-start matrix did not observe steering assist, recovery, player/AI pickup and second activation.')
+
+stable_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-stable-blocked-vector'],
+                                  text=True, capture_output=True, check=True, timeout=180).stdout
+stable_match = stable_blocked_pattern.search(stable_reference)
+fixture_match = stable_fixture_pattern.search(stable_reference)
+if not stable_match or len(stable_match.group(1).split(',')) != 70 or not fixture_match:
+    sys.exit('Desktop v8 matrix or controlled blocked-contact fixture is incomplete.')
+expected_stable = stable_match.group(1)
+expected_fixture = fixture_match.group(1)
+stable_coverage = 0
+for case in expected_stable.split(','):
+    fields = case.split(':')
+    if len(fields) != 6:
+        sys.exit('Desktop v8 matrix case is malformed.')
+    stable_coverage |= int(fields[4])
+if stable_coverage != 31:
+    sys.exit('Desktop v8 cases did not observe steering assist, recovery, both pickups and second activation.')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -175,7 +223,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart()); }
+    private static void Run() { Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -220,6 +268,11 @@ internal static class FixedVectorDiagnostic {
         if not actual_capped_match or len(actual_capped_match.group(1).split(',')) != 70:
             sys.exit('WebGL capped-start matrix is incomplete.')
         actual_capped = actual_capped_match.group(1)
+        actual_stable_match = stable_blocked_pattern.search(result.stdout)
+        actual_fixture_match = stable_fixture_pattern.search(result.stdout)
+        if not actual_stable_match or len(actual_stable_match.group(1).split(',')) != 70 or not actual_fixture_match:
+            sys.exit('WebGL v8 matrix or controlled blocked-contact fixture is incomplete.')
+        actual_stable, actual_fixture = actual_stable_match.group(1), actual_fixture_match.group(1)
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -255,6 +308,14 @@ internal static class FixedVectorDiagnostic {
                     print('First differing capped-start case: .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: local capped-start simulation differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6 and 70 v7 matches, including selected hidden state; Douyin devices, arbitrary inputs and production rewards remain unverified.')
+        if actual_stable != expected_stable:
+            for desktop, webgl in zip(expected_stable.split(','), actual_stable.split(',')):
+                if desktop != webgl:
+                    print('First differing v8 case: .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: local stable-blocked simulation differs across runtimes.')
+        if actual_fixture != expected_fixture:
+            sys.exit('MISMATCH: controlled same-frame bite/block fixture differs across runtimes.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7 and 70 v8 matches plus one controlled same-frame fixture; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)
