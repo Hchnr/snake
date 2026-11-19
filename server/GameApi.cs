@@ -378,6 +378,12 @@ sealed class GameApi
         if (run.completed) return Results.Json(new { ok = true, profile = p, score = run.score, verified = true, coins = run.coins, experience = run.experience, questCoins = run.questCoins, questExperience = run.questExperience, unlockedSkin = run.unlockedSkin, shareToken = run.date == Day(now) && DailyMatch.SupportsFriendChallenge(run.rules) ? FriendChallengeToken(run) : "" });
         if (!DailyMatch.SupportsRules(run.rules)) return Fail("挑战规则已更新，请重新开始");
         if (request.actions < 1) return Fail("未检测到操作，本局不发放账号奖励");
+        // Base64 permits whitespace. Allow ample formatting overhead while
+        // bounding the allocation made by FromBase64String. Completed runs
+        // return their stored receipt above without inspecting the input.
+        int maxBase64Chars = ((DailyMatch.MaxTicks * 2 + 2) / 3) * 4;
+        if (request.inputs != null && request.inputs.Length > maxBase64Chars * 4)
+            return Fail("回放长度无效");
         byte[] recording;
         try { recording = Convert.FromBase64String(request.inputs ?? ""); } catch (FormatException) { return Fail("回放格式无效"); }
         if (recording.Length == 0 || recording.Length > DailyMatch.MaxTicks * 2 || recording.Length % 2 != 0) return Fail("回放长度无效");

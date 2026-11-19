@@ -135,11 +135,37 @@ test('expired completed receipts recover without re-awarding, but expired unfini
   const daily = await request('challenge/submit', { token: owner.session, body: payload(stored['receipt-daily']) });
   assert.equal(pve.status, 200); assert.equal(pve.data.coins, 35);
   assert.equal(daily.status, 200); assert.equal(daily.data.score, 123); assert.equal(daily.data.verified, true); assert.equal(daily.data.shareToken, '');
+  const repeated = await request('challenge/submit', { token: owner.session, body: { ...payload(stored['receipt-daily']), inputs: 'A'.repeat(12804) } });
+  assert.equal(repeated.status, 200); assert.equal(repeated.data.score, 123, 'completed receipt must precede replay size checks');
   assert.equal((await request('match/finish', { token: owner.session, body: payload(stored['receipt-pending']) })).status, 400);
   assert.equal((await request('match/finish', { token: bob.session, body: payload(stored['receipt-pve']) })).status, 400);
   assert.equal((await request('match/finish', { token: owner.session, body: { ...payload(stored['receipt-pve']), token: 'invalid' } })).status, 400);
   const again = await request('match/finish', { token: owner.session, body: payload(stored['receipt-pve']) });
   assert.equal(again.data.profile.coins, 73); assert.equal(again.data.profile.experience, 29);
+});
+
+test('daily replay bounds Base64 before decoding while retaining formatted inputs', async () => {
+  const player = await login('v3-replay-limit');
+  const other = await login('v3-replay-limit-other');
+  const max = Buffer.alloc(2400); max[1] = 2; // valid size, invalid input flag
+  const encoded = max.toString('base64');
+  assert.equal(encoded.length, 3200);
+  for (const rules of ['daily-1', 'daily-2', 'daily-3', 'daily-4']) {
+    const start = (await request('challenge/start?rules=' + rules, { token: player.session, body: {} })).data;
+    const submit = (inputs, token = player.session) => request('challenge/submit', { token, body: {
+      runId: start.runId, token: start.token, inputs, score: 0, actions: 1
+    }});
+    const within = await submit(' \t\r\n' + encoded + ' '.repeat(9596));
+    assert.equal(within.status, 400); assert.equal(within.data.error, '回放内容无效', 'valid-size replay with whitespace should reach input validation');
+    const over = await submit(encoded + ' '.repeat(9601));
+    assert.equal(over.status, 400); assert.equal(over.data.error, '回放长度无效');
+    const decodedOver = await submit(Buffer.alloc(2402).toString('base64'));
+    assert.equal(decodedOver.status, 400); assert.equal(decodedOver.data.error, '回放长度无效');
+    const malformed = await submit('%%%%');
+    assert.equal(malformed.status, 400); assert.equal(malformed.data.error, '回放格式无效');
+    const foreign = await submit(encoded, other.session);
+    assert.equal(foreign.status, 400); assert.equal(foreign.data.error, '挑战凭证无效或已过期');
+  }
 });
 
 test('authentication, skin inventory and talent points use server authority', async () => {
