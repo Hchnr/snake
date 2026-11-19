@@ -1082,6 +1082,24 @@ namespace SnakeClub.Core
         }
     }
 
+    // Loading a clip can fail transiently. Limit retries per visit so a
+    // broken audio backend cannot trigger expensive synthesis every frame.
+    public sealed class MusicLoadRetry
+    {
+        public const int MaximumAttempts = 3;
+        public const float DelaySeconds = 2f;
+        private int attempts;
+        private float remaining;
+        public bool Ready => attempts < MaximumAttempts && remaining <= 0f;
+        public void Reset() { attempts = 0; remaining = 0f; }
+        public void Attempted() { attempts++; remaining = DelaySeconds; }
+        public void Advance(float delta)
+        {
+            if (float.IsNaN(delta) || float.IsInfinity(delta) || delta <= 0f) return;
+            remaining = Math.Max(0f, remaining - Math.Min(delta, .1f));
+        }
+    }
+
     public enum StrengthSoundCue { None, Bite, Damage, Pickup }
     public static class StrengthSoundFeedback
     {
