@@ -116,8 +116,19 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
         sys.exit('SNAKE_STRENGTH_SEED must fit in a signed 32-bit integer.')
     after = '            strengthDiagnosticSeed = run != null ? run.seed : ' + str(diagnostic_seed) + ';\n            fixedPve = new PveFixedWorld(strengthDiagnosticSeed, firstRun, profile,'
     code = inject_once(code, before, after)
+    if os.environ.get('SNAKE_STRENGTH_CAPTURE_FADE') == '1':
+        before = '        [NonSerialized] private bool initializedInDomain;'
+        code = inject_once(code, before, '        private bool strengthDiagnosticFadeLogged;\n' + before)
+        before = '                string opening = OpeningBoostNotice.Text(fixedPve);'
+        after = before + """
+                if (!strengthDiagnosticFadeLogged && Event.current.type == EventType.Repaint && fixedPve.Tick >= 250 && fixedPve.Tick <= 280)
+                {
+                    strengthDiagnosticFadeLogged = true;
+                    Debug.Log("SNAKE_TOUCH_FADE " + fixedPve.Tick + " " + fixedPve.CurrentPlayerHardness + " " + opening);
+                }"""
+        code = inject_once(code, before, after)
     before = '            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
-    after = before + '\n            if (fixedPve.RulesVersion != PveFixedRecording.LocalStrengthFreeBoostRules) throw new InvalidOperationException("Expected v14 strength practice");\n            Debug.Log("SNAKE_TOUCH_READY");'
+    after = before + '\n            if (fixedPve.RulesVersion != PveFixedRecording.LocalStrengthOpeningDefenseRules) throw new InvalidOperationException("Expected v15 strength practice");\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
     before = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                runInputs.Add(heading);'
     after = '''                fixedPve.Step(heading, pointerBoost, recordedSteering);
@@ -163,7 +174,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             {
                 byte[] tape = runInputs.ToArray();
                 string live = SnakeClub.Tests.StrengthPveReplayVector.Terminal(fixedPve);
-                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart, fixedPve.LocalCappedStart, fixedPve.LocalStableBlocked, fixedPve.LocalRecoveryPriority, fixedPve.LocalSqueezeEscape, fixedPve.LocalMultiBite, fixedPve.LocalHeadTieAfterBite, fixedPve.LocalOpeningBoost, fixedPve.LocalFreeBoost);
+                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart, fixedPve.LocalCappedStart, fixedPve.LocalStableBlocked, fixedPve.LocalRecoveryPriority, fixedPve.LocalSqueezeEscape, fixedPve.LocalMultiBite, fixedPve.LocalHeadTieAfterBite, fixedPve.LocalOpeningBoost, fixedPve.LocalFreeBoost, fixedPve.LocalOpeningDefense);
                 bool match = valid && SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) == live;
                 Debug.Log("SNAKE_STRENGTH_E2E " + (match ? "MATCH" : "FAIL") + " " + strengthDiagnosticSeed + " " +
                     (firstRun ? 1 : 0) + " " + fixedPve.Tick + " " + live + " " + Convert.ToBase64String(tape));
@@ -215,6 +226,11 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             for line in result.stdout.splitlines():
                 if line.startswith('PASS weak body indicator') or line.startswith('PASS pointer referred'):
                     print(line, flush=True)
+        if os.environ.get('SNAKE_STRENGTH_CAPTURE_FADE') == '1':
+            fade_evidence = next((line for line in result.stdout.splitlines() if line.startswith('PASS actual opening defense fade notice')), '')
+            if not fade_evidence:
+                sys.exit('Missing evidence of the v15 opening-defense fade notice.')
+            print(fade_evidence, flush=True)
         if require_recovery == '0':
             if 'SKIP recovery assertion:' not in result.stdout:
                 sys.exit('Recovery opt-out was not acknowledged by the probe.')
@@ -239,7 +255,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             sys.exit('Recording did not include valid persistent steering and boost input.')
         print('Replaying the actual recorded inputs in desktop .NET...', flush=True)
         ref = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--',
-                              'strength-free-boost-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
+                              'strength-opening-defense-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
         try:
             terminal = json.loads(ref.stdout.strip().splitlines()[-1])
         except (IndexError, json.JSONDecodeError):

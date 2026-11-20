@@ -39,6 +39,7 @@ headtie_pattern = re.compile(r'head-tie=([0-9a-f:,]+)')
 headtie_fixture_pattern = re.compile(r'headtie-fixture=([0-9a-f]{16})')
 opening_boost_pattern = re.compile(r'v13-steps=([0-9a-f,]+)')
 free_boost_pattern = re.compile(r'v14-steps=([0-9a-f,]+)')
+opening_defense_pattern = re.compile(r'v15-steps=([0-9a-f,]+)')
 stable_fixture_pattern = re.compile(r'stable-fixture=([0-9a-f]{16})')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
@@ -333,6 +334,13 @@ if not free_match or len(free_match.group(1).split(',')) != 230:
 expected_free = free_match.group(1)
 if hashlib.sha256(expected_free.encode('ascii')).hexdigest() != 'c4001f9ec0054c755135f4c1bac2a6d4084f6fbbf8af59d857067e4f06c57981':
     sys.exit('MISMATCH: v14 per-tick fixture changed from the preserved reference.')
+defense_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-opening-defense-vector'], text=True, capture_output=True, check=True, timeout=180).stdout
+defense_match = opening_defense_pattern.search(defense_reference)
+if not defense_match or len(defense_match.group(1).split(',')) != 400:
+    sys.exit('Desktop v15 per-tick fixture is incomplete.')
+expected_defense = defense_match.group(1)
+if hashlib.sha256(expected_defense.encode('ascii')).hexdigest() != 'bac2abbca9817dafd695d38a4d3b8d2559d6cb0d882c6dc857c1f2cf12e32528':
+    sys.exit('MISMATCH: v15 per-tick fixture changed from the preserved reference.')
 
 squeeze_coverage = 0
 for case in expected_squeeze.split(','):
@@ -371,11 +379,12 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
     shutil.copy2(root / 'test/v3/StrengthPveReplayVector.cs', target / 'StrengthPveReplayVector.cs')
     shutil.copy2(root / 'test/v3/OpeningBoostVector.cs', target / 'OpeningBoostVector.cs')
     shutil.copy2(root / 'test/v3/FreeBoostVector.cs', target / 'FreeBoostVector.cs')
+    shutil.copy2(root / 'test/v3/OpeningDefenseVector.cs', target / 'OpeningDefenseVector.cs')
     (target / 'FixedVectorDiagnostic.cs').write_text('''using UnityEngine;
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { if (Application.absoluteURL.Contains("free-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + FreeBoostVector.Compute()); else if (Application.absoluteURL.Contains("opening-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningBoostVector.Compute()); else if (Application.absoluteURL.Contains("headtie=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeHeadTie()); else if (Application.absoluteURL.Contains("multi=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeMultiBite()); else if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
+    private static void Run() { if (Application.absoluteURL.Contains("opening-defense=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningDefenseVector.Compute()); else if (Application.absoluteURL.Contains("free-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + FreeBoostVector.Compute()); else if (Application.absoluteURL.Contains("opening-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningBoostVector.Compute()); else if (Application.absoluteURL.Contains("headtie=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeHeadTie()); else if (Application.absoluteURL.Contains("multi=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeMultiBite()); else if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -503,6 +512,21 @@ internal static class FixedVectorDiagnostic {
                     print('First differing v14 tick: ' + str(tick) + ': .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: v14 per-tick state differs across runtimes.')
+        print('Running v15 opening-defense per-tick fixture in an eighth muted headless browser...', flush=True)
+        defense_result = subprocess.run(['node', str(root / 'scripts/fixed-pve-webgl-probe.cjs'), str(chrome),
+                                         'http://127.0.0.1:' + str(server.server_port) + '/?opening-defense=1'],
+                                        capture_output=True, text=True, timeout=240, check=False)
+        if defense_result.returncode:
+            sys.exit('Headless v15 diagnostic failed: ' + defense_result.stderr[-3000:])
+        actual_defense = opening_defense_pattern.search(defense_result.stdout)
+        if not actual_defense or len(actual_defense.group(1).split(',')) != 400:
+            sys.exit('WebGL v15 per-tick fixture is incomplete.')
+        if actual_defense.group(1) != expected_defense:
+            for tick, (desktop, webgl) in enumerate(zip(expected_defense.split(','), actual_defense.group(1).split(',')), 1):
+                if desktop != webgl:
+                    print('First differing v15 tick: ' + str(tick) + ': .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: v15 per-tick state differs across runtimes.')
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -562,6 +586,6 @@ internal static class FixedVectorDiagnostic {
             sys.exit('MISMATCH: squeeze-escape simulation differs across runtimes.')
         if actual_squeeze_fixture_match.group(1) != expected_squeeze_fixture:
             sys.exit('MISMATCH: squeeze lifecycle fixture differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9, 112 v10, 112 v11, 112 v12 matches, 400 v13 and 230 controlled v14 ticks plus collision and recovery fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9, 112 v10, 112 v11, 112 v12 matches, 400 v13, 230 controlled v14 and 400 v15 ticks plus collision and recovery fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)
