@@ -20,6 +20,29 @@ if ((args.Length == 3 && args[0] == "strength-replay") || (args.Length == 4 && a
     return;
 }
 
+// Deterministic development fixture matching v13's recorded steering semantics.
+if (args.Length == 3 && args[0] == "strength-local-v13-replay")
+{
+    int seed = int.Parse(args[1]); bool first = args[2] == "1";
+    var world = new PveFixedWorld(seed, first, null, strengthPreview: true,
+        localAdvantage: true, localOpeningFood: true, localOpeningEncounter: true,
+        localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+        localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true,
+        localSqueezeEscape: true, localMultiBite: true, localHeadTieAfterBite: true, localOpeningBoost: true);
+    var inputs = new List<byte>();
+    while (!world.Finished)
+    {
+        bool steered = world.Tick >= 3;
+        byte heading = world.Tick <= 3 ? (byte)0 : (byte)(world.Tick / 53 * 37 + seed);
+        bool boost = world.Tick % 120 >= 95;
+        inputs.Add(heading); inputs.Add((byte)((boost ? 1 : 0) | (steered ? 2 : 0)));
+        world.Step(heading, boost, steered);
+    }
+    Console.WriteLine(JsonSerializer.Serialize(new { ticks = world.Tick, winner = world.Winner, kills = world.Fighters[0].kills,
+        length = world.Fighters[0].motion.Length, stateDigest = StrengthStateDigest.Compute(world), inputs = Convert.ToBase64String(inputs.ToArray()) }));
+    return;
+}
+
 if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal" || args[0] == "strength-recovery-priority-replay-terminal" || args[0] == "strength-squeeze-escape-replay-terminal" || args[0] == "strength-multibite-replay-terminal" || args[0] == "strength-headtie-replay-terminal" || args[0] == "strength-opening-boost-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";

@@ -7,6 +7,7 @@ This checks one local run, not a Douyin device or release readiness.
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import argparse
 import json
 import os
 import secrets
@@ -20,6 +21,9 @@ import time
 import urllib.request
 
 root = Path(__file__).resolve().parent.parent
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--local-v13', action='store_true', help='verify the current offline v13 candidate rather than the account-growth experiment')
+args = parser.parse_args()
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
 chrome = Path(os.environ.get('SNAKE_CHROME', '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'))
 if not editor.is_file() or not chrome.is_file():
@@ -53,7 +57,8 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-client-e2e-') as directo
     config = json.loads(config_path.read_text())
     config.update(serverUrl='', apiUrl=f'http://127.0.0.1:{api_port}', allowDevLogin=True,
                   allowReferenceSkinPreview=False, experimentalFixedPve=False, experimentalStrengthPve=False,
-                  experimentalFixedPveServer=False, experimentalStrengthPveServer=True, experimentalComparison=False)
+                  experimentalFixedPveServer=False, experimentalStrengthPveServer=not args.local_v13,
+                  experimentalLocalStrengthPveServer=args.local_v13, experimentalComparison=False)
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     # This marker is only in the temporary player and observes the actual UI decision.
     front = project / 'Assets/Snake/SnakeGameFront.cs'
@@ -80,7 +85,8 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-client-e2e-') as directo
     thread = threading.Thread(target=web.serve_forever, daemon=True); thread.start()
     data = temp / 'data.json'; backend_log = temp / 'server.log'
     server_env = dict(os.environ, SNAKE_ENV='development', SNAKE_HOST='127.0.0.1', SNAKE_PORT=str(api_port),
-                      SNAKE_DEV_AUTH='1', SNAKE_DEV_ADS='0', SNAKE_FIXED_PVE_EVAL='0', SNAKE_STRENGTH_EVAL='1', SNAKE_DATA_FILE=str(data),
+                      SNAKE_DEV_AUTH='1', SNAKE_DEV_ADS='0', SNAKE_FIXED_PVE_EVAL='0', SNAKE_STRENGTH_EVAL='0' if args.local_v13 else '1',
+                      SNAKE_LOCAL_STRENGTH_EVAL='1' if args.local_v13 else '0', SNAKE_DATA_FILE=str(data),
                       SNAKE_SESSION_KEY=secrets.token_urlsafe(32), SNAKE_ALLOWED_ORIGINS=f'http://127.0.0.1:{web.server_port}')
     server_env.pop('SNAKE_SQLITE_FILE', None)
     server_env.pop('SNAKE_RATE_LIMIT_PER_MIN', None)
@@ -100,14 +106,18 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-client-e2e-') as directo
                     time.sleep(.1)
             print('Playing one real-time match in muted headless Chrome...', flush=True)
             probe = subprocess.run(['node', str(root / 'scripts/strength-pve-client-e2e-probe.cjs'), str(chrome),
-                                    f'http://127.0.0.1:{web.server_port}/'], text=True, capture_output=True, timeout=180, check=False)
+                                    f'http://127.0.0.1:{web.server_port}/', 'local-v13' if args.local_v13 else 'strength-eval'], text=True, capture_output=True, timeout=180, check=False)
             if probe.returncode:
                 sys.exit('Client replay test failed: ' + probe.stderr[-2500:])
             state = json.loads(data.read_text())
             runs = list(state.get('runs', {}).values()); players = list(state.get('players', {}).values())
-            if (len(runs) != 1 or runs[0].get('mode') != 'strength-eval' or
-                    runs[0].get('rules') != 'strength-pve-dev-4' or not runs[0].get('completed')):
+            expected_mode = 'strength-local-eval' if args.local_v13 else 'strength-eval'
+            expected_rules = 'strength-local-advantage-13' if args.local_v13 else 'strength-pve-dev-4'
+            if (len(runs) != 1 or runs[0].get('mode') != expected_mode or
+                    runs[0].get('rules') != expected_rules or not runs[0].get('completed')):
                 sys.exit('Expected one verified current-rules strength experimental run in isolated storage.')
+            if args.local_v13 and runs[0].get('localStrengthStartConfig', {}).get('firstRun') is not True:
+                sys.exit('The new account did not receive the server-selected first-run snapshot.')
             if len(players) != 1 or any(players[0].get(k, 0) != 0 for k in ('coins', 'experience', 'completedMatches')) or state.get('rewards'):
                 sys.exit('Experimental run unexpectedly changed rewards or progress.')
             print(probe.stdout.strip())

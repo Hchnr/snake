@@ -18,8 +18,11 @@ parser.add_argument('--comparison-preview', action='store_true', help='enable of
 parser.add_argument('--fixed-pve-preview', action='store_true', help='enable experimental integer PvE in an offline practice build')
 parser.add_argument('--strength-pve-preview', action='store_true', help='enable experimental strength body-eating in offline practice')
 parser.add_argument('--fixed-pve-local-api', help='enable local fixed PvE verification against http://127.0.0.1:PORT')
+parser.add_argument('--local-strength-pve-api', help='enable local v13 strength verification against http://127.0.0.1:PORT')
 parser.add_argument('--no-graphics', action='store_true', help='run the build with Unity -nographics (availability depends on build target)')
 args = parser.parse_args()
+if args.local_strength_pve_api and (not args.offline_practice or args.comparison_preview or args.fixed_pve_preview or args.strength_pve_preview or args.fixed_pve_local_api):
+    parser.error('--local-strength-pve-api requires --offline-practice and cannot be combined with another preview or verifier')
 if args.strength_pve_preview and (not args.offline_practice or args.comparison_preview or args.fixed_pve_local_api):
     parser.error('--strength-pve-preview requires offline practice and cannot be combined with comparison or a local verifier')
 if args.strength_pve_preview:
@@ -30,15 +33,17 @@ if args.fixed_pve_preview and not args.offline_practice:
     parser.error('--fixed-pve-preview requires --offline-practice')
 if args.fixed_pve_local_api and (not args.offline_practice or args.fixed_pve_preview):
     parser.error('--fixed-pve-local-api requires --offline-practice and cannot be combined with --fixed-pve-preview')
-if args.fixed_pve_local_api:
+for option, address in (('--fixed-pve-local-api', args.fixed_pve_local_api), ('--local-strength-pve-api', args.local_strength_pve_api)):
+    if not address:
+        continue
     from urllib.parse import urlsplit
     try:
-        url = urlsplit(args.fixed_pve_local_api)
+        url = urlsplit(address)
         valid = url.scheme == 'http' and url.hostname == '127.0.0.1' and url.port and not url.username and not url.password and url.path in ('', '/') and not url.query and not url.fragment
     except ValueError:
         valid = False
     if not valid:
-        parser.error('--fixed-pve-local-api must be http://127.0.0.1:PORT')
+        parser.error(option + ' must be http://127.0.0.1:PORT')
 editor = Path(os.environ.get('UNITY_EDITOR', '/Applications/Unity/Hub/Editor/6000.0.85f2/Unity.app/Contents/MacOS/Unity'))
 if not editor.is_file():
     sys.exit(f'Unity Editor not found: {editor}; set UNITY_EDITOR.')
@@ -61,6 +66,9 @@ with tempfile.TemporaryDirectory(prefix='snake-unity-build-') as directory:
         config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=False, experimentalFixedPve=args.fixed_pve_preview, experimentalStrengthPve=args.strength_pve_preview)
         config['experimentalComparison'] = args.comparison_preview
         config['experimentalStrengthPveServer'] = False
+        config['experimentalLocalStrengthPveServer'] = False
+        if args.local_strength_pve_api:
+            config.update(apiUrl=args.local_strength_pve_api, allowDevLogin=True, experimentalLocalStrengthPveServer=True)
         if args.fixed_pve_local_api:
             config.update(apiUrl=args.fixed_pve_local_api, allowDevLogin=True, experimentalFixedPveServer=True)
         else:

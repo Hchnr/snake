@@ -3,6 +3,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
+const localV13 = process.argv[4] === 'local-v13';
+const experimentPath = localV13 ? '/internal/local-strength-pve/' : '/internal/strength-pve/';
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'snake-strength-e2e-chrome-'));
 const chrome = spawn(process.argv[2], [
   '--headless=new', '--mute-audio', '--no-first-run', '--no-default-browser-check', '--disable-background-networking',
@@ -79,7 +81,7 @@ async function steer() {
       const headers = event.params.request.headers;
       catalogHeaderSeen = Object.entries(headers).some(([key, value]) => key.toLowerCase() === 'x-snake-catalog' && value === '2');
     }
-    if (event.method === 'Network.requestWillBeSent' && event.params.request.method === 'POST' && event.params.request.url.endsWith('/internal/strength-pve/verify')) {
+    if (event.method === 'Network.requestWillBeSent' && event.params.request.method === 'POST' && event.params.request.url.endsWith(experimentPath + 'verify')) {
       const request = event.params.request;
       const requestId = event.params.requestId;
       inspectReplay = (async () => {
@@ -88,13 +90,16 @@ async function steer() {
           body = Buffer.concat(request.postDataEntries.map(entry => Buffer.from(entry.bytes || '', 'base64'))).toString('utf8');
         if (!body) body = (await call('Network.getRequestPostData', { requestId })).postData;
         const input = Buffer.from(JSON.parse(body).inputs, 'base64');
-        const headings = new Set(); let boosted = false, released = false;
+        const headings = new Set(); let boosted = false, released = false, steered = false, valid = true;
         for (let i = 0; i + 1 < input.length; i += 2) {
           headings.add(input[i]);
-          if (input[i + 1] === 1) boosted = true;
-          else if (boosted && input[i + 1] === 0) released = true;
+          const flags = input[i + 1];
+          if (flags & ~(localV13 ? 3 : 1)) valid = false;
+          if (flags & 2) steered = true;
+          if (flags & 1) boosted = true;
+          else if (boosted) released = true;
         }
-        return input.length > 0 && input.length % 2 === 0 && headings.size > 1 && boosted && released;
+        return input.length > 0 && input.length % 2 === 0 && headings.size > 1 && boosted && released && valid && (!localV13 || steered);
       })().catch(() => false);
     }
     if (event.method === 'Network.responseReceived') {
@@ -105,7 +110,7 @@ async function steer() {
         // Wait for Unity to process the successful login and render its home screen.
         pause(2000).then(() => tap(270, 640)).catch(e => done(1, String(e)));
       }
-      if (url.endsWith('/internal/strength-pve/start')) {
+      if (url.endsWith(experimentPath + 'start')) {
         if (status !== 200) return done(1, 'Experiment start failed: ' + status);
         if (!started) {
           started = true;
@@ -115,7 +120,7 @@ async function steer() {
           })().catch(e => { if (!stopped) done(1, String(e)); });
         }
       }
-      if (url.endsWith('/internal/strength-pve/verify')) {
+      if (url.endsWith(experimentPath + 'verify')) {
         if (status !== 200) return done(1, 'Experiment verification failed: ' + status);
         verifySeen = true;
       }

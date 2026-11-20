@@ -23,8 +23,9 @@ namespace SnakeClub
         public bool experimentalStrengthPve;
         public bool experimentalFixedPveServer;
         public bool experimentalStrengthPveServer;
+        public bool experimentalLocalStrengthPveServer;
         public bool experimentalComparison;
-        public bool ComparisonPreview => experimentalComparison && !allowDevLogin && !experimentalFixedPve && !experimentalFixedPveServer && !experimentalStrengthPveServer &&
+        public bool ComparisonPreview => experimentalComparison && !allowDevLogin && !experimentalFixedPve && !experimentalFixedPveServer && !experimentalStrengthPveServer && !experimentalLocalStrengthPveServer &&
             string.IsNullOrWhiteSpace(apiUrl) && string.IsNullOrWhiteSpace(serverUrl);
         // Explicit development-only loopback preview; no platform identity or remote host.
         public bool FixedPveServerPreview
@@ -34,7 +35,7 @@ namespace SnakeClub
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
                 return false;
 #else
-                return experimentalFixedPveServer && !experimentalStrengthPveServer && allowDevLogin &&
+                return experimentalFixedPveServer && !experimentalStrengthPveServer && !experimentalLocalStrengthPveServer && allowDevLogin &&
                     string.IsNullOrWhiteSpace(serverUrl) && Uri.TryCreate(apiUrl, UriKind.Absolute, out var url) &&
                     url.Scheme == Uri.UriSchemeHttp && url.Host == "127.0.0.1" && string.IsNullOrEmpty(url.UserInfo) &&
                     url.AbsolutePath == "/" && string.IsNullOrEmpty(url.Query) && string.IsNullOrEmpty(url.Fragment);
@@ -50,7 +51,7 @@ namespace SnakeClub
 #if SNAKE_DOUYIN_TTSDK && UNITY_WEBGL && !UNITY_EDITOR
                 return false;
 #else
-                return experimentalStrengthPveServer && !experimentalFixedPveServer && !experimentalFixedPve &&
+                return experimentalStrengthPveServer && !experimentalLocalStrengthPveServer && !experimentalFixedPveServer && !experimentalFixedPve &&
                     !experimentalStrengthPve && !experimentalComparison && allowDevLogin &&
                     string.IsNullOrWhiteSpace(serverUrl) && Uri.TryCreate(apiUrl, UriKind.Absolute, out var url) &&
                     url.Scheme == Uri.UriSchemeHttp && url.Host == "127.0.0.1" && string.IsNullOrEmpty(url.UserInfo) &&
@@ -58,17 +59,46 @@ namespace SnakeClub
 #endif
             }
         }
+        // This separate v13 verifier is available only to an explicit local
+        // development build; it must never become a Douyin/reward pathway.
+        public bool LocalStrengthPveServerPreview
+        {
+            get
+            {
+#if SNAKE_DOUYIN_TTSDK && !UNITY_EDITOR
+                return false;
+#else
+                return experimentalLocalStrengthPveServer && !experimentalStrengthPveServer && !experimentalFixedPveServer &&
+                    !experimentalFixedPve && !experimentalStrengthPve && !experimentalComparison && allowDevLogin &&
+                    string.IsNullOrWhiteSpace(serverUrl) && Uri.TryCreate(apiUrl, UriKind.Absolute, out var url) &&
+                    url.Scheme == Uri.UriSchemeHttp && url.Host == "127.0.0.1" && string.IsNullOrEmpty(url.UserInfo) &&
+                    url.AbsolutePath == "/" && string.IsNullOrEmpty(url.Query) && string.IsNullOrEmpty(url.Fragment);
+#endif
+            }
+        }
         // Preview is allowed only in a deliberately isolated offline build.
-        public bool FixedPvePreview => experimentalFixedPve && !experimentalStrengthPveServer && !allowDevLogin &&
+        public bool FixedPvePreview => experimentalFixedPve && !experimentalStrengthPveServer && !experimentalLocalStrengthPveServer && !allowDevLogin &&
             string.IsNullOrWhiteSpace(apiUrl) && string.IsNullOrWhiteSpace(serverUrl);
         public bool StrengthPvePreview => experimentalStrengthPve && FixedPvePreview && !experimentalFixedPveServer && !experimentalComparison;
-        public bool StrengthRulesPreview => StrengthPvePreview || StrengthPveServerPreview;
+        public bool StrengthRulesPreview => StrengthPvePreview || StrengthPveServerPreview || LocalStrengthPveServerPreview;
     }
 
     [Serializable] public sealed class LeaderboardRow
     {
         public int rank, score;
         public string playerId = "", name = "";
+    }
+
+    // firstRunCode is sent by the server as a mandatory discriminator because
+    // Unity JsonUtility cannot reliably distinguish a missing bool from false.
+    [Serializable] public sealed class LocalStrengthStartConfig
+    {
+        public const string CurrentVersion = "local-strength-eval-setup-1";
+        public string version = "";
+        public bool firstRun;
+        public int firstRunCode;
+        public bool Supported => version == CurrentVersion &&
+            ((firstRunCode == 1 && firstRun) || (firstRunCode == 2 && !firstRun));
     }
 
     [Serializable] public sealed class ApiReply
@@ -84,6 +114,7 @@ namespace SnakeClub
         public PlayerProgress profile;
         public PveStartConfig startConfig;
         public StrengthEvalStartConfig strengthStartConfig;
+        public LocalStrengthStartConfig localStrengthStartConfig;
         public List<LeaderboardRow> rows;
     }
 

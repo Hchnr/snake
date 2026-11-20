@@ -74,6 +74,8 @@ python3 scripts/test-strength-touch-replay-webgl.py
 
 # 后台用拖拽、双指加速及松开操作完成强弱试玩的本机服务端无奖励回放验证
 python3 scripts/test-strength-pve-client-e2e.py
+# 以同样方式验证当前 v13 试玩规则和服务端首局快照
+python3 scripts/test-strength-pve-client-e2e.py --local-v13
 
 # 使用图形后端在临时 Unity 工程中验证运行时动画与 UI 命中
 npm run test:unity:play
@@ -108,6 +110,8 @@ WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定
 每日挑战接口测试按实际局时等待，可能需要约 1 分钟；测试数据放在临时目录，不使用本机游戏存档。Unity 回归检查需要已安装并启用许可证的 Editor；可用 `UNITY_EDITOR` 指定可执行文件。
 
 强弱服务端验证只在非生产环境显式设置 `SNAKE_STRENGTH_EVAL=1` 时启用，并检查回环地址；不要将实验端口经反向代理暴露。独立客户端实验开关也仅允许本机 HTTP 且不在抖音包启用。服务器签发种子、保存首局状态并拒绝无效或过快的回放，结果不发奖励、不进排行；客户端与服务器额外比较终局可观察状态的版本化非加密指纹，旧回执缺少指纹时会明确提示。指纹不覆盖全部隐藏状态，也不是防篡改证明；当前规则标识仍是可变的开发标记，不是正式版本或防作弊保证。
+
+另一个独立的 v13 默认试玩服务端研发接口仅在非生产环境且显式设置 `SNAKE_LOCAL_STRENGTH_EVAL=1` 时注册：`POST /api/v3/internal/local-strength-pve/start` 签发随机种子、规则版本、由服务端账号教学状态确定的首局快照及凭证，`POST /api/v3/internal/local-strength-pve/verify` 验证完整输入和最低对局时长并返回零奖励回执。新凭证绑定模式、种子、起止时间和首局快照；同一完成回执可幂等重试。接口不更新账号成长、排行或奖励；其首局状态由服务端决定，不等同于默认离线试玩在本机保存的首局状态。连接的直接对端还必须是回环地址，但这不能防止公开反向代理把外部请求转到本机；不得将实验路径经未隔离的代理暴露。本机验证客户端可用 `python3 scripts/build-unity-isolated.py webgl --offline-practice --no-graphics --local-strength-pve-api http://127.0.0.1:2568 --output /tmp/snake-local-strength-preview` 构建，其他模式不可同时启用；TTSDK 玩家构建强制关闭该实验。服务端回归由 `sh scripts/test-v3.sh` 执行；完整无头触摸联调可运行上面的 `--local-v13` 命令。该接口只用于研发：状态摘要为非加密诊断指纹，不能证明输入来自真人或防作弊；真实抖音设备、正式奖励和公开部署均未验证。
 
 本地开发服务默认监听 `127.0.0.1:2567`。当前客户端的 API 配置使用 `2568`，以便和旧版房间服务并行运行。单机练习不需要启动它；正式账号进度、排行和探洞需要服务：
 

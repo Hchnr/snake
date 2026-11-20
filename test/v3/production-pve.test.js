@@ -65,7 +65,7 @@ test('production disables development rooms and unverified PvE while preserving 
       socket.listen(0, '127.0.0.1', () => { const value = socket.address().port; socket.close(() => resolve(value)); });
     });
     const env = { ...process.env, SNAKE_ENV: 'production', SNAKE_HOST: '127.0.0.1', SNAKE_PORT: String(port), SNAKE_SESSION_KEY: key,
-      SNAKE_DATA_FILE: fixture, SNAKE_SQLITE_FILE: path.join(temp, 'state.sqlite'), SNAKE_DEV_AUTH: '0', SNAKE_DEV_ADS: '0', SNAKE_FIXED_PVE_EVAL: '1', SNAKE_STRENGTH_EVAL: '1', SNAKE_RATE_LIMIT_PER_MIN: '10000', SNAKE_DOUYIN_APPID: '', SNAKE_DOUYIN_SECRET: '' };
+      SNAKE_DATA_FILE: fixture, SNAKE_SQLITE_FILE: path.join(temp, 'state.sqlite'), SNAKE_DEV_AUTH: '0', SNAKE_DEV_ADS: '0', SNAKE_FIXED_PVE_EVAL: '1', SNAKE_STRENGTH_EVAL: '1', SNAKE_LOCAL_STRENGTH_EVAL: '1', SNAKE_RATE_LIMIT_PER_MIN: '10000', SNAKE_DOUYIN_APPID: '', SNAKE_DOUYIN_SECRET: '' };
     child = spawn('dotnet', [serverDll], { cwd: root, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let output = ''; child.stdout.on('data', chunk => output += chunk); child.stderr.on('data', chunk => output += chunk);
     const endpoint = `http://127.0.0.1:${port}`;
@@ -104,6 +104,8 @@ test('production disables development rooms and unverified PvE while preserving 
     assert.equal((await fetch(`${endpoint}/api/v3/internal/fixed-pve/start`, { method: 'POST' })).status, 404);
     assert.equal((await fetch(`${endpoint}/api/v3/internal/strength-pve/start`, { method: 'POST' })).status, 404);
     assert.equal((await fetch(`${endpoint}/api/v3/internal/strength-pve/verify`, { method: 'POST' })).status, 404);
+    assert.equal((await fetch(`${endpoint}/api/v3/internal/local-strength-pve/start`, { method: 'POST' })).status, 404);
+    assert.equal((await fetch(`${endpoint}/api/v3/internal/local-strength-pve/verify`, { method: 'POST' })).status, 404);
     assert.equal((await request('match/start', {})).status, 503);
     const finish = run => ({ runId: run.id, token: tokenFor(run), seconds: 3, actions: 1 });
     assert.equal((await request('match/finish', finish(pending))).status, 503);

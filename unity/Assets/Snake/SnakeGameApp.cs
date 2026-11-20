@@ -233,10 +233,11 @@ namespace SnakeClub
             online = false; inGame = true; paused = false; status = ""; room = "";
             playerId = "you"; arena = null; daily = null; depthMode = false;
             bool strengthRun = run != null && run.mode == "strength-eval";
-            firstRun = run == null ? ((defaultStrength || api.Config.StrengthPvePreview) ? !strengthPracticeTutorialComplete : !practiceProfile.tutorialComplete) :
-                strengthRun ? run.strengthStartConfig.firstRun : run.startConfig.firstRun;
-            var profile = run != null && !strengthRun ? run.startConfig.MatchProfile() : practiceProfile;
-            bool localStrength = run == null && (defaultStrength || api.Config.StrengthRulesPreview);
+            bool localStrengthRun = run != null && run.mode == "strength-local-eval";
+            firstRun = run == null ? ((defaultStrength || api.Config.StrengthPvePreview || api.Config.LocalStrengthPveServerPreview) ? !strengthPracticeTutorialComplete : !practiceProfile.tutorialComplete) :
+                localStrengthRun ? run.localStrengthStartConfig.firstRun : strengthRun ? run.strengthStartConfig.firstRun : run.startConfig.firstRun;
+            var profile = run != null && !strengthRun && !localStrengthRun ? run.startConfig.MatchProfile() : practiceProfile;
+            bool localStrength = localStrengthRun || (run == null && (defaultStrength || api.Config.StrengthRulesPreview));
             fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,
                 strengthRun || localStrength, strengthRun ? run.strengthStartConfig : null,
                 localAdvantage: localStrength, localOpeningFood: localStrength, localOpeningEncounter: localStrength,
