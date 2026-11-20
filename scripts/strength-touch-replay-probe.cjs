@@ -151,6 +151,15 @@ async function main() {
     await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 60000);
     await capture('protection-ended');
   }
+  if (process.env.SNAKE_STRENGTH_CAPTURE_FADE === '1') {
+    const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_FADE \d+ \d+ 防御逐渐降低 [123]秒/.test(e)), 'visible opening defense fade', 120000);
+    const match = line.match(/SNAKE_TOUCH_FADE (\d+) (\d+) 防御逐渐降低 ([123])秒/);
+    const tick = Number(match[1]), hardness = Number(match[2]);
+    if (tick < 250 || tick > 280 || hardness !== 80 + Math.floor(170 * (300 - tick) / 60))
+      throw Error('Opening defense fade did not match simulation: ' + line);
+    await capture('opening-defense-fade');
+    console.log('PASS actual opening defense fade notice at tick ' + tick + ' hardness ' + hardness);
+  }
   if (requireRecovery) {
     await waitFor(() => events.some(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 120000);
     await capture('recovery-supply');

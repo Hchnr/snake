@@ -78,7 +78,7 @@ namespace SnakeClub.Tests
                 Check(PveFixedRecording.TryReplayLocalStrength(PveFixedRecording.LocalStrengthFreeBoostRules, seed, false, inputs.ToArray(), out var replay) &&
                     StrengthStateDigest.Compute(match) == StrengthStateDigest.Compute(replay) && match.FreeBoostTicksUsed == replay.FreeBoostTicksUsed,
                     "v14 complete recording did not reproduce: " + seed);
-                Check(!PveFixedRecording.TryReplayLocalStrength("strength-local-advantage-15", seed, false, inputs.ToArray(), out _), "unknown rules accepted");
+                Check(!PveFixedRecording.TryReplayLocalStrength("strength-local-advantage-16", seed, false, inputs.ToArray(), out _), "unknown rules accepted");
             }
         }
     }
