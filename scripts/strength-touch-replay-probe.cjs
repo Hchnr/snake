@@ -122,11 +122,12 @@ async function main() {
   await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= 6; }), 'opening ticks');
   let index = events.length;
   // The explanation is not a control pad: drag from inside it.
-  await touch('touchStart', [point(250, 680, 1)]); await delay(100);
-  const steeredPoint = openingLeft ? point(170, 680, 1) : point(250, 600, 1);
+  await touch('touchStart', [point(250, 920, 1)]); await delay(100);
+  const steeredPoint = openingLeft ? point(170, 920, 1) : point(250, 840, 1);
   await touch('touchMove', [steeredPoint]);
   const expectedHeading = openingLeft ? 128 : 64;
   await waitFor(() => events.slice(index).some(e => new RegExp(`SNAKE_TOUCH_TICK \\d+ ${expectedHeading} 0(?:\\s|$)`).test(e)), 'actual steering');
+  console.log('PASS protection guidance drag -> heading ' + expectedHeading);
   if (openingLeft) {
     const line = await waitFor(() => events.slice(index).find(e => /SNAKE_TOUCH_OPENING \d+ 128 1 \d+/.test(e)), 'actual capped opening assist');
     const m = line.match(/SNAKE_TOUCH_OPENING (\d+) 128 1 (\d+)/);

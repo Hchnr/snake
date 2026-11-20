@@ -889,11 +889,14 @@ namespace SnakeClub.Tests.Editor
             var guidancePanel = (Rect)typeof(SnakeGameApp).GetField("StrengthGuidancePanel", flags).GetValue(null);
             var contactRect = new Rect(area.x, area.y, area.width, area.height);
             Require(!guidancePanel.Overlaps(contactRect), "simultaneous notices overlap in virtual layout");
+            Require(guidancePanel.yMin >= 1785 && guidancePanel.yMax <= 1900 &&
+                !guidancePanel.Overlaps(new Rect(220, 1715, 640, 70)), "guidance obscured the boost notice or left the bottom safe margin");
             foreach (var screenSafe in new[] { safe, new Rect(30, 60, 480, 800) })
             {
                 var guidancePixels = (Rect)uiRect.Invoke(null, new object[] { guidancePanel, screenSafe, 540f, 960f });
                 var contactPixels = (Rect)uiRect.Invoke(null, new object[] { contactRect, screenSafe, 540f, 960f });
-                Require(!guidancePixels.Overlaps(contactPixels), "simultaneous notices overlap after safe area projection");
+                Require(!guidancePixels.Overlaps(contactPixels) && screenSafe.Contains(guidancePixels.min) && screenSafe.Contains(guidancePixels.max),
+                    "guidance overlapped contact feedback or left the safe area");
             }
             var protectedWorld = new PveFixedWorld(42, false, null, true);
             var protectionNotice = new StrengthProtectionNotice();
@@ -968,7 +971,7 @@ namespace SnakeClub.Tests.Editor
             Rect topHeadline = Headline(false, true), escapeHeadline = Headline(true, true);
             Require(topHeadline == Headline(false, false) && topHeadline == Headline(true, false) && escapeHeadline.y == 1160,
                 "kill or level headline moved outside the intended escape state");
-            Require(!escapeHeadline.Overlaps(new Rect(300, 1080, 480, 72)) && !escapeHeadline.Overlaps(new Rect(100, 1320, 880, 100)),
+            Require(!escapeHeadline.Overlaps(new Rect(300, 1080, 480, 72)) && !escapeHeadline.Overlaps(guidancePanel),
                 "escape headline covers elimination or escape guidance");
             var namesWithHeadline = new NameplateLayout(); var ownAnchor = new Point(540, 666);
             namesWithHeadline.BeginFrame(1); namesWithHeadline.AddAnchor(ownAnchor);
@@ -1017,21 +1020,22 @@ namespace SnakeClub.Tests.Editor
             Require(!choice[0] && !choice[1] && choice[2], "capture did not suppress protection before tutorial fallback");
             choice = Choose("", "", "", "", false);
             Require(!choice[0] && !choice[1] && !choice[2], "empty guidance unexpectedly appeared");
-            firstScreen = new Vector2(270, 500); secondScreen = new Vector2(270, 275);
+            Rect guidanceScreen = (Rect)uiRect.Invoke(null, new object[] { guidancePanel, safe, 540f, 960f });
+            firstScreen = new Vector2(270, 500); secondScreen = guidanceScreen.center;
             bounds = new Rect(240, 450, 60, 100);
             prepare.Invoke(null, new object[] { obstacles, safe, 540f, 960f });
             addGuidance.Invoke(null, new object[] { obstacles, false, safe, 540f, 960f }); Select(false);
             Require(markers.Count == 0, "negative control did not expose guidance-panel suppression");
             addGuidance.Invoke(null, new object[] { obstacles, true, safe, 540f, 960f }); Select(false);
             Require(markers.Count == 1 && markers[0] == firstScreen, "guidance-hidden fruit suppressed recovery marker");
-            secondScreen = new Vector2(45, 275); Select(false);
+            secondScreen = new Vector2(guidanceScreen.xMin - 5, guidanceScreen.center.y); Select(false);
             Require(markers.Count == 1, "guidance panel did not reserve full marker edge");
             secondScreen = new Vector2(350, 600); Select(false);
             Require(markers.Count == 0, "visible fruit failed to suppress marker while guidance was visible");
             Select(true); Require(markers.Count == 0, "guidance marker remained while suspended");
             Require(string.IsNullOrEmpty(RecoverySupplyNotice.Text(world, world.Tick + 4 * PveFixedWorld.TickRate, false)),
                 "recovery guidance did not expire");
-            secondScreen = new Vector2(270, 275);
+            secondScreen = guidanceScreen.center;
             prepare.Invoke(null, new object[] { obstacles, safe, 540f, 960f });
             addGuidance.Invoke(null, new object[] { obstacles, false, safe, 540f, 960f }); Select(false);
             Require(markers.Count == 0, "expired guidance continued to obstruct selection");

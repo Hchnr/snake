@@ -200,6 +200,11 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
                                 timeout=match_timeout + 300)
         if result.returncode:
             sys.exit('Touch replay diagnostic failed:\n' + result.stdout[-2000:] + result.stderr[-4000:])
+        guidance_heading = 128 if opening_left == '1' else 64
+        guidance_pass = 'PASS protection guidance drag -> heading ' + str(guidance_heading)
+        if guidance_pass not in result.stdout:
+            sys.exit('Missing evidence of steering from the protection guidance panel.')
+        print(guidance_pass, flush=True)
         if opening_left == '1':
             if 'PASS actual left drag triggered the capped opening turn' not in result.stdout:
                 sys.exit('Missing evidence of an actual capped leftward turn.')
