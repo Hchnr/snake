@@ -38,6 +38,7 @@ if require_recovery not in ('0', '1'):
 require_protection_cue = os.environ.get('SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE', '1')
 if require_protection_cue not in ('0', '1'):
     sys.exit('SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE must be 0 or 1.')
+weak_edge_capture = os.environ.get('SNAKE_WEAK_EDGE_CAPTURE_DIR', '')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -84,6 +85,28 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     before = '        [NonSerialized] private bool initializedInDomain;'
     after = '        private string strengthDiagnosticCue, strengthDiagnosticRecovery, strengthDiagnosticBoost;\n' + before
     code = inject_once(code, before, after)
+    if weak_edge_capture:
+        before = '        [NonSerialized] private bool initializedInDomain;'
+        code = inject_once(code, before, '        private bool strengthDiagnosticWeakDrawn;\n' + before)
+        before = '                if (!DrawWeakBodyEdge(state)) DrawOpponentEdge(state);'
+        after = '''                bool diagnosticWeakDrawn = DrawWeakBodyEdge(state);
+                if (Event.current.type == EventType.Repaint && !diagnosticWeakDrawn && strengthDiagnosticWeakDrawn)
+                { strengthDiagnosticWeakDrawn = false; Debug.Log("SNAKE_TOUCH_WEAK_EDGE_HIDDEN " + state.tick); }
+                if (!diagnosticWeakDrawn) DrawOpponentEdge(state);'''
+        code = inject_once(code, before, after)
+        before = '            Panel(box, new Color(.15f, .11f, .045f, .92f));'
+        after = '''            if (Event.current.type == EventType.Repaint && !strengthDiagnosticWeakDrawn)
+            {
+                var marked = world.snakes.Find(s => s.id == weakEdgeTarget.id);
+                if (marked == null || !marked.alive || marked.shield > 0 || weakEdgeTarget.segment < 1 ||
+                    weakEdgeTarget.segment >= marked.strengthWeakSegments.Count || !marked.strengthWeakSegments[weakEdgeTarget.segment])
+                    throw new InvalidOperationException("Weak-edge pointer lacks an actual eligible segment");
+                strengthDiagnosticWeakDrawn = true;
+                Debug.Log("SNAKE_TOUCH_WEAK_EDGE " + state.tick + " " + weakEdgeTarget.id + " " + weakEdgeTarget.segment + " " +
+                    box.x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " " + box.y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+            }
+''' + before
+        code = inject_once(code, before, after)
     before = '            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,'
     try:
         diagnostic_seed = int(os.environ.get('SNAKE_STRENGTH_SEED', '58' if opening_left == '1' else '39'))
@@ -181,6 +204,12 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             if 'PASS actual left drag triggered the capped opening turn' not in result.stdout:
                 sys.exit('Missing evidence of an actual capped leftward turn.')
             print('PASS actual left drag triggered the capped opening turn.', flush=True)
+        if weak_edge_capture:
+            if 'PASS weak body indicator -> heading 192' not in result.stdout or 'PASS pointer referred to a marked live segment' not in result.stdout:
+                sys.exit('Missing marked-segment or indicator-drag evidence.')
+            for line in result.stdout.splitlines():
+                if line.startswith('PASS weak body indicator') or line.startswith('PASS pointer referred'):
+                    print(line, flush=True)
         if require_recovery == '0':
             if 'SKIP recovery assertion:' not in result.stdout:
                 sys.exit('Recovery opt-out was not acknowledged by the probe.')

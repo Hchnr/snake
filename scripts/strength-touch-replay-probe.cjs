@@ -45,7 +45,7 @@ async function tap(x, y) {
   await touch('touchStart', [point(x, y)]); await delay(120); await touch('touchEnd', []);
 }
 async function capture(name) {
-  const directory = process.env.SNAKE_STRENGTH_CAPTURE_DIR;
+  const directory = process.env.SNAKE_STRENGTH_CAPTURE_DIR || process.env.SNAKE_WEAK_EDGE_CAPTURE_DIR;
   if (!directory) return;
   fs.mkdirSync(directory, { recursive: true });
   const result = await call('Page.captureScreenshot', { format: 'png' });
@@ -109,6 +109,15 @@ async function main() {
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
   await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃')), 'visible protection explanation');
   await capture('ready');
+  if (process.env.SNAKE_WEAK_EDGE_CAPTURE_DIR) {
+    const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_WEAK_EDGE \d+ [^ ]+ \d+ [-0-9.]+ [-0-9.]+/.test(e)), 'actual off-screen weak-body pointer', 120000);
+    const match = line.match(/SNAKE_TOUCH_WEAK_EDGE (\d+) ([^ ]+) (\d+) ([-0-9.]+) ([-0-9.]+)/);
+    if (!match) throw Error('Malformed weak-body pointer diagnostic');
+    await capture('weak-body-edge');
+    const x = (Number(match[4]) + 70) / 2, y = (Number(match[5]) + 27) / 2;
+    await drag('weak body indicator', x, y, x, y + 60, 192);
+    console.log('PASS pointer referred to a marked live segment at tick ' + match[1]);
+  }
   // Let a few real ticks elapse so the seeded touch path is reproducible.
   await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= 6; }), 'opening ticks');
   let index = events.length;

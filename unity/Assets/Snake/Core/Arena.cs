@@ -357,9 +357,9 @@ namespace SnakeClub.Core
             if (tick < 60) return (hasSteered ? "强度足够才能吃身体" : "全屏拖动转向 · 强度足够才能吃身体") + "\n较弱会弹开";
             if (tick < 140)
             {
-                if (!hasSteered) return "全屏拖动转向\n金点较弱 · 红叉处身体有危险";
-                if (!hasBoosted) return freeBoost ? "第二指按住加速 · 累计前8秒免耗\n金点较弱 · 红叉处身体有危险" : "第二根手指按住加速\n金点较弱 · 红叉处身体有危险";
-                return "金点较弱 · 靠近可尝试吞食\n红叉处身体有危险";
+                if (!hasSteered) return "全屏拖动转向\n金点和弱点箭头提示目标 · 红叉提示危险";
+                if (!hasBoosted) return freeBoost ? "第二指按住加速 · 累计前8秒免耗\n金点和弱点箭头提示目标 · 红叉提示危险" : "第二根手指按住加速\n金点和弱点箭头提示目标 · 红叉提示危险";
+                return "金点和弱点箭头 · 靠近可尝试吞食\n红叉处身体有危险";
             }
             return tick < 200 ? "围住对手可获得短时强化" : "时间到按当前长度排名 · 同长比淘汰";
         }
@@ -782,6 +782,88 @@ namespace SnakeClub.Core
             if (x + 140 > 760 && y < 545) y = 660;
             if (y < 656 && y + 54 > 544 && x + 140 > 94 && x < 986) y = 660;
             return new Point(x, y);
+        }
+    }
+
+    public readonly struct WeakBodyEdgeTarget
+    {
+        public readonly string id;
+        public readonly int segment;
+        public readonly Point position, screen;
+        public readonly float distanceSquared;
+
+        public WeakBodyEdgeTarget(string id, int segment, Point position, Point screen, float distanceSquared)
+        {
+            this.id = id; this.segment = segment; this.position = position;
+            this.screen = screen; this.distanceSquared = distanceSquared;
+        }
+    }
+
+    public readonly struct WeakBodyViewport
+    {
+        public readonly float left, top, right, bottom;
+        public WeakBodyViewport(float left, float top, float right, float bottom)
+        { this.left = left; this.top = top; this.right = right; this.bottom = bottom; }
+    }
+
+    // Guidance only: select an actual currently marked weak segment, never a
+    // predicted intercept or an assurance that moving toward it is safe.
+    public static class WeakBodyEdgeIndicator
+    {
+        public const float MaxDistance = 30f;
+        private const float EnterPadding = 60f, StayPadding = 20f;
+
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        private static bool InViewport(Point p, WeakBodyViewport viewport, float padding) =>
+            p.x >= viewport.left - padding && p.x <= viewport.right + padding &&
+            p.y >= viewport.top - padding && p.y <= viewport.bottom + padding;
+
+        public static bool TrySelect(ArenaState world, string playerId, Func<Point, Point> project, WeakBodyViewport viewport,
+            string previousId, int previousSegment, out WeakBodyEdgeTarget target)
+        {
+            target = default;
+            if (world == null || world.phase != "running" || world.snakes == null || project == null || string.IsNullOrEmpty(playerId) ||
+                !string.IsNullOrEmpty(world.strengthHeadThreat) ||
+                !Finite(viewport.left) || !Finite(viewport.top) || !Finite(viewport.right) || !Finite(viewport.bottom) ||
+                viewport.right <= viewport.left || viewport.bottom <= viewport.top) return false;
+            SnakeState player = null;
+            foreach (var snake in world.snakes) if (snake != null && snake.id == playerId) { player = snake; break; }
+            if (player == null || !player.alive || !Finite(player.shield) || player.shield > 0 ||
+                player.segments == null || player.segments.Count == 0) return false;
+            Point head = player.segments[0];
+            if (!Finite(head.x) || !Finite(head.y)) return false;
+
+            bool hasClosest = false, hasPrevious = false, visibleEnter = false;
+            bool hasPreviousHint = !string.IsNullOrEmpty(previousId) && previousSegment > 0;
+            WeakBodyEdgeTarget closest = default, previous = default;
+            foreach (var other in world.snakes)
+            {
+                if (other == null || !other.alive || string.IsNullOrEmpty(other.id) || other.id == playerId ||
+                    !Finite(other.shield) || other.shield > 0 || other.segments == null || other.segments.Count <= PveFixedMotion.MinimumLength) continue;
+                int count = Math.Min(other.segments.Count, other.strengthWeakSegments.Count);
+                for (int part = 1; part < count; part++)
+                {
+                    if (!other.strengthWeakSegments[part]) continue;
+                    Point position = other.segments[part];
+                    float dx = position.x - head.x, dy = position.y - head.y, distance = dx * dx + dy * dy;
+                    if (!Finite(distance) || distance > MaxDistance * MaxDistance) continue;
+                    Point screen = project(position);
+                    if (!Finite(screen.x) || !Finite(screen.y)) continue;
+                    if (InViewport(screen, viewport, StayPadding)) return false;
+                    bool inEntryMargin = InViewport(screen, viewport, EnterPadding);
+                    if (inEntryMargin && !hasPreviousHint) return false;
+                    visibleEnter |= inEntryMargin;
+                    var current = new WeakBodyEdgeTarget(other.id, part, position, screen, distance);
+                    if (other.id == previousId && part == previousSegment) { previous = current; hasPrevious = true; }
+                    if (!hasClosest || distance < closest.distanceSquared ||
+                        (distance == closest.distanceSquared && (string.CompareOrdinal(other.id, closest.id) < 0 ||
+                         (other.id == closest.id && part < closest.segment))))
+                    { closest = current; hasClosest = true; }
+                }
+            }
+            if (!hasClosest || (!hasPrevious && visibleEnter)) return false;
+            target = hasPrevious && OpponentEdgeIndicator.KeepPrevious(previous.distanceSquared, closest.distanceSquared) ? previous : closest;
+            return true;
         }
     }
 
