@@ -6,9 +6,10 @@ const { spawn } = require('node:child_process');
 const { CdpRequests } = require('./cdp-requests.cjs');
 // Keep existing probe callers on the original upward drag unless opted in.
 const openingLeft = process.env.SNAKE_STRENGTH_OPENING_LEFT === '1';
-// Default remains strict: recovery must occur in this natural round.
+// Default remains strict: recovery must follow an actual bite.
 const requireRecovery = process.env.SNAKE_STRENGTH_REQUIRE_RECOVERY !== '0';
 const requireProtectionCue = process.env.SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE !== '0';
+const pinOpening = process.env.SNAKE_STRENGTH_PIN_OPENING === '1';
 const matchTimeoutSeconds = Number(process.argv[4] || 600);
 if (!Number.isInteger(matchTimeoutSeconds) || matchTimeoutSeconds < 60 || matchTimeoutSeconds > 900) {
   throw Error('Match timeout must be an integer from 60 to 900 seconds');
@@ -132,8 +133,10 @@ async function main() {
     await drag('body danger indicator', x, y, x, y + 60, 192);
     console.log('PASS body pointer referred to a marked player segment at tick ' + match[1]);
   }
-  // Let a few real ticks elapse so the seeded touch path is reproducible.
-  await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= 6; }), 'opening ticks');
+  // The default recovery fixture pauses only its disposable simulation at tick 9.
+  const openingTick = pinOpening ? 9 : 6;
+  await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= openingTick; }), 'opening ticks');
+  if (pinOpening) await waitFor(() => hasSince(0, 'SNAKE_TOUCH_OPENING_GATE 9'), 'diagnostic opening gate');
   let index = events.length;
   // The explanation is not a control pad: drag from inside it.
   await touch('touchStart', [point(250, 920, 1)]); await delay(100);
@@ -142,6 +145,11 @@ async function main() {
   const expectedHeading = openingLeft ? 128 : 64;
   await waitFor(() => events.slice(index).some(e => new RegExp(`SNAKE_TOUCH_TICK \\d+ ${expectedHeading} 0(?:\\s|$)`).test(e)), 'actual steering');
   console.log('PASS protection guidance drag -> heading ' + expectedHeading);
+  if (pinOpening) {
+    const line = await waitFor(() => events.slice(index).find(e => /SNAKE_TOUCH_OPENING \d+ 64 /.test(e)), 'pinned recovery steering');
+    if (!/SNAKE_TOUCH_OPENING 10 64 /.test(line)) throw Error('Recovery steering missed the diagnostic gate: ' + line);
+    console.log('PASS recovery fixture resumed on real steering at tick 10');
+  }
   if (openingLeft) {
     const line = await waitFor(() => events.slice(index).find(e => /SNAKE_TOUCH_OPENING \d+ 128 1 \d+/.test(e)), 'actual capped opening assist');
     const m = line.match(/SNAKE_TOUCH_OPENING (\d+) 128 1 (\d+)/);
@@ -164,6 +172,7 @@ async function main() {
   } else {
     await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('保护结束')), 'visible protection expiry', 60000);
     await capture('protection-ended');
+    console.log('PASS actual protection expiry notice');
   }
   if (process.env.SNAKE_STRENGTH_CAPTURE_FADE === '1') {
     const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_FADE \d+ \d+ 吸果 · 防御渐弱 [123]秒/.test(e)), 'visible opening defense fade', 120000);
@@ -175,8 +184,9 @@ async function main() {
     console.log('PASS actual opening defense fade notice at tick ' + tick + ' hardness ' + hardness);
   }
   if (requireRecovery) {
-    await waitFor(() => events.some(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 120000);
+    const recovery = await waitFor(() => events.find(e => /SNAKE_TOUCH_RECOVERY \d+ marked=[1234] .*回追补给/.test(e)), 'visible recovery supply after an actual bite', 120000);
     await capture('recovery-supply');
+    console.log('PASS actual recovery: ' + recovery);
   } else {
     console.log('SKIP recovery assertion: this run verifies steering and replay only');
   }

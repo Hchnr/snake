@@ -40,6 +40,12 @@ if require_protection_cue not in ('0', '1'):
     sys.exit('SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE must be 0 or 1.')
 weak_edge_capture = os.environ.get('SNAKE_WEAK_EDGE_CAPTURE_DIR', '')
 body_edge_capture = os.environ.get('SNAKE_BODY_THREAT_CAPTURE_DIR', '')
+# The default recovery scenario holds the simulation at tick 9 until the
+# actual touch arrives. Custom seeds and visual capture scenarios stay natural.
+pin_opening = (require_recovery == '1' and opening_left == '0' and
+               'SNAKE_STRENGTH_SEED' not in os.environ and not weak_edge_capture and not body_edge_capture and
+               os.environ.get('SNAKE_STRENGTH_CAPTURE_FRUIT') != '1' and
+               os.environ.get('SNAKE_STRENGTH_CAPTURE_FADE') != '1')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -113,13 +119,25 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
         code = inject_once(code, before, after)
     before = '            fixedPve = new PveFixedWorld(run != null ? run.seed : unchecked((int)DateTime.UtcNow.Ticks), firstRun, profile,'
     try:
-        diagnostic_seed = int(os.environ.get('SNAKE_STRENGTH_SEED', '58' if opening_left == '1' else '39'))
+        default_seed = '58' if opening_left == '1' else '1016' if pin_opening else '39'
+        diagnostic_seed = int(os.environ.get('SNAKE_STRENGTH_SEED', default_seed))
     except ValueError:
         sys.exit('SNAKE_STRENGTH_SEED must be an integer.')
     if not -(2 ** 31) <= diagnostic_seed < 2 ** 31:
         sys.exit('SNAKE_STRENGTH_SEED must fit in a signed 32-bit integer.')
     after = '            strengthDiagnosticSeed = run != null ? run.seed : ' + str(diagnostic_seed) + ';\n            fixedPve = new PveFixedWorld(strengthDiagnosticSeed, firstRun, profile,'
     code = inject_once(code, before, after)
+    if pin_opening:
+        before = '        [NonSerialized] private bool initializedInDomain;'
+        code = inject_once(code, before, '        private bool strengthDiagnosticGateLogged;\n' + before)
+        before = '            while (stepTimer >= .05f && !fixedPve.Finished)\n            {\n'
+        after = before + '''                if (fixedPve.Tick >= 9 && !hasSteered)
+                {
+                    if (!strengthDiagnosticGateLogged) { strengthDiagnosticGateLogged = true; Debug.Log("SNAKE_TOUCH_OPENING_GATE " + fixedPve.Tick); }
+                    stepTimer = 0; return;
+                }
+'''
+        code = inject_once(code, before, after)
     if os.environ.get('SNAKE_STRENGTH_CAPTURE_FADE') == '1':
         before = '        [NonSerialized] private bool initializedInDomain;'
         code = inject_once(code, before, '        private bool strengthDiagnosticFadeLogged;\n' + before)
@@ -251,7 +269,8 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
         result = run_headless(['node', str(root / 'scripts/strength-touch-replay-probe.cjs'), str(chrome),
                                  'http://127.0.0.1:' + str(server.server_port) + '/', str(match_timeout)],
                                 env=dict(os.environ, SNAKE_STRENGTH_OPENING_LEFT=opening_left, SNAKE_STRENGTH_REQUIRE_RECOVERY=require_recovery,
-                                         SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=require_protection_cue),
+                                         SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=require_protection_cue,
+                                         SNAKE_STRENGTH_PIN_OPENING='1' if pin_opening else '0'),
                                 timeout=match_timeout + 300)
         if result.returncode:
             sys.exit('Touch replay diagnostic failed:\n' + result.stdout[-2000:] + result.stderr[-4000:])
@@ -260,6 +279,20 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
         if guidance_pass not in result.stdout:
             sys.exit('Missing evidence of steering from the protection guidance panel.')
         print(guidance_pass, flush=True)
+        if pin_opening:
+            gate_pass = 'PASS recovery fixture resumed on real steering at tick 10'
+            if gate_pass not in result.stdout:
+                sys.exit('Missing evidence of steering through the recovery fixture gate.')
+            print(gate_pass, flush=True)
+        if require_recovery == '1':
+            recovery_pass = next((line for line in result.stdout.splitlines() if line.startswith('PASS actual recovery:')), '')
+            if not recovery_pass:
+                sys.exit('Missing evidence of actual recovery supply and guidance.')
+            print(recovery_pass, flush=True)
+        if require_protection_cue == '1':
+            if 'PASS actual protection expiry notice' not in result.stdout:
+                sys.exit('Missing evidence of the protection expiry notice.')
+            print('PASS actual protection expiry notice.', flush=True)
         if opening_left == '1':
             if 'PASS actual left drag triggered the capped opening turn' not in result.stdout:
                 sys.exit('Missing evidence of an actual capped leftward turn.')
