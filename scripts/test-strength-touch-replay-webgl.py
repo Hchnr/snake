@@ -39,6 +39,7 @@ require_protection_cue = os.environ.get('SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE',
 if require_protection_cue not in ('0', '1'):
     sys.exit('SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE must be 0 or 1.')
 weak_edge_capture = os.environ.get('SNAKE_WEAK_EDGE_CAPTURE_DIR', '')
+body_edge_capture = os.environ.get('SNAKE_BODY_THREAT_CAPTURE_DIR', '')
 
 class Handler(SimpleHTTPRequestHandler):
     def guess_type(self, path):
@@ -88,11 +89,14 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
     if weak_edge_capture:
         before = '        [NonSerialized] private bool initializedInDomain;'
         code = inject_once(code, before, '        private bool strengthDiagnosticWeakDrawn;\n' + before)
-        before = '                if (!DrawWeakBodyEdge(state)) DrawOpponentEdge(state);'
-        after = '''                bool diagnosticWeakDrawn = DrawWeakBodyEdge(state);
-                if (Event.current.type == EventType.Repaint && !diagnosticWeakDrawn && strengthDiagnosticWeakDrawn)
-                { strengthDiagnosticWeakDrawn = false; Debug.Log("SNAKE_TOUCH_WEAK_EDGE_HIDDEN " + state.tick); }
-                if (!diagnosticWeakDrawn) DrawOpponentEdge(state);'''
+        before = '                else if (!DrawWeakBodyEdge(state)) DrawOpponentEdge(state);'
+        after = '''                else
+                {
+                    bool diagnosticWeakDrawn = DrawWeakBodyEdge(state);
+                    if (Event.current.type == EventType.Repaint && !diagnosticWeakDrawn && strengthDiagnosticWeakDrawn)
+                    { strengthDiagnosticWeakDrawn = false; Debug.Log("SNAKE_TOUCH_WEAK_EDGE_HIDDEN " + state.tick); }
+                    if (!diagnosticWeakDrawn) DrawOpponentEdge(state);
+                }'''
         code = inject_once(code, before, after)
         before = '            Panel(box, new Color(.15f, .11f, .045f, .92f));'
         after = '''            if (Event.current.type == EventType.Repaint && !strengthDiagnosticWeakDrawn)
@@ -145,6 +149,27 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
                             break;
                         }
                 strengthProtectionNotice.Observe(fixedPve, state, playerId);'''
+        code = inject_once(code, before, after)
+    if body_edge_capture:
+        before = '        [NonSerialized] private bool initializedInDomain;'
+        code = inject_once(code, before, '        private bool strengthDiagnosticBodyDrawn;\n        private float strengthDiagnosticBodyFreezeUntil;\n' + before)
+        before = '            while (stepTimer >= .05f && !fixedPve.Finished)\n            {\n'
+        after = before + '                if (strengthDiagnosticBodyFreezeUntil > Time.realtimeSinceStartup) { stepTimer = 0; return; }\n'
+        code = inject_once(code, before, after)
+        before = '            Panel(box, new Color(.18f, .055f, .045f, .94f));'
+        after = '''            if (Event.current.type == EventType.Repaint && !strengthDiagnosticBodyDrawn)
+            {
+                var marked = world.snakes.Find(s => s != null && s.id == playerId);
+                int part = bodyThreatEdgeTarget.segment;
+                if (marked == null || !marked.alive || marked.shield > 0 || part < 1 ||
+                    part >= marked.strengthThreatSegments.Count || !marked.strengthThreatSegments[part])
+                    throw new InvalidOperationException("Body danger arrow lacks an actual marked player segment");
+                strengthDiagnosticBodyDrawn = true;
+                strengthDiagnosticBodyFreezeUntil = Time.realtimeSinceStartup + 2f;
+                Debug.Log("SNAKE_TOUCH_BODY_EDGE " + world.tick + " " + part + " " +
+                    box.x.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " " + box.y.ToString("F1", System.Globalization.CultureInfo.InvariantCulture));
+            }
+''' + before
         code = inject_once(code, before, after)
     before = '            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
     after = before + '\n            if (fixedPve.RulesVersion != PveFixedRecording.LocalStrengthOpeningFruitRules) throw new InvalidOperationException("Expected v16 strength practice");\n            Debug.Log("SNAKE_TOUCH_READY");'
@@ -245,6 +270,12 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             for line in result.stdout.splitlines():
                 if line.startswith('PASS weak body indicator') or line.startswith('PASS pointer referred'):
                     print(line, flush=True)
+        if body_edge_capture:
+            body_evidence = next((line for line in result.stdout.splitlines() if line.startswith('PASS body danger indicator')), '')
+            if not body_evidence or 'PASS body pointer referred to a marked player segment' not in result.stdout:
+                sys.exit('Missing actual player-segment or indicator-drag evidence.')
+            print(body_evidence, flush=True)
+            print('PASS body pointer referred to a marked player segment.', flush=True)
         if os.environ.get('SNAKE_STRENGTH_CAPTURE_FRUIT') == '1':
             fruit_evidence = next((line for line in result.stdout.splitlines() if line.startswith('PASS actual opening fruit attraction')), '')
             if not fruit_evidence:
