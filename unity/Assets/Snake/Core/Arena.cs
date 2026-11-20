@@ -1193,13 +1193,16 @@ namespace SnakeClub.Core
                 double t = i / (double)SampleRate;
                 int eighth = Math.Min(31, (int)(t * 4));
                 double noteTime = t - eighth * .25;
-                double noteEnvelope = Math.Min(1, noteTime * 60) * Math.Exp(-noteTime * (battle ? 9 : 11));
+                // Release each voice before its phase resets at the next note.
+                double noteEnvelope = Math.Min(1, noteTime * 60) * Math.Exp(-noteTime * (battle ? 9 : 11))
+                    * Math.Min(1, (.25 - noteTime) * 50);
                 double frequency = 261.625565 * Math.Pow(2, notes[eighth] / 12.0);
                 double lead = Math.Sin(2 * Math.PI * frequency * noteTime) + .24 * Math.Sin(4 * Math.PI * frequency * noteTime);
                 int beat = Math.Min(15, (int)(t * 2));
                 double bassTime = t - beat * .5;
                 double bassFrequency = 261.625565 * Math.Pow(2, Bass[beat / 4] / 12.0);
-                double bass = Math.Sin(2 * Math.PI * bassFrequency * bassTime) * Math.Exp(-bassTime * 5);
+                double bass = Math.Sin(2 * Math.PI * bassFrequency * bassTime) * Math.Exp(-bassTime * 5)
+                    * Math.Min(1, (.5 - bassTime) * 50);
                 double boundary = Math.Min(1, Math.Min(t * 40, (Seconds - t) * 40));
                 samples[i] = (float)((lead * noteEnvelope * .15 + bass * .12) * Math.Max(0, boundary));
             }
