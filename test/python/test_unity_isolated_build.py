@@ -59,6 +59,45 @@ pathlib.Path(os.environ['SNAKE_BUILD_STAMP']).write_text('ok')
         self.assertFalse(data['reference'])
         self.assertEqual(json.loads(self.config.read_text())['apiUrl'], 'http://local')
 
+    def test_local_strength_requires_isolation_and_excludes_other_modes(self):
+        base = [sys.executable, str(self.root / 'scripts/build-unity-isolated.py'), 'webgl', '--output', str(self.root / 'out')]
+        option = ['--local-strength-pve-api', 'http://127.0.0.1:2568']
+        for extra in ([], ['--offline-practice', '--fixed-pve-preview'],
+                      ['--offline-practice', '--strength-pve-preview'], ['--offline-practice', '--comparison-preview'],
+                      ['--offline-practice', '--fixed-pve-local-api', 'http://127.0.0.1:2569']):
+            with self.subTest(extra=extra):
+                result = subprocess.run(base + option + extra, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('--local-strength-pve-api requires', result.stderr)
+
+    def test_local_strength_rejects_non_loopback_or_non_origin_addresses(self):
+        base = [sys.executable, str(self.root / 'scripts/build-unity-isolated.py'), 'webgl', '--output', str(self.root / 'out'), '--offline-practice', '--local-strength-pve-api']
+        for address in ('http://localhost:2568', 'https://127.0.0.1:2568', 'http://127.0.0.2:2568',
+                        'http://user@127.0.0.1:2568', 'http://127.0.0.1:2568/path',
+                        'http://127.0.0.1:2568/?x=1', 'http://127.0.0.1:2568/#x', 'http://127.0.0.1', 'http://127.0.0.1:70000'):
+            with self.subTest(address=address):
+                result = subprocess.run(base + [address], capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('must be http://127.0.0.1:PORT', result.stderr)
+
+    def test_local_strength_config_is_explicit_and_does_not_modify_source(self):
+        capture = self.root / 'capture-local.json'
+        env = {**os.environ, 'UNITY_EDITOR': str(self.editor), 'SNAKE_TEST_CAPTURE': str(capture)}
+        result = subprocess.run([sys.executable, str(self.root / 'scripts/build-unity-isolated.py'), 'webgl',
+                                 '--output', str(self.root / 'out'), '--offline-practice', '--no-graphics',
+                                 '--local-strength-pve-api', 'http://127.0.0.1:2568'], env=env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        data = json.loads(capture.read_text())
+        self.assertEqual(data['config']['apiUrl'], 'http://127.0.0.1:2568')
+        self.assertEqual(data['config']['serverUrl'], '')
+        self.assertTrue(data['config']['allowDevLogin'])
+        self.assertTrue(data['config']['experimentalLocalStrengthPveServer'])
+        for key in ('experimentalFixedPve', 'experimentalStrengthPve', 'experimentalFixedPveServer', 'experimentalStrengthPveServer', 'experimentalComparison'):
+            self.assertFalse(data['config'][key], key)
+        self.assertFalse(data['reference'])
+        self.assertIn('-nographics', data['args'])
+        self.assertEqual(json.loads(self.config.read_text())['apiUrl'], 'http://local')
+
 
 if __name__ == '__main__':
     unittest.main()

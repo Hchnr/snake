@@ -69,7 +69,7 @@ with tempfile.TemporaryDirectory(prefix='snake-douyin-preview-') as directory:
     config = json.loads(config_path.read_text())
     config.update(serverUrl='', apiUrl='', allowDevLogin=False, allowReferenceSkinPreview=args.include_reference_skins,
                   experimentalFixedPve=args.fixed_pve_preview or args.strength_pve_preview, experimentalStrengthPve=args.strength_pve_preview,
-                  experimentalFixedPveServer=False, experimentalStrengthPveServer=False, experimentalComparison=False)
+                  experimentalFixedPveServer=False, experimentalStrengthPveServer=False, experimentalLocalStrengthPveServer=False, experimentalComparison=False)
     config_path.write_text(json.dumps(config, ensure_ascii=False, indent=2) + '\n')
     shutil.copy2(root / 'scripts/DouyinPreviewBuild.cs', project / 'Assets/Snake/Editor/DouyinPreviewBuild.cs')
     log = Path(directory) / 'build.log'

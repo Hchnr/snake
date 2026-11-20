@@ -48,6 +48,7 @@ namespace SnakeClub.Tests.Editor
                 strengthServer.experimentalFixedPveServer = false; strengthServer.experimentalComparison = true; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed comparison mode");
                 strengthServer.experimentalComparison = false; strengthServer.serverUrl = "ws://127.0.0.1:2567/ws"; Require(!strengthServer.StrengthPveServerPreview, "strength verifier allowed room backend");
                 Debug.Log("PASS Unity strength server preview requires explicit loopback configuration");
+                TestLocalStrengthServerPreview();
                 TestMusicLoadRecovery();
                 TestPendingStorageProtection();
                 TestFixedPvePreviewFlow();
@@ -2070,6 +2071,91 @@ namespace SnakeClub.Tests.Editor
                     (string)Field("activePlayerId").GetValue(app) == "local-eval", "strength verifier did not use the server seed and snapshot");
                 Call("BackToMenu");
                 Debug.Log("PASS Unity offline fixed PvE start, input, pause and isolated settlement");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestLocalStrengthServerPreview()
+        {
+            var config = new GameConfiguration { experimentalLocalStrengthPveServer = true,
+                apiUrl = "http://127.0.0.1:2568", serverUrl = "", allowDevLogin = true };
+            Require(config.LocalStrengthPveServerPreview && config.StrengthRulesPreview, "local v13 verifier rejected safe loopback");
+            config.apiUrl = "http://127.0.0.1.example.com:2568"; Require(!config.LocalStrengthPveServerPreview, "v13 verifier accepted non-loopback host");
+            config.apiUrl = "https://127.0.0.1:2568"; Require(!config.LocalStrengthPveServerPreview, "v13 verifier accepted HTTPS endpoint");
+            config.apiUrl = "http://127.0.0.1:2568/path"; Require(!config.LocalStrengthPveServerPreview, "v13 verifier accepted API path");
+            config.apiUrl = "http://127.0.0.1:2568"; config.allowDevLogin = false;
+            Require(!config.LocalStrengthPveServerPreview, "v13 verifier accepted disabled development login");
+            config.allowDevLogin = true; config.serverUrl = "ws://127.0.0.1:2567/ws";
+            Require(!config.LocalStrengthPveServerPreview, "v13 verifier accepted room connection");
+            config.serverUrl = ""; config.experimentalStrengthPveServer = true;
+            Require(!config.LocalStrengthPveServerPreview && !config.StrengthPveServerPreview, "v13 and account-growth verifiers both enabled");
+            config.experimentalStrengthPveServer = false; config.experimentalFixedPveServer = true;
+            Require(!config.LocalStrengthPveServerPreview && !config.FixedPveServerPreview, "v13 and fixed verifiers both enabled");
+            config.experimentalFixedPveServer = false; config.experimentalComparison = true;
+            Require(!config.LocalStrengthPveServerPreview && !config.ComparisonPreview, "v13 verifier allowed comparison mode");
+            config.experimentalComparison = false; config.experimentalFixedPve = true;
+            Require(!config.LocalStrengthPveServerPreview && !config.FixedPvePreview, "v13 verifier allowed offline preview");
+            config.experimentalFixedPve = false;
+            var startCheck = typeof(SnakeGameApp).GetMethod("ValidLocalStrengthStart", BindingFlags.Static | BindingFlags.NonPublic);
+            var receiptCheck = typeof(SnakeGameApp).GetMethod("LocalStrengthReceiptMatches", BindingFlags.Static | BindingFlags.NonPublic);
+            Require(startCheck != null && receiptCheck != null, "missing local v13 validation helpers");
+            bool ValidStart(ApiReply value) => (bool)startCheck.Invoke(null, new object[] { value });
+            bool ValidReceipt(ApiReply value, PveFixedWorld valueWorld) => (bool)receiptCheck.Invoke(null, new object[] { value, valueWorld });
+            var parsed = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"runId\":\"run\",\"token\":\"token\",\"mode\":\"strength-local-eval\",\"rules\":\"strength-local-advantage-13\",\"seed\":73,\"localStrengthStartConfig\":{\"version\":\"local-strength-eval-setup-1\",\"firstRun\":true,\"firstRunCode\":1}}");
+            Require(ValidStart(parsed), "valid v13 start reply rejected");
+            var invalid = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"runId\":\"run\",\"token\":\"token\",\"mode\":\"strength-local-eval\",\"rules\":\"strength-local-advantage-13\",\"localStrengthStartConfig\":{\"version\":\"local-strength-eval-setup-1\",\"firstRun\":true}}");
+            Require(!ValidStart(invalid), "missing first-run discriminator accepted");
+            parsed.localStrengthStartConfig.firstRunCode = 2;
+            Require(!ValidStart(parsed), "inconsistent first-run discriminator accepted");
+            parsed.localStrengthStartConfig.firstRunCode = 1; parsed.rules = PveFixedRecording.LocalStrengthHeadTieRules;
+            Require(!ValidStart(parsed), "old v12 rule accepted for v13 experiment");
+            parsed.rules = PveFixedRecording.LocalStrengthOpeningBoostRules; parsed.token = "";
+            Require(!ValidStart(parsed), "missing v13 token accepted");
+            parsed.token = "token";
+            var root = new GameObject("Local strength server regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>(); var api = root.AddComponent<GameApiClient>();
+                api.Configure(config); typeof(GameApiClient).GetProperty("Profile").SetValue(api, new PlayerProgress { playerId = "local-eval" });
+                var renderer = root.AddComponent<ArenaRenderer>(); var connection = root.AddComponent<RoomConnection>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic; var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                void Call(string name, params object[] args) => type.GetMethod(name, flags).Invoke(app, args);
+                Field("api").SetValue(app, api); Field("arenaRenderer").SetValue(app, renderer); Field("connection").SetValue(app, connection);
+                Field("strengthPracticeTutorialComplete").SetValue(app, true); // opposite to the authoritative server snapshot
+                Call("BeginFixedPveWithRun", parsed);
+                var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(world.RulesVersion == PveFixedRecording.LocalStrengthOpeningBoostRules && world.LocalOpeningBoost &&
+                    world.LocalHeadTieAfterBite && world.LocalAlignedStart && world.Fighters[0].shieldTicks == 80 &&
+                    (bool)Field("firstRun").GetValue(app) && (string)Field("activePlayerId").GetValue(app) == "local-eval",
+                    "v13 experiment did not use the server seed, first-run state and complete rules");
+                Call("AdvanceFixedPve", .05f);
+                var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
+                Require(world.Tick == 1 && tape.Count == 2 && tape[0] == 0 && tape[1] == 0,
+                    "v13 experiment did not record initial unsteered input");
+                while (!world.Finished) world.Step(0, false, false);
+                var receipt = new ApiReply { ok = true, verified = true, experimental = true, rules = world.RulesVersion,
+                    rewards = 0, ticks = world.Tick, winner = world.Winner, kills = world.Fighters[0].kills,
+                    length = world.Fighters[0].motion.Length, stateDigest = StrengthStateDigest.Compute(world) };
+                Require(ValidReceipt(receipt, world), "matching v13 receipt rejected");
+                receipt.rewards = 1; Require(!ValidReceipt(receipt, world), "reward-bearing receipt accepted");
+                receipt.rewards = 0; receipt.stateDigest = "s1-invalid"; Require(!ValidReceipt(receipt, world), "bad v13 digest accepted");
+                receipt.stateDigest = StrengthStateDigest.Compute(world); receipt.rules = PveFixedRecording.ExperimentalStrengthRules;
+                Require(!ValidReceipt(receipt, world), "legacy server rule accepted as v13 receipt");
+                Call("BackToMenu");
+                var normal = JsonUtility.FromJson<ApiReply>("{\"ok\":true,\"runId\":\"normal\",\"token\":\"token\",\"mode\":\"strength-local-eval\",\"rules\":\"strength-local-advantage-13\",\"seed\":73,\"localStrengthStartConfig\":{\"version\":\"local-strength-eval-setup-1\",\"firstRun\":false,\"firstRunCode\":2}}");
+                Require(ValidStart(normal), "valid returning-player snapshot rejected");
+                Field("strengthPracticeTutorialComplete").SetValue(app, false); // opposite to server snapshot
+                Call("BeginFixedPveWithRun", normal);
+                var normalWorld = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(!((bool)Field("firstRun").GetValue(app)) && normalWorld.LocalOpeningBoost &&
+                    normalWorld.Fighters[0].shieldTicks == 60 && normalWorld.RenderState().remaining == 90,
+                    "server returning-player snapshot did not control the v13 world");
+                Call("BackToMenu"); Call("RequestPve");
+                var fallback = (PveFixedWorld)Field("fixedPve").GetValue(app);
+                Require(fallback != null && fallback.LocalOpeningBoost && Field("activeRun").GetValue(app) == null &&
+                    ((string)Field("resultNote").GetValue(app)).Contains("离线试玩"), "unavailable v13 verifier did not fall back to local practice");
+                Debug.Log("PASS Unity v13 server experiment is isolated, snapshot-bound and verifies receipts");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }

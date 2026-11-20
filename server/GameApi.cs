@@ -69,6 +69,15 @@ sealed class GameApi
             app.MapPost("/api/v3/internal/strength-pve/verify", (HttpContext context, FixedPveEvalRequest request) =>
                 IsLocal(context) ? service.WithPlayer(context, (p, now) => service.VerifyStrengthPve(p, request, now), request.runId) : Fail("仅限本机测试", 403));
         }
+        // v13 local candidate: diagnostic only. The direct peer must be
+        // loopback; a public reverse proxy still needs to block these paths.
+        if (!service.production && Environment.GetEnvironmentVariable("SNAKE_LOCAL_STRENGTH_EVAL") == "1")
+        {
+            app.MapPost("/api/v3/internal/local-strength-pve/start", (HttpContext context) =>
+                IsLocal(context) ? service.WithPlayer(context, (p, now) => service.StartRun(p, now, "strength-local-eval", PveFixedRecording.LocalStrengthOpeningBoostRules), preserveProfile: true) : Fail("仅限本机测试", 403));
+            app.MapPost("/api/v3/internal/local-strength-pve/verify", (HttpContext context, FixedPveEvalRequest request) =>
+                IsLocal(context) ? service.WithPlayer(context, (p, now) => service.VerifyLocalStrengthPve(p, request, now), request.runId, preserveProfile: true) : Fail("仅限本机测试", 403));
+        }
         app.MapPost("/api/v3/match/start", (HttpContext context) => service.WithPlayer(context, (p, now) => service.StartRun(p, now, "pve")));
         app.MapPost("/api/v3/match/finish", (HttpContext context, MatchRequest request) => service.WithPlayer(context, (p, now) => service.FinishPve(p, request, now), request.runId));
         app.MapPost("/api/v3/challenge/start", (HttpContext context) =>
@@ -151,7 +160,7 @@ sealed class GameApi
 
     private static string IdentityId(string identity) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity))).ToLowerInvariant()[..24];
 
-    private IResult WithPlayer(HttpContext context, Func<PlayerProgress, DateTimeOffset, IResult> action, string? receiptRunId = null)
+    private IResult WithPlayer(HttpContext context, Func<PlayerProgress, DateTimeOffset, IResult> action, string? receiptRunId = null, bool preserveProfile = false)
     {
         string header = context.Request.Headers.Authorization.ToString();
         string? payload = header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) ? Verify(header[7..]) : null;
@@ -162,9 +171,12 @@ sealed class GameApi
         {
             if (!data.players.TryGetValue(parts[0], out var profile)) return Fail("账号不存在", 401);
             if (!SupportsProfile(context, profile, now)) return UpgradeRequired();
-            if (profile.completedMatches == 0 && profile.tutorialComplete) profile.completedMatches = Math.Max(1, profile.dailyMatches);
-            ResetDay(profile, now);
-            profile.revision++;
+            if (!preserveProfile)
+            {
+                if (profile.completedMatches == 0 && profile.tutorialComplete) profile.completedMatches = Math.Max(1, profile.dailyMatches);
+                ResetDay(profile, now);
+                profile.revision++;
+            }
             return action(profile, now);
         }, receiptRunId);
     }
@@ -254,7 +266,7 @@ sealed class GameApi
         if (production && mode == "pve") return Fail("普通对局奖励验证尚未开放，请先进行练习", 503);
         string date = Day(now);
         string rules = requestedRules ?? DailyMatch.RulesVersion;
-        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" || mode == "fixed-eval" || mode == "strength-eval" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
+        var run = new RunRecord { id = Guid.NewGuid().ToString("N"), playerId = p.playerId, mode = mode, date = date, rules = rules, seed = mode == "pve" || mode == "fixed-eval" || mode == "strength-eval" || mode == "strength-local-eval" ? RandomNumberGenerator.GetInt32(int.MaxValue) : Seed(date, rules), startedAt = now.ToUnixTimeMilliseconds(), expiresAt = EndOfDay(now).AddMinutes(5).ToUnixTimeMilliseconds() };
         if (mode == "pve" && p.trialSkin > 0)
         {
             bool reserved = !string.IsNullOrEmpty(p.trialRunId) && data.runs.TryGetValue(p.trialRunId, out var trialRun) && !trialRun.completed && now.ToUnixTimeMilliseconds() - trialRun.startedAt < 190000;
@@ -262,7 +274,11 @@ sealed class GameApi
         }
         if (mode == "pve" || mode == "fixed-eval") run.startConfig = PveStartConfig.Capture(p, run.trialSkin);
         if (mode == "strength-eval") run.strengthStartConfig = StrengthEvalStartConfig.Capture(p);
+        if (mode == "strength-local-eval") run.localStrengthStartConfig = new LocalStrengthEvalStartConfig { version = LocalStrengthEvalStartConfig.CurrentVersion, firstRun = !p.tutorialComplete };
         data.runs[run.id] = run;
+        if (mode == "strength-local-eval")
+            return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules,
+                localStrengthStartConfig = run.localStrengthStartConfig, serverTime = run.startedAt, expiresAt = run.expiresAt });
         if (mode == "strength-eval")
             return Results.Json(new { ok = true, runId = run.id, token = RunToken(run), date, seed = run.seed, mode, rules = run.rules,
                 strengthStartConfig = run.strengthStartConfig, serverTime = run.startedAt, expiresAt = run.expiresAt });
@@ -335,6 +351,34 @@ sealed class GameApi
             return Fail("强弱实验回放不完整或无效");
         if (now.ToUnixTimeMilliseconds() - run.startedAt + 2000 < world.Tick * 50L)
             return Fail("强弱实验对局时长无效");
+        run.completed = true; run.finishedAt = now.ToUnixTimeMilliseconds(); run.score = world.Tick;
+        run.fixedWinner = world.Winner; run.fixedKills = world.Fighters[0].kills; run.fixedLength = world.Fighters[0].motion.Length;
+        run.strengthStateDigest = StrengthStateDigest.Compute(world);
+        return StrengthPveReceipt(run);
+    }
+
+    private IResult VerifyLocalStrengthPve(PlayerProgress p, FixedPveEvalRequest request, DateTimeOffset now)
+    {
+        var run = FindRun(p, request.runId, request.token, "strength-local-eval", now);
+        if (run == null) return Fail("本机强弱试玩凭证无效或已过期");
+        if (run.rules != PveFixedRecording.LocalStrengthOpeningBoostRules || run.localStrengthStartConfig == null || !run.localStrengthStartConfig.Supported)
+            return Fail("本机强弱试玩规则或开局快照不受支持");
+        if (run.completed) return StrengthPveReceipt(run);
+        if (string.IsNullOrEmpty(request.inputs) || request.inputs.Length > ((PveFixedRecording.MaxTicks * 2 + 2) / 3) * 4)
+            return Fail("本机强弱试玩回放长度无效");
+        byte[] inputs;
+        try { inputs = Convert.FromBase64String(request.inputs); }
+        catch (FormatException) { return Fail("本机强弱试玩回放格式无效"); }
+        if (inputs.Length % 2 != 0) return Fail("本机强弱试玩回放格式无效");
+        // The current client starts to the right and does not change heading
+        // before its first real steering input. The recorded steering bit is
+        // persistent thereafter, including for a first drag to the right.
+        for (int i = 0; i < inputs.Length; i += 2)
+            if ((inputs[i + 1] & 2) == 0 && inputs[i] != 0) return Fail("本机强弱试玩初始方向无效");
+        if (!PveFixedRecording.TryReplayLocalStrength(run.rules, run.seed, run.localStrengthStartConfig.firstRun!.Value, inputs, out var world))
+            return Fail("本机强弱试玩回放不完整或无效");
+        if (now.ToUnixTimeMilliseconds() - run.startedAt + 2000 < world.Tick * 50L)
+            return Fail("本机强弱试玩对局时长无效");
         run.completed = true; run.finishedAt = now.ToUnixTimeMilliseconds(); run.score = world.Tick;
         run.fixedWinner = world.Winner; run.fixedKills = world.Fighters[0].kills; run.fixedLength = world.Fighters[0].motion.Length;
         run.strengthStateDigest = StrengthStateDigest.Compute(world);
@@ -489,7 +533,14 @@ sealed class GameApi
         return Verify(token) == RunPayload(run) ? run : null;
     }
     private string RunToken(RunRecord run) => Sign(RunPayload(run));
-    private static string RunPayload(RunRecord run) => run.id + ":" + run.playerId + ":" + run.mode + ":" + run.date + ":" + run.rules + ":" + run.seed + ":" + run.expiresAt;
+    private static string RunPayload(RunRecord run)
+    {
+        string payload = run.id + ":" + run.playerId + ":" + run.mode + ":" + run.date + ":" + run.rules + ":" + run.seed + ":" + run.expiresAt;
+        // Preserve all existing tokens byte-for-byte. The new mode also signs
+        // time and the server-selected setup; changing either invalidates it.
+        if (run.mode == "strength-local-eval") payload += ":" + run.startedAt + ":" + (run.localStrengthStartConfig?.version ?? "missing") + ":" + (run.localStrengthStartConfig?.firstRun == null ? "missing" : run.localStrengthStartConfig.firstRun.Value ? "1" : "0");
+        return payload;
+    }
     private string Sign(string value)
     {
         string payload = Convert.ToBase64String(Encoding.UTF8.GetBytes(value)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
@@ -543,8 +594,19 @@ sealed class RunRecord
     public bool completed;
     public PveStartConfig? startConfig;
     public StrengthEvalStartConfig? strengthStartConfig;
+    public LocalStrengthEvalStartConfig? localStrengthStartConfig;
     public string fixedWinner = "", strengthStateDigest = "";
     public int fixedKills, fixedLength, fixedEventPoints;
+}
+sealed class LocalStrengthEvalStartConfig
+{
+    public const string CurrentVersion = "local-strength-eval-setup-1";
+    public string version = "";
+    public bool? firstRun;
+    // Unity JsonUtility cannot reliably distinguish a missing bool from false.
+    // Derive an explicit code from the signed server-side snapshot.
+    public int firstRunCode => !firstRun.HasValue ? 0 : firstRun.Value ? 1 : 2;
+    public bool Supported => version == CurrentVersion && firstRun.HasValue;
 }
 sealed class RewardSource { public string playerId = "", kind = ""; public int baseCoins; public bool adClaimed; }
 sealed class AdRecord { public string id = "", playerId = "", sourceId = "", kind = "", day = ""; public int skin = -1; public long createdAt, completedAt; public bool completed; }

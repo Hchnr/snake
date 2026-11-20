@@ -27,7 +27,7 @@ namespace SnakeClub
         private bool busy, resultRecorded, flushing, adShowing, connecting, verifiedDaily;
         private bool defaultStrengthPractice;
         private bool DefaultStrengthMain => !api.Config.ComparisonPreview && !api.Config.FixedPvePreview &&
-            !api.Config.FixedPveServerPreview && !api.Config.StrengthPveServerPreview;
+            !api.Config.FixedPveServerPreview && !api.Config.StrengthPveServerPreview && !api.Config.LocalStrengthPveServerPreview;
         private int comparisonVariant = -1;
         private int friendScore, activeFriendScore = -1;
         private string friendRules = "", activeFriendDate = "", activeFriendRules = "", verifiedShareToken = "";
@@ -125,7 +125,7 @@ namespace SnakeClub
         {
             if (busy) return;
             if (api.Config.ComparisonPreview) { frontPage = "comparison"; return; }
-            if (api.Config.FixedPvePreview || api.Config.FixedPveServerPreview || api.Config.StrengthPveServerPreview) { RequestPve(); return; }
+            if (api.Config.FixedPvePreview || api.Config.FixedPveServerPreview || api.Config.StrengthPveServerPreview || api.Config.LocalStrengthPveServerPreview) { RequestPve(); return; }
             BeginDefaultStrengthPractice();
         }
 
@@ -197,10 +197,33 @@ namespace SnakeClub
             unchecked { uint hash = 2166136261; foreach (char c in date) hash = (hash ^ c) * 16777619; return (int)hash; }
         }
 
+        internal static bool ValidLocalStrengthStart(ApiReply reply) => reply != null && reply.ok &&
+            reply.mode == "strength-local-eval" && reply.rules == PveFixedRecording.LocalStrengthOpeningBoostRules &&
+            !string.IsNullOrEmpty(reply.runId) && !string.IsNullOrEmpty(reply.token) &&
+            reply.localStrengthStartConfig != null && reply.localStrengthStartConfig.Supported;
+
+        internal static bool LocalStrengthReceiptMatches(ApiReply reply, PveFixedWorld world) =>
+            reply != null && world != null && world.LocalOpeningBoost && reply.ok && reply.verified && reply.experimental &&
+            reply.rules == PveFixedRecording.LocalStrengthOpeningBoostRules && reply.rewards == 0 && reply.ticks == world.Tick &&
+            reply.winner == world.Winner && reply.kills == world.Fighters[0].kills && reply.length == world.Fighters[0].motion.Length &&
+            StrengthStateDigest.Matches(world, reply.stateDigest);
+
         private void RequestPve()
         {
             if (busy) return;
             depthMode = false;
+            if (api.Config.LocalStrengthPveServerPreview)
+            {
+                if (!api.Connected) { BeginFixedPve(); resultNote = "本机验证服务未连接 · 离线试玩，不计奖励"; return; }
+                busy = true;
+                api.Post("internal/local-strength-pve/start", new ApiRequest(), reply =>
+                {
+                    busy = false;
+                    if (ValidLocalStrengthStart(reply)) BeginFixedPveWithRun(reply);
+                    else { BeginFixedPve(); resultNote = "本机实验开局不可用 · 离线试玩，不计奖励"; }
+                });
+                return;
+            }
             if (api.Config.StrengthPveServerPreview)
             {
                 if (!api.Connected) { BeginFixedPve(); resultNote = "本机验证服务未连接 · 离线试玩，不计奖励"; return; }
@@ -377,7 +400,7 @@ namespace SnakeClub
             var world = fixedPve;
             var run = activeRun;
             if (world != null && world.StrengthPreview && world.Finished && run == null &&
-                (api.Config.StrengthPvePreview || defaultStrengthPractice) && controlActions > 0 && !strengthPracticeTutorialComplete)
+                (api.Config.StrengthPvePreview || api.Config.LocalStrengthPveServerPreview || defaultStrengthPractice) && controlActions > 0 && !strengthPracticeTutorialComplete)
             {
                 // Only this local preview changes; never mutate an account or
                 // mark an abandoned / unattended match as a completed tutorial.
@@ -385,17 +408,18 @@ namespace SnakeClub
                 try { PlayerPrefs.SetInt(StrengthPracticeTutorialKey, 1); PlayerPrefs.Save(); }
                 catch (Exception) { /* Keep session progress even if storage is unavailable. */ }
             }
-            bool strength = world != null && world.StrengthPreview && run != null && run.mode == "strength-eval" && api.Config.StrengthPveServerPreview;
+            bool localStrength = world != null && world.LocalOpeningBoost && run != null && run.mode == "strength-local-eval" && api.Config.LocalStrengthPveServerPreview;
+            bool strength = localStrength || (world != null && world.StrengthPreview && run != null && run.mode == "strength-eval" && api.Config.StrengthPveServerPreview);
             bool fixedEval = world != null && !world.StrengthPreview && run != null && run.mode == "fixed-eval" && api.Config.FixedPveServerPreview;
             if ((!strength && !fixedEval) || !api.Connected || api.Profile.playerId != activePlayerId)
             { resultNote = world != null && world.StrengthPreview ? "强弱吞食试玩 · 不计账号奖励或排行" : "整数规则试玩 · 不计账号奖励或排行"; return; }
             string player = activePlayerId;
             resultNote = "正在验证本机回放 · 不计奖励或排行";
-            api.Post(strength ? "internal/strength-pve/verify" : "internal/fixed-pve/verify", new ApiRequest { runId = run.runId, token = run.token,
+            api.Post(localStrength ? "internal/local-strength-pve/verify" : strength ? "internal/strength-pve/verify" : "internal/fixed-pve/verify", new ApiRequest { runId = run.runId, token = run.token,
                 inputs = Convert.ToBase64String(runInputs.ToArray()) }, reply =>
             {
                 if (fixedPve != world || activeRun != run || activePlayerId != player || !api.Connected || api.Profile.playerId != player) return;
-                bool matches = reply.ok && reply.verified && reply.experimental && reply.rules == (strength ? PveFixedRecording.ExperimentalStrengthRules : PveFixedRecording.ExperimentalRules) &&
+                bool matches = localStrength ? LocalStrengthReceiptMatches(reply, world) : reply.ok && reply.verified && reply.experimental && reply.rules == (strength ? PveFixedRecording.ExperimentalStrengthRules : PveFixedRecording.ExperimentalRules) &&
                     reply.rewards == 0 && reply.ticks == world.Tick && reply.winner == world.Winner &&
                     reply.kills == world.Fighters[0].kills && reply.length == world.Fighters[0].motion.Length &&
                     (strength ? StrengthStateDigest.Matches(world, reply.stateDigest) : reply.eventPoints == world.Fighters[0].eventPoints);
