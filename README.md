@@ -99,6 +99,8 @@ WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定
 
 运行 `python3 scripts/evaluate-strength-encounter.py --seeds 100` 可比较离线试玩开局遭遇候选与之前的补给方案；固定方向和简单追尾脚本仅用于研发筛选，不代表真人或抖音设备表现。
 
+运行 `python3 scripts/evaluate-opening-opportunities.py --seeds 200` 在临时副本比较当前 v13 与五种未经采用的开局候选；脚本输出保护结束时的可计算样本及前 15／60 秒指标，不修改游戏或替代真人试玩。
+
 运行 `python3 scripts/evaluate-strength-recovery.py --seeds 100` 可比较短蛇受伤后的回追候选；同种子下两套规则在首次符合条件的受伤前一致，之后随机过程及追逐策略可能分叉。
 
 运行 `python3 scripts/evaluate-safe-recovery.py --seeds 300` 可比较旧版与安全落点候选在首次符合条件时的生成和下一步拾取；这是脚本对照，不代表真人或手机表现。
