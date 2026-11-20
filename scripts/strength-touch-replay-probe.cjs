@@ -108,6 +108,7 @@ async function main() {
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_READY'), 'start match');
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
   await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃')), 'visible protection explanation');
+  await capture('ready');
   // Let a few real ticks elapse so the seeded touch path is reproducible.
   await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= 6; }), 'opening ticks');
   let index = events.length;
@@ -129,6 +130,9 @@ async function main() {
   index = events.length;
   await touch('touchStart', [steeredPoint, point(350, 500, 2)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)), 'actual boost');
+  await waitFor(() => events.slice(index).some(e => e.includes('SNAKE_TOUCH_BOOST_NOTICE') && e.includes('免耗加速 · 剩余')), 'actual free boost notice');
+  await capture('boost-active');
+  console.log('PASS actual second-finger boost used the free allowance and displayed the notice');
   await touch('touchEnd', [point(350, 500, 2)]); await delay(150); await touch('touchEnd', []);
   await capture('protection'); await capture('battle');
   if (!requireProtectionCue) {

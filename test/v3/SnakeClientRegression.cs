@@ -1691,7 +1691,7 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.RulesVersion == PveFixedRecording.LocalStrengthOpeningBoostRules && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.LocalFreeBoost && world.RulesVersion == PveFixedRecording.LocalStrengthFreeBoostRules && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60 && world.OpeningBoostRemaining == 300, "account tutorial changed local first run or opening boost");
                 var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
@@ -1700,7 +1700,7 @@ namespace SnakeClub.Tests.Editor
                     "automatic initial movement was recorded as real steering");
                 Field("hasSteered").SetValue(app, true); Field("direction").SetValue(app, new Point(-1, 0));
                 Field("paused").SetValue(app, true); Call("AdvanceFixedPve", 1f);
-                Require(world.Tick == 1 && tape.Count == 2 && !world.OpeningSteeringSeen && world.OpeningBoostRemaining == 300, "pause consumed an opening window or boost time");
+                Require(world.Tick == 1 && tape.Count == 2 && !world.OpeningSteeringSeen && world.OpeningBoostRemaining == 300 && world.FreeBoostRemaining == 160, "pause consumed an opening window or boost time");
                 var motion = world.Fighters[0].motion; int beforeX = motion.X, beforeY = motion.Y;
                 Field("paused").SetValue(app, false); Call("AdvanceFixedPve", .05f);
                 const int cappedLeftAngle = 65536 - 16384 - 1982;
@@ -1708,7 +1708,7 @@ namespace SnakeClub.Tests.Editor
                     motion.Angle == cappedLeftAngle && motion.X < beforeX && motion.Y < beforeY && world.OpeningBoostRemaining == 299,
                     "resumed steering did not record input and turn left with the bounded assist");
                 Field("pointerBoost").SetValue(app, true); Call("AdvanceFixedPve", .05f);
-                Require(world.Tick == 3 && tape.Count == 6 && tape[5] == 3 && motion.Angle == cappedLeftAngle - 1982,
+                Require(world.Tick == 3 && tape.Count == 6 && tape[5] == 3 && motion.Angle == cappedLeftAngle - 1982 && world.FreeBoostRemaining == 159,
                     "boost, steering recording or one-time capped turn was wrong");
                 world.Fighters[0].alive = false; world.Step(0, false); Field("controlActions").SetValue(app, 1); Call("RecordResult");
                 Require(account.coins == 123 && account.experience == 200 && account.completedMatches == 0 &&
@@ -1718,7 +1718,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.RulesVersion == PveFixedRecording.LocalStrengthOpeningBoostRules && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.LocalFreeBoost && world.FreeBoostRemaining == 160 && world.RulesVersion == PveFixedRecording.LocalStrengthFreeBoostRules && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");
@@ -2125,7 +2125,7 @@ namespace SnakeClub.Tests.Editor
                 Field("strengthPracticeTutorialComplete").SetValue(app, true); // opposite to the authoritative server snapshot
                 Call("BeginFixedPveWithRun", parsed);
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.RulesVersion == PveFixedRecording.LocalStrengthOpeningBoostRules && world.LocalOpeningBoost &&
+                Require(world.RulesVersion == PveFixedRecording.LocalStrengthOpeningBoostRules && world.LocalOpeningBoost && !world.LocalFreeBoost &&
                     world.LocalHeadTieAfterBite && world.LocalAlignedStart && world.Fighters[0].shieldTicks == 80 &&
                     (bool)Field("firstRun").GetValue(app) && (string)Field("activePlayerId").GetValue(app) == "local-eval",
                     "v13 experiment did not use the server seed, first-run state and complete rules");
