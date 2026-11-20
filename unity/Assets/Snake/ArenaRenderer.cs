@@ -548,8 +548,9 @@ namespace SnakeClub
                     : StrengthAppearance.FromDefense(0, 0, 0);
                 if (StrengthBodyVisual)
                 {
-                    float growthScale = GrowthView.CharacterScale(snake.segments.Count);
-                    appearance = new StrengthAppearanceValues(appearance.BodyWidth * growthScale, appearance.HeadScale * growthScale, appearance.TailRatio, appearance.Glow);
+                    float bodyScale = GrowthView.BodyScale(snake.segments.Count);
+                    float characterScale = GrowthView.CharacterScale(snake.segments.Count);
+                    appearance = new StrengthAppearanceValues(appearance.BodyWidth * bodyScale, appearance.HeadScale * characterScale, appearance.TailRatio, appearance.Glow);
                 }
                 var list = bodies[color];
                 List<Vector3> positions;
@@ -571,11 +572,12 @@ namespace SnakeClub
                     positions[i] = characterMode || Vector3.Distance(positions[i], target) > 8f ? target :
                         Vector3.Lerp(positions[i], target, 1f - Mathf.Exp(-16f * (MotionPaused ? 0f : Time.deltaTime)));
                     float taper = characterSprite != null ? .80f : i == 0 ? 1.65f : Mathf.Lerp(.72f, 1.40f, Mathf.Clamp01((snake.segments.Count - i) / 6f));
+                    float fallbackPart = 1f;
                     if (characterSprite == null)
                     {
-                        float part = i == 0 ? appearance.HeadScale : Mathf.Lerp(appearance.BodyWidth / .8f, appearance.BodyWidth / .8f * appearance.TailRatio,
+                        fallbackPart = i == 0 ? appearance.HeadScale : Mathf.Lerp(appearance.BodyWidth / .8f, appearance.BodyWidth / .8f * appearance.TailRatio,
                             (float)i / Mathf.Max(1, snake.segments.Count - 1));
-                        list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * (taper * part)));
+                        list.Add(Matrix4x4.TRS(positions[i], Quaternion.identity, Vector3.one * (taper * fallbackPart)));
                     }
                     else if (StrengthBodyVisual && i > 0)
                     {
@@ -589,7 +591,9 @@ namespace SnakeClub
                     if (StrengthBodyVisual && i < snake.strengthWeakSegments.Count && snake.strengthWeakSegments[i])
                     {
                         Vector3 point = positions[i];
-                        point.y = characterSprite != null ? .45f : positions[i].y + taper * .5f + .12f;
+                        // Fallback spheres also grow and taper. Place the cue
+                        // above the actual drawn sphere, not its unscaled size.
+                        point.y = characterSprite != null ? .45f : positions[i].y + taper * fallbackPart * .5f + .12f;
                         weakPoints.Add(Matrix4x4.TRS(point, Quaternion.identity, Vector3.one * .48f));
                     }
                     if (StrengthBodyVisual && i < snake.strengthThreatSegments.Count && snake.strengthThreatSegments[i])
@@ -597,7 +601,7 @@ namespace SnakeClub
                         // A cross gives the warning a distinct shape from the
                         // round edible-body markers, including in reduced mode.
                         Vector3 point = positions[i];
-                        point.y = characterSprite != null ? .58f : positions[i].y + taper * .5f + .20f;
+                        point.y = characterSprite != null ? .58f : positions[i].y + taper * fallbackPart * .5f + .20f;
                         Vector3 size = new Vector3(1.25f, .18f, .28f);
                         threatMarks.Add(Matrix4x4.TRS(point, Quaternion.Euler(0, 45, 0), size));
                         threatMarks.Add(Matrix4x4.TRS(point, Quaternion.Euler(0, -45, 0), size));

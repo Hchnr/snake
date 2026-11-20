@@ -71,6 +71,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthAppearanceVisual();
                 TestWeakBodyEdgeProjection();
                 TestFallbackOpeningBoostVisual();
+                TestFallbackStrengthMarkerVisibility();
                 TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
                 TestStrengthLevelVisual();
@@ -1152,7 +1153,7 @@ namespace SnakeClub.Tests.Editor
                     Vector2 padding = renderer.StrengthMarkerScreenPadding();
                     // A tiny panel over a conservative marker corner at the
                     // heights of sprite and procedural-head markers.
-                    foreach (float height in new[] { .45f, .58f, 1.65f })
+                    foreach (float height in new[] { .45f, .58f, 1.65f, 2.70f })
                     {
                         Vector3 corner = camera.WorldToScreenPoint(new Vector3(.5f, height, .5f));
                         coveredMap = new Rect(corner.x - 1, corner.y - 1, 2, 2);
@@ -1250,15 +1251,34 @@ namespace SnakeClub.Tests.Editor
                 Require(ReferenceEquals(cached, buffers["you"]), "unchanged trail allocated new vertex buffers");
                 var ownSegments = projected.snakes.Find(s => s.id == "you").segments;
                 var growthSprites = (System.Collections.Generic.Dictionary<string, SpriteRenderer>)typeof(ArenaRenderer).GetField("characters", flags).GetValue(renderer);
+                renderer.ReducedEffects = true; renderer.Draw(projected, "you");
                 float beforeGrowthScale = growthSprites["you"].transform.localScale.x, beforeGrowthWidth = trails["you"][0].widthMultiplier;
                 while (ownSegments.Count < 48) ownSegments.Add(new Point(-ownSegments.Count, 4));
                 renderer.Draw(projected, "you");
-                Require(growthSprites["you"].transform.localScale.x > beforeGrowthScale && trails["you"][0].widthMultiplier > beforeGrowthWidth,
-                    "actual body growth did not enlarge the avatar and trail");
+                Require(Mathf.Abs(growthSprites["you"].transform.localScale.x - beforeGrowthScale * 1.4f) < .002f &&
+                    Mathf.Abs(trails["you"][0].widthMultiplier - beforeGrowthWidth * 1.25f) < .002f,
+                    "actual body growth did not apply the separate avatar and trail scales");
                 ownSegments.RemoveRange(16, ownSegments.Count - 16); renderer.Draw(projected, "you");
                 Require(Mathf.Abs(growthSprites["you"].transform.localScale.x - beforeGrowthScale) < .001f &&
                     Mathf.Abs(trails["you"][0].widthMultiplier - beforeGrowthWidth) < .001f && world.Fighters[0].motion.Length == 16,
                     "body loss did not restore the visual or rendering changed the simulation");
+                foreach (int skin in new[] { 0, 1, 2, 3, 24 })
+                {
+                    renderer.SelectedSkin = skin; renderer.Draw(projected, "you");
+                    Require(growthSprites["you"].sprite != null, "owned character did not load for growth check: " + skin);
+                    float smallAvatar = growthSprites["you"].transform.localScale.x;
+                    float smallBody = trails["you"][0].widthMultiplier;
+                    while (ownSegments.Count < 80) ownSegments.Add(new Point(-ownSegments.Count, 4));
+                    renderer.Draw(projected, "you");
+                    Require(Mathf.Abs(growthSprites["you"].transform.localScale.x - smallAvatar * 1.8f) < .002f &&
+                        Mathf.Abs(trails["you"][0].widthMultiplier - smallBody * 1.5f) < .002f,
+                        "growth scales differed for owned character " + skin);
+                    ownSegments.RemoveRange(16, ownSegments.Count - 16); renderer.Draw(projected, "you");
+                    Require(Mathf.Abs(growthSprites["you"].transform.localScale.x - smallAvatar) < .002f,
+                        "character did not shrink after body loss: " + skin);
+                }
+                renderer.SelectedSkin = 0;
+                renderer.ReducedEffects = false;
                 ownSegments.Add(new Point(-30, 4)); renderer.Draw(projected, "you"); CheckTrail(1);
                 Require(ReferenceEquals(cached, buffers["you"]), "growth within capacity allocated new trail buffers");
                 ownSegments.RemoveRange(ownSegments.Count - 4, 4); renderer.Draw(projected, "you"); CheckTrail(1);
@@ -1841,6 +1861,79 @@ namespace SnakeClub.Tests.Editor
                 Require(characters.TryGetValue("you", out var normal) && normal.enabled && !line.enabled,
                     "normal player sprite path received fallback stripe");
                 Debug.Log("PASS Unity fallback opening boost follows only live player and clears");
+            }
+            finally
+            {
+                cache.Clear(); foreach (var item in saved) cache.Add(item.Key, item.Value);
+                UnityEngine.Object.DestroyImmediate(root);
+            }
+        }
+
+        private static void TestFallbackStrengthMarkerVisibility()
+        {
+            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var cache = (System.Collections.Generic.Dictionary<int, Texture2D>)typeof(SkinVisual)
+                .GetField("Textures", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+            var saved = new System.Collections.Generic.Dictionary<int, Texture2D>(cache);
+            var root = new GameObject("Fallback strength marker regression");
+            try
+            {
+                for (int i = 0; i < SkinCatalog.All.Length; i++) cache[i] = null;
+                var renderer = root.AddComponent<ArenaRenderer>();
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true;
+                var bodies = (System.Collections.Generic.List<Matrix4x4>[])typeof(ArenaRenderer).GetField("bodies", flags).GetValue(renderer);
+                var weakPoints = (System.Collections.Generic.List<Matrix4x4>)typeof(ArenaRenderer).GetField("weakPoints", flags).GetValue(renderer);
+                var threatMarks = (System.Collections.Generic.List<Matrix4x4>)typeof(ArenaRenderer).GetField("threatMarks", flags).GetValue(renderer);
+                System.Collections.Generic.List<bool> Marks(SnakeState snake, string name) =>
+                    (System.Collections.Generic.List<bool>)typeof(SnakeState).GetField(name, flags).GetValue(snake);
+                Matrix4x4 At(System.Collections.Generic.List<Matrix4x4> matrices, Point point)
+                {
+                    foreach (var matrix in matrices)
+                    {
+                        Vector3 position = matrix.GetColumn(3);
+                        if (Mathf.Abs(position.x - point.x) < .001f && Mathf.Abs(position.z - point.y) < .001f) return matrix;
+                    }
+                    throw new Exception("Missing marker or body at the real segment");
+                }
+                void ClearOfBody(Matrix4x4 body, Matrix4x4 marker, string description)
+                {
+                    float top = body.GetColumn(3).y + body.lossyScale.x * .5f;
+                    Require(marker.GetColumn(3).y >= top + .10f, description + " is buried in the enlarged body");
+                }
+
+                var world = new PveFixedWorld(7, false, null, true, localAdvantage: true, localOpeningFood: true,
+                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                    localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true,
+                    localMultiBite: true, localHeadTieAfterBite: true, localOpeningBoost: true, localFreeBoost: true);
+                var fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(world);
+                fighters[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 80));
+                fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(20000, 0, 0, 80));
+                for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+                var state = world.RenderState(); var target = state.snakes[1];
+                Require(Marks(target, "strengthWeakSegments")[1], "fixture did not produce a genuinely edible large-body segment");
+                foreach (bool reduced in new[] { true, false })
+                {
+                    renderer.ReducedEffects = reduced; renderer.Draw(state, "you");
+                    ClearOfBody(At(bodies[1], target.segments[1]), At(weakPoints, target.segments[1]), "actual weak point");
+                }
+
+                var danger = new PveFixedWorld(7, false, null, true);
+                fighters = (PveFixedFighter[])typeof(PveFixedWorld).GetField("fighters", flags).GetValue(danger);
+                fighters[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 80));
+                fighters[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-18000, 0, 0, 80));
+                for (int i = 2; i < fighters.Length; i++) fighters[i].alive = false;
+                state = danger.RenderState(); var own = state.snakes[0];
+                int part = Marks(own, "strengthThreatSegments").FindIndex(value => value);
+                Require(part > 0, "fixture did not produce a genuine body threat");
+                foreach (bool reduced in new[] { true, false })
+                {
+                    renderer.ReducedEffects = reduced; renderer.Draw(state, "you");
+                    ClearOfBody(At(bodies[0], own.segments[part]), At(threatMarks, own.segments[part]), "actual danger marker");
+                }
+                renderer.StrengthBodyVisual = false; renderer.Draw(state, "you");
+                Require(weakPoints.Count == 0 && threatMarks.Count == 0, "strength markers leaked into legacy mode");
+                Debug.Log("PASS Unity enlarged fallback body leaves real weak and danger markers visible");
             }
             finally
             {

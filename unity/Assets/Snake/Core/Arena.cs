@@ -542,7 +542,8 @@ namespace SnakeClub.Core
         public static int NextPreference(int preference) => NormalizePreference(preference) == 1 ? -1 : NormalizePreference(preference) + 1;
         public static string PreferenceLabel(int preference) => NormalizePreference(preference) == -1 ? "较近" : NormalizePreference(preference) == 1 ? "较远" : "标准";
         private static float Growth(int length) => Math.Max(0f, Math.Min(1f, (length - 16f) / 64f));
-        public static float CharacterScale(int length) => 1f + .5f * Growth(length);
+        public static float BodyScale(int length) => 1f + .5f * Growth(length);
+        public static float CharacterScale(int length) => 1f + .8f * Growth(length);
         public static float CameraSize(int length, bool boosting, int preference)
         {
             float multiplier = NormalizePreference(preference) == -1 ? .9f : NormalizePreference(preference) == 1 ? 1.1f : 1f;
