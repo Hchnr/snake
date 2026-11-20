@@ -107,7 +107,7 @@ async function main() {
   await delay(600); await capture('home'); await tap(270, 640);
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_READY'), 'start match');
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
-  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃')), 'visible protection explanation');
+  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃') && e.includes('全屏拖动转向') && e.includes('双指加速')), 'visible protection and control explanation');
   await capture('ready');
   if (process.env.SNAKE_WEAK_EDGE_CAPTURE_DIR) {
     const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_WEAK_EDGE \d+ [^ ]+ \d+ [-0-9.]+ [-0-9.]+/.test(e)), 'actual off-screen weak-body pointer', 120000);

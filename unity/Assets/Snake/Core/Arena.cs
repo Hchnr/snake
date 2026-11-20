@@ -317,7 +317,7 @@ namespace SnakeClub.Core
             if (player == null || !player.alive) return "";
             float shield = BirthShield(world, player, playerId);
             if (shield > 0)
-                return "保护 " + (int)Math.Ceiling(shield) + " 秒 · 暂不能与对手互吃\n先吃果实变大 · 全屏拖动转向";
+                return "保护 " + (int)Math.Ceiling(shield) + " 秒 · 暂不能与对手互吃\n先吃果实 · 全屏拖动转向 · 双指加速";
             return IsExpiryActive(world, state, playerId, suspended) ? EndedText : "";
         }
     }

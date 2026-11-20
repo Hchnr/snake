@@ -2143,7 +2143,8 @@ static void StrengthProtectionNoticeCases()
         var state = world.RenderState(); notice.Observe(world, state, "you");
         string text = notice.Text(world, state, "you", false);
         int protectionTicks = (first ? 4 : 3) * PveFixedWorld.TickRate;
-        Check(text.Contains("保护 " + (first ? 4 : 3) + " 秒") && text.Contains("不能与对手互吃") && text.Contains("果实"),
+        Check(text.Contains("保护 " + (first ? 4 : 3) + " 秒") && text.Contains("不能与对手互吃") && text.Contains("果实") &&
+            text.Contains("全屏拖动") && text.Contains("双指加速"),
             "opening protection did not explain actual immunity and food");
         Check(notice.Text(world, state, "you", true) == "" && notice.Text(world, state, "bot-1", false) == "",
             "protection cue appeared while suspended or for another player");
