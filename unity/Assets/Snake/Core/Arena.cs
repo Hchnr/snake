@@ -350,7 +350,7 @@ namespace SnakeClub.Core
     // automatically as the timer advances. They do not affect input or rules.
     public static class StrengthTutorialHints
     {
-        public static string Select(int tick, bool hasSteered, bool hasBoosted, bool openingFood = false)
+        public static string Select(int tick, bool hasSteered, bool hasBoosted, bool openingFood = false, bool freeBoost = false)
         {
             if (tick < 0 || tick >= 260) return "";
             if (tick < 60 && openingFood) return (hasSteered ? "先吃周围果实变大" : "全屏拖动 · 先吃周围果实变大") + "\n够强吃身体 · 较弱会弹开";
@@ -358,7 +358,7 @@ namespace SnakeClub.Core
             if (tick < 140)
             {
                 if (!hasSteered) return "全屏拖动转向\n金点较弱 · 红叉处身体有危险";
-                if (!hasBoosted) return "第二根手指按住加速\n金点较弱 · 红叉处身体有危险";
+                if (!hasBoosted) return freeBoost ? "第二指按住加速 · 累计前8秒免耗\n金点较弱 · 红叉处身体有危险" : "第二根手指按住加速\n金点较弱 · 红叉处身体有危险";
                 return "金点较弱 · 靠近可尝试吞食\n红叉处身体有危险";
             }
             return tick < 200 ? "围住对手可获得短时强化" : "时间到按当前长度排名 · 同长比淘汰";

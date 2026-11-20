@@ -162,7 +162,7 @@ with tempfile.TemporaryDirectory(prefix='snake-opening-eval-') as temp:
         'angle = unchecked((byte)(EvalEncounterVariant >= 3 ? (angle % 17) - 8 : (angle % 65) - 32));')
     code=once(code,'radius += 5000;','radius += EvalEncounterVariant == 2 ? 1000 : 5000;')
     before='''fighter.motion.Step(i == 0 ? heading : BotHeading(i), i == 0 ? boost : botBoost[i],
-                    i == 0 ? playerBonuses : new PveFixedBonuses());'''
+                    i == 0 ? playerBonuses : new PveFixedBonuses(), freeBoost);'''
     after='''byte actualHeading = i == 0 ? heading : BotHeading(i);
                 if (i == 1 && LocalOpeningBoost && Tick <= (maxTicks == 60 * TickRate ? 80 : 60) - (EvalEncounterVariant >= 4 ? 10 : 0))
                 {
@@ -184,7 +184,7 @@ with tempfile.TemporaryDirectory(prefix='snake-opening-eval-') as temp:
                     if(hold) { actualHeading=EvalEncounterVariant==5 ? AvoidLethalHead(i,evalEncounterHeading) : evalEncounterHeading; botBoost[i]=false; }
                 }
                 fighter.motion.Step(actualHeading, i == 0 ? boost : botBoost[i],
-                    i == 0 ? playerBonuses : new PveFixedBonuses());'''
+                    i == 0 ? playerBonuses : new PveFixedBonuses(), freeBoost);'''
     code=once(code,before,after)
     core.write_text(code)
     (folder/'Program.cs').write_text(program)

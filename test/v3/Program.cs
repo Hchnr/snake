@@ -43,11 +43,12 @@ if (args.Length == 3 && args[0] == "strength-local-v13-replay")
     return;
 }
 
-if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal" || args[0] == "strength-recovery-priority-replay-terminal" || args[0] == "strength-squeeze-escape-replay-terminal" || args[0] == "strength-multibite-replay-terminal" || args[0] == "strength-headtie-replay-terminal" || args[0] == "strength-opening-boost-replay-terminal"))
+if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "strength-advantage-replay-terminal" || args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || args[0] == "strength-recovery-replay-terminal" || args[0] == "strength-safe-recovery-replay-terminal" || args[0] == "strength-aligned-start-replay-terminal" || args[0] == "strength-capped-start-replay-terminal" || args[0] == "strength-stable-blocked-replay-terminal" || args[0] == "strength-recovery-priority-replay-terminal" || args[0] == "strength-squeeze-escape-replay-terminal" || args[0] == "strength-multibite-replay-terminal" || args[0] == "strength-headtie-replay-terminal" || args[0] == "strength-opening-boost-replay-terminal" || args[0] == "strength-free-boost-replay-terminal"))
 {
     int seed = int.Parse(args[1]); bool first = args[2] == "1";
     byte[] tape = Convert.FromBase64String(args[3]);
-    bool openingBoost = args[0] == "strength-opening-boost-replay-terminal";
+    bool freeBoost = args[0] == "strength-free-boost-replay-terminal";
+    bool openingBoost = args[0] == "strength-opening-boost-replay-terminal" || freeBoost;
     bool headTie = args[0] == "strength-headtie-replay-terminal" || openingBoost;
     bool multi = args[0] == "strength-multibite-replay-terminal" || headTie;
     bool squeeze = args[0] == "strength-squeeze-escape-replay-terminal" || multi;
@@ -57,11 +58,16 @@ if (args.Length == 4 && (args[0] == "strength-replay-terminal" || args[0] == "st
     bool recoverySupply = args[0] == "strength-recovery-replay-terminal" || safeRecovery;
     bool openingFood = args[0] == "strength-opening-replay-terminal" || args[0] == "strength-encounter-replay-terminal" || recoverySupply;
     bool openingEncounter = args[0] == "strength-encounter-replay-terminal" || recoverySupply;
-    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart, stableBlocked, priority, squeeze, multi, headTie, openingBoost)) throw new InvalidOperationException("Invalid recording");
+    if (!PveFixedRecording.TryReplayStrength(seed, first, tape, out var replay, advantage, openingFood, openingEncounter, recoverySupply, safeRecovery, alignedStart, cappedStart, stableBlocked, priority, squeeze, multi, headTie, openingBoost, freeBoost)) throw new InvalidOperationException("Invalid recording");
     Console.WriteLine(JsonSerializer.Serialize(new { ticks = replay.Tick, hash = SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) }));
     return;
 }
 
+if (args.Length == 1 && args[0] == "strength-free-boost-vector")
+{
+    Console.WriteLine(SnakeClub.Tests.FreeBoostVector.Compute());
+    return;
+}
 if (args.Length == 1 && args[0] == "strength-opening-boost-vector")
 {
     Console.WriteLine(SnakeClub.Tests.OpeningBoostVector.Compute());
@@ -207,6 +213,7 @@ var cases = new (string name, Action run)[]
     ("multi-bite retains snapshot ordering, event totals and replay", StrengthMultiBiteRegression.Run),
     ("head tie handles simultaneous bites and safe separation", StrengthHeadTieRegression.Run),
     ("opening boost expires, reports correctly and replays by version", SnakeClub.Tests.OpeningBoostRegression.Run),
+    ("limited free boost preserves movement, charges only actual use, and replays", SnakeClub.Tests.FreeBoostRegression.Run),
     ("rewarded ad handles failures, reentrancy and owner teardown", RewardedAdFlowRegression.Run),
     ("simultaneous contact notices reflect real resolved events", StrengthContactCombinationRegression.Run),
     ("elimination transitions require a real displayed life and reset cleanly", EliminationTransitionCases),

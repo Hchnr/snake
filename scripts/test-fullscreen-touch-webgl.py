@@ -36,7 +36,7 @@ class Handler(SimpleHTTPRequestHandler):
 
 def inject_once(code, before, after):
     if code.count(before) != 1:
-        sys.exit('Input diagnostic hook changed; inspect and update the fixture.')
+        sys.exit('Input diagnostic hook changed; inspect and update the fixture: ' + repr(before[:120]))
     return code.replace(before, after, 1)
 
 with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
@@ -71,6 +71,36 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
     before = '                else { paused = !paused; if (paused) feedback.SuspendAudio(); }'
     after = '                else { paused = !paused; Debug.Log("SNAKE_TOUCH_PAUSED " + (paused ? 1 : 0)); if (paused) feedback.SuspendAudio(); }'
     code = inject_once(code, before, after)
+    if os.environ.get('SNAKE_TOUCH_VARY_LABELS') == '1':
+        before = '            if (Button(GamePauseButton, online ? "退出" : (paused ? "继续" : "暂停"), new Color(.10f, .17f, .25f, .92f)))'
+        after = '            bool diagnosticPauseRelease = Event.current.type == EventType.MouseUp && GamePauseButton.Contains(Event.current.mousePosition);\n' + before
+        code = inject_once(code, before, after)
+        before = '            string strengthNotice = StrengthContactNotice.Text(fixedPve, state != null ? state.tick : -1, out bool strengthWarning);'
+        after = '''            // Temporary diagnostic: emulate a dynamic HUD control appearing
+            // between pointer down and up without drawing on screen.
+            if (diagnosticPauseRelease)
+            {
+                GUI.Label(new Rect(0, 0, 1, 1), "");
+                Debug.Log("SNAKE_TOUCH_LAYOUT_VARIATION " + Time.frameCount);
+            }
+''' + before
+        code = inject_once(code, before, after)
+    if os.environ.get('SNAKE_TOUCH_TRACE') == '1':
+        before = '            activeTouchIds.Clear();'
+        after = '''            for (int ti = 0; ti < Input.touchCount; ti++)
+                Debug.Log("SNAKE_TOUCH_TRACE_PHASE " + Time.frameCount + " " + Input.GetTouch(ti).fingerId + " " + Input.GetTouch(ti).phase + " active=" + dragSteering.Active + " moved=" + dragSteering.Moved);
+''' + before
+        code = inject_once(code, before, after)
+        before = '                bool mouseUp = Event.current.type == EventType.MouseUp;'
+        after = '''                Debug.Log("SNAKE_TOUCH_TRACE_GUI " + Time.frameCount + " " + Event.current.type + " pos=" + Event.current.mousePosition + " hot=" + GUIUtility.hotControl + " touches=" + activeTouches + " active=" + dragSteering.Active + " moved=" + dragSteering.Moved + " pending=" + suppressPendingDragUp + " release=" + suppressPointerUpFrame);
+''' + before
+        code = inject_once(code, before, after)
+        before = '            bool pressed = GUI.Button(rect, text, style);'
+        after = '''            bool traceButton = text == "暂停" && (Event.current.type == EventType.MouseDown || Event.current.type == EventType.MouseUp);
+            if (traceButton) Debug.Log("SNAKE_TOUCH_TRACE_BUTTON_BEFORE " + Time.frameCount + " " + Event.current.type + " pos=" + Event.current.mousePosition + " hot=" + GUIUtility.hotControl);
+''' + before + '''
+            if (traceButton) Debug.Log("SNAKE_TOUCH_TRACE_BUTTON_AFTER " + Time.frameCount + " " + Event.current.type + " hot=" + GUIUtility.hotControl + " pressed=" + pressed);'''
+        code = inject_once(code, before, after)
     app_path.write_text(code)
     front_path = project / 'Assets/Snake/SnakeGameFront.cs'
     front = front_path.read_text()
@@ -79,7 +109,7 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
     front_path.write_text(inject_once(front, before, after))
     renderer_path = project / 'Assets/Snake/ArenaRenderer.cs'
     renderer = renderer_path.read_text()
-    before = '                view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));'
+    before = '            else view.orthographicSize = Mathf.Lerp(view.orthographicSize, targetSize, 1f - Mathf.Exp(-2.5f * zoomDelta));'
     after = before + '\n                if (MotionPaused && adjustingPausedView) Debug.Log("SNAKE_TOUCH_ZOOM " + view.orthographicSize.ToString("F3", System.Globalization.CultureInfo.InvariantCulture));'
     renderer_path.write_text(inject_once(renderer, before, after))
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -100,9 +130,10 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
         for attempt in range(2):
             result = subprocess.run(['node', str(root / 'scripts/fullscreen-touch-webgl-probe.cjs'), str(chrome),
                                      'http://127.0.0.1:' + str(server.server_port) + '/'],
-                                    capture_output=True, text=True, timeout=120, check=False)
+                                    capture_output=True, text=True, timeout=240 if os.environ.get('SNAKE_TOUCH_EXHAUSTED_SCREENSHOT') or os.environ.get('SNAKE_TOUCH_CANCEL_LOOPS') else 120, check=False)
             if result.returncode:
-                sys.exit('Touch diagnostic run ' + str(attempt + 1) + ' failed:\n' + result.stdout[-2000:] + result.stderr[-4000:])
+                error = result.stderr if len(result.stderr) <= 5000 else result.stderr[:1000] + '\n...\n' + result.stderr[-4000:]
+                sys.exit('Touch diagnostic run ' + str(attempt + 1) + ' failed:\n' + result.stdout[-2000:] + error)
             print('Run ' + str(attempt + 1) + ':\n' + result.stdout.strip(), flush=True)
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

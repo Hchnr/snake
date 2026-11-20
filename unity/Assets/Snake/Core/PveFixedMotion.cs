@@ -195,7 +195,7 @@ namespace SnakeClub.Core
             return true;
         }
 
-        public void Step(byte target, bool boost, PveFixedBonuses bonuses)
+        public void Step(byte target, bool boost, PveFixedBonuses bonuses, bool freeBoost = false)
         {
             PreviousHead = segments[0];
             if (ReboundTicks > 0) ReboundTicks--;
@@ -226,7 +226,7 @@ namespace SnakeClub.Core
                     a.y - (int)((long)dy * Spacing / length));
             }
             if (bounced && ReboundCooldown == 0) { ReboundTicks = 16; ReboundCooldown = 160; }
-            if (boosting)
+            if (boosting && !freeBoost)
             {
                 int saving = Clamp(bonuses.boostSaving + (Length <= 12 ? bonuses.shortBoostSaving : 0), 0, 700);
                 boostDebt += 200L * (10000 - saving);

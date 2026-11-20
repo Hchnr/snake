@@ -106,6 +106,11 @@ async function main() {
   await touch('touchStart', [point(200, 500, 1)]); await delay(150);
   await touch('touchStart', [point(200, 500, 1), point(80, 160, 2)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)), 'second finger boosts');
+  if (process.env.SNAKE_TOUCH_ACTIVE_SCREENSHOT) {
+    await delay(150);
+    const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(process.env.SNAKE_TOUCH_ACTIVE_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
+  }
   const releaseIndex = events.length;
   await touch('touchEnd', [point(80, 160, 2)]);
   await waitFor(() => hasSince(releaseIndex, 'SNAKE_TOUCH_DOM touchend 2 1'), 'actual second-finger release');
@@ -133,10 +138,14 @@ async function main() {
   await touch('touchStart', [point(200, 500, 1)]); await delay(100);
   await touch('touchMove', [point(260, 500, 1)]);
   await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ 0 0(?:\s|$)/.test(e)), 'direction before cancellation');
+  if (process.env.SNAKE_TOUCH_TRACE === '1')
+    await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TRACE_PHASE \d+ \d+ Moved\b/.test(e)), 'Unity observed movement before cancellation');
   await touch('touchCancel', []); await delay(250);
   console.log('PASS drag cancellation');
   index = events.length; await tap(80, 160);
   await waitFor(() => hasSince(index, 'SNAKE_TOUCH_PAUSED 1'), 'pause tap');
+  if (process.env.SNAKE_TOUCH_VARY_LABELS === '1')
+    await waitFor(() => hasSince(index, 'SNAKE_TOUCH_LAYOUT_VARIATION'), 'HUD variation on pause release');
   await delay(200); const pauseIndex = events.length; await delay(300);
   if (events.slice(pauseIndex).some(e => e.includes('SNAKE_TOUCH_TICK'))) throw Error('simulation advanced while paused');
   const viewIndex = events.length; await tap(350, 579);
@@ -152,9 +161,40 @@ async function main() {
   index = events.length; await tap(270, 525);
   await waitFor(() => hasSince(index, 'SNAKE_TOUCH_TICK'), 'simulation resumes');
   console.log('PASS home and pause view settings, paused zoom, and resume');
+  const cancelLoops = Number(process.env.SNAKE_TOUCH_CANCEL_LOOPS || 0);
+  if (!Number.isInteger(cancelLoops) || cancelLoops < 0 || cancelLoops > 20) throw Error('Invalid cancellation loop count');
+  for (let loop = 0; loop < cancelLoops; loop++) {
+    index = events.length;
+    await touch('touchStart', [point(200, 500, 1)]); await delay(100);
+    await touch('touchMove', [point(260, 500, 1)]);
+    await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TICK \d+ 0 0(?:\s|$)/.test(e)), 'direction before cancellation loop ' + loop);
+    if (process.env.SNAKE_TOUCH_TRACE === '1')
+      await waitFor(() => events.slice(index).some(e => /SNAKE_TOUCH_TRACE_PHASE \d+ \d+ Moved\b/.test(e)), 'Unity observed movement before cancellation loop ' + loop);
+    await touch('touchCancel', []); await delay(250);
+    index = events.length; await tap(80, 160);
+    await waitFor(() => hasSince(index, 'SNAKE_TOUCH_PAUSED 1'), 'pause after cancellation loop ' + loop);
+    if (process.env.SNAKE_TOUCH_VARY_LABELS === '1')
+      await waitFor(() => hasSince(index, 'SNAKE_TOUCH_LAYOUT_VARIATION'), 'HUD variation after cancellation loop ' + loop);
+    index = events.length; await tap(270, 525);
+    await waitFor(() => hasSince(index, 'SNAKE_TOUCH_TICK'), 'resume after cancellation loop ' + loop);
+  }
+  if (cancelLoops) console.log('PASS ' + cancelLoops + ' cancellation, pause and resume loops');
+  if (process.env.SNAKE_TOUCH_EXHAUSTED_SCREENSHOT) {
+    index = events.length;
+    await touch('touchStart', [point(200, 500, 1)]); await delay(100);
+    await touch('touchStart', [point(200, 500, 1), point(350, 500, 2)]);
+    await waitFor(() => events.slice(index).filter(e => /SNAKE_TOUCH_TICK \d+ \d+ 1(?:\s|$)/.test(e)).length >= 165, 'free boost allowance exhausted', 120000);
+    await delay(150);
+    const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(process.env.SNAKE_TOUCH_EXHAUSTED_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
+    await touch('touchEnd', []);
+    console.log('PASS held second finger for at least 165 boosted simulation steps');
+  }
 }
 main().then(() => { ws.close(); chrome.kill('SIGTERM'); }).catch(async error => {
   console.error(error.message); process.exitCode = 1;
+  if (process.env.SNAKE_TOUCH_TRACE === '1')
+    console.error('Touch trace: ' + events.filter(e => e.includes('SNAKE_TOUCH_DOM') || e.includes('SNAKE_TOUCH_TRACE_')).slice(-70).join(' | '));
   try {
     if (ws && ws.readyState === WebSocket.OPEN) {
       const screenshot = await call('Page.captureScreenshot', { format: 'png' });
