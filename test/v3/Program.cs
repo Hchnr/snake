@@ -531,6 +531,16 @@ static void MusicBehavior()
     Check(home.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && home.Any(x => Math.Abs(x) > .05f), "home loop is clipped or silent");
     Check(battle.All(x => float.IsFinite(x) && Math.Abs(x) < .4f) && battle.Any(x => Math.Abs(x) > .05f), "battle loop is clipped or silent");
     Check(!home.SequenceEqual(battle), "home and battle loops are identical");
+    // A sudden reset at a note boundary adds a short broadband transient.
+    // Exercise the generated fallback at every note transition, including
+    // boundaries that lie halfway between two samples.
+    for (int note = 1; note < MusicComposer.Seconds * 4; note++)
+    {
+        int boundary = (note * MusicComposer.SampleRate + 3) / 4;
+        foreach (var track in new[] { home, battle })
+            Check(Math.Abs(track[boundary] - 2 * track[boundary - 1] + track[boundary - 2]) < .0004f,
+                $"music has an abrupt note transition at {note}");
+    }
 }
 
 static void ContactNoticeLayoutCases()

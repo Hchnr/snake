@@ -19,6 +19,10 @@ class MusicAssetsTest(unittest.TestCase):
             self.assertLess(abs(samples[-1]), 328)
             self.assertGreater(max(abs(sample) for sample in samples), 1600)
             self.assertLess(max(abs(sample) for sample in samples), 13107)
+            for note in range(1, 32):
+                boundary = (note * 22050 + 3) // 4
+                transient = abs(samples[boundary] - 2 * samples[boundary - 1] + samples[boundary - 2])
+                self.assertLess(transient, 14, f'{name}: abrupt transition at note {note}')
             data.append(raw)
         self.assertNotEqual(data[0], data[1])
 

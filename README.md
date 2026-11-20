@@ -132,7 +132,7 @@ SNAKE_PORT=2568 SNAKE_DEV_AUTH=1 SNAKE_SQLITE_FILE=server/data/snake.sqlite npm 
 
 ### 背景音乐素材
 
-大厅与对局默认使用程序合成的临时循环，设置中可分别调整音乐、音效音量。确认游戏内使用、剪辑、发行及商业化权利后，可分别将短音频放在 `unity/Assets/Resources/Music/Home` 和 `unity/Assets/Resources/Music/Battle`（使用 Unity 支持的音频文件扩展名并提交其 `.meta`）；客户端优先加载对应素材，缺失时使用临时循环。不同宿主的压缩格式、音质、音量、循环接缝和内存应在真实设备检查。当前未加入用户指定的热门歌曲，也未确认其游戏内使用授权。
+大厅与对局默认使用预渲染的原创临时循环，设置中可分别调整音乐、音效音量；资源缺失时使用程序生成的同款循环。确认游戏内使用、剪辑、发行及商业化权利后，可分别将短音频放在 `unity/Assets/Resources/Music/Home` 和 `unity/Assets/Resources/Music/Battle`（使用 Unity 支持的音频文件扩展名并提交其 `.meta`）。不同宿主的压缩格式、音质、音量、循环接缝和内存应在真实设备检查。当前未加入用户指定的热门歌曲，也未确认其游戏内使用授权。
 
 ### SQLite 备份与恢复演练
 
