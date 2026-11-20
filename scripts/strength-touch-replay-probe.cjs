@@ -109,6 +109,11 @@ async function main() {
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
   await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃') && e.includes('全屏拖动转向') && e.includes('双指加速')), 'visible protection and control explanation');
   await capture('ready');
+  if (process.env.SNAKE_STRENGTH_CAPTURE_FRUIT === '1') {
+    const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_FRUIT \d+ \d+/.test(e)), 'actual attracted fruit', 60000);
+    await delay(150); await capture('opening-fruit');
+    console.log('PASS actual opening fruit attraction (diagnostic freeze): ' + line);
+  }
   if (process.env.SNAKE_WEAK_EDGE_CAPTURE_DIR) {
     const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_WEAK_EDGE \d+ [^ ]+ \d+ [-0-9.]+ [-0-9.]+/.test(e)), 'actual off-screen weak-body pointer', 120000);
     const match = line.match(/SNAKE_TOUCH_WEAK_EDGE (\d+) ([^ ]+) (\d+) ([-0-9.]+) ([-0-9.]+)/);
@@ -152,8 +157,8 @@ async function main() {
     await capture('protection-ended');
   }
   if (process.env.SNAKE_STRENGTH_CAPTURE_FADE === '1') {
-    const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_FADE \d+ \d+ 防御逐渐降低 [123]秒/.test(e)), 'visible opening defense fade', 120000);
-    const match = line.match(/SNAKE_TOUCH_FADE (\d+) (\d+) 防御逐渐降低 ([123])秒/);
+    const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_FADE \d+ \d+ 吸果 · 防御渐弱 [123]秒/.test(e)), 'visible opening defense fade', 120000);
+    const match = line.match(/SNAKE_TOUCH_FADE (\d+) (\d+) 吸果 · 防御渐弱 ([123])秒/);
     const tick = Number(match[1]), hardness = Number(match[2]);
     if (tick < 250 || tick > 280 || hardness !== 80 + Math.floor(170 * (300 - tick) / 60))
       throw Error('Opening defense fade did not match simulation: ' + line);

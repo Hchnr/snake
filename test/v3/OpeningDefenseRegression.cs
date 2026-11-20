@@ -57,7 +57,7 @@ namespace SnakeClub.Tests
                 }
                 Check(PveFixedRecording.TryReplayLocalStrength(PveFixedRecording.LocalStrengthOpeningDefenseRules, seed, first, inputs.ToArray(), out var replay) &&
                     world.Tick == replay.Tick && StrengthStateDigest.Compute(world) == StrengthStateDigest.Compute(replay), "v15 replay mismatch " + seed);
-                Check(!PveFixedRecording.TryReplayLocalStrength("strength-local-advantage-16", seed, first, inputs.ToArray(), out _), "unknown rules accepted");
+                Check(!PveFixedRecording.TryReplayLocalStrength("strength-local-advantage-17", seed, first, inputs.ToArray(), out _), "unknown rules accepted");
             }
 
             // Replay one identical actual approach: a small opponent eats the

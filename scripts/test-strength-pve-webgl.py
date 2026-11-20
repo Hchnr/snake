@@ -40,6 +40,7 @@ headtie_fixture_pattern = re.compile(r'headtie-fixture=([0-9a-f]{16})')
 opening_boost_pattern = re.compile(r'v13-steps=([0-9a-f,]+)')
 free_boost_pattern = re.compile(r'v14-steps=([0-9a-f,]+)')
 opening_defense_pattern = re.compile(r'v15-steps=([0-9a-f,]+)')
+opening_fruit_pattern = re.compile(r'v16-steps=([0-9a-f,]+)')
 stable_fixture_pattern = re.compile(r'stable-fixture=([0-9a-f]{16})')
 print('Computing the desktop .NET reference...', flush=True)
 reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-pve-vector'],
@@ -341,6 +342,13 @@ if not defense_match or len(defense_match.group(1).split(',')) != 400:
 expected_defense = defense_match.group(1)
 if hashlib.sha256(expected_defense.encode('ascii')).hexdigest() != 'bac2abbca9817dafd695d38a4d3b8d2559d6cb0d882c6dc857c1f2cf12e32528':
     sys.exit('MISMATCH: v15 per-tick fixture changed from the preserved reference.')
+fruit_reference = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--', 'strength-opening-fruit-vector'], text=True, capture_output=True, check=True, timeout=180).stdout
+fruit_match = opening_fruit_pattern.search(fruit_reference)
+if not fruit_match or len(fruit_match.group(1).split(',')) != 400:
+    sys.exit('Desktop v16 per-tick fixture is incomplete.')
+expected_fruit = fruit_match.group(1)
+if hashlib.sha256(expected_fruit.encode('ascii')).hexdigest() != '036c467455f559edbaf282a616ca2b58c2087568a4f19bfb2efbaeab872f9a13':
+    sys.exit('MISMATCH: v16 per-tick fixture changed from the preserved reference.')
 
 squeeze_coverage = 0
 for case in expected_squeeze.split(','):
@@ -380,11 +388,12 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-webgl-') as directory:
     shutil.copy2(root / 'test/v3/OpeningBoostVector.cs', target / 'OpeningBoostVector.cs')
     shutil.copy2(root / 'test/v3/FreeBoostVector.cs', target / 'FreeBoostVector.cs')
     shutil.copy2(root / 'test/v3/OpeningDefenseVector.cs', target / 'OpeningDefenseVector.cs')
+    shutil.copy2(root / 'test/v3/OpeningFruitVector.cs', target / 'OpeningFruitVector.cs')
     (target / 'FixedVectorDiagnostic.cs').write_text('''using UnityEngine;
 using SnakeClub.Tests;
 internal static class FixedVectorDiagnostic {
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    private static void Run() { if (Application.absoluteURL.Contains("opening-defense=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningDefenseVector.Compute()); else if (Application.absoluteURL.Contains("free-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + FreeBoostVector.Compute()); else if (Application.absoluteURL.Contains("opening-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningBoostVector.Compute()); else if (Application.absoluteURL.Contains("headtie=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeHeadTie()); else if (Application.absoluteURL.Contains("multi=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeMultiBite()); else if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
+    private static void Run() { if (Application.absoluteURL.Contains("opening-fruit=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningFruitVector.Compute()); else if (Application.absoluteURL.Contains("opening-defense=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningDefenseVector.Compute()); else if (Application.absoluteURL.Contains("free-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + FreeBoostVector.Compute()); else if (Application.absoluteURL.Contains("opening-boost=1")) Debug.Log("SNAKE_FIXED_VECTOR " + OpeningBoostVector.Compute()); else if (Application.absoluteURL.Contains("headtie=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeHeadTie()); else if (Application.absoluteURL.Contains("multi=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeMultiBite()); else if (Application.absoluteURL.Contains("squeeze=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeSqueezeEscape()); else if (Application.absoluteURL.Contains("priority=1")) Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.ComputeRecoveryPriority()); else Debug.Log("SNAKE_FIXED_VECTOR " + StrengthPveReplayVector.Compute() + "|" + StrengthPveReplayVector.ComputeRecovery() + "|" + StrengthPveReplayVector.ComputeSafeRecovery() + "|" + StrengthPveReplayVector.ComputeAlignedStart() + "|" + StrengthPveReplayVector.ComputeCappedStart() + "|" + StrengthPveReplayVector.ComputeStableBlocked()); }
 }
 ''')
     output = temp / 'webgl'; stamp = temp / 'built'; log = temp / 'build.log'
@@ -527,6 +536,21 @@ internal static class FixedVectorDiagnostic {
                     print('First differing v15 tick: ' + str(tick) + ': .NET ' + desktop + ' / WebGL ' + webgl)
                     break
             sys.exit('MISMATCH: v15 per-tick state differs across runtimes.')
+        print('Running v16 opening-fruit per-tick fixture in a ninth muted headless browser...', flush=True)
+        fruit_result = subprocess.run(['node', str(root / 'scripts/fixed-pve-webgl-probe.cjs'), str(chrome),
+                                       'http://127.0.0.1:' + str(server.server_port) + '/?opening-fruit=1'],
+                                      capture_output=True, text=True, timeout=240, check=False)
+        if fruit_result.returncode:
+            sys.exit('Headless v16 diagnostic failed: ' + fruit_result.stderr[-3000:])
+        actual_fruit = opening_fruit_pattern.search(fruit_result.stdout)
+        if not actual_fruit or len(actual_fruit.group(1).split(',')) != 400:
+            sys.exit('WebGL v16 per-tick fixture is incomplete.')
+        if actual_fruit.group(1) != expected_fruit:
+            for tick, (desktop, webgl) in enumerate(zip(expected_fruit.split(','), actual_fruit.group(1).split(',')), 1):
+                if desktop != webgl:
+                    print('First differing v16 tick: ' + str(tick) + ': .NET ' + desktop + ' / WebGL ' + webgl)
+                    break
+            sys.exit('MISMATCH: v16 per-tick state differs across runtimes.')
         print('.NET:  ' + expected + '\nWebGL: ' + actual)
         if actual != expected:
             for desktop, webgl in zip(expected.split(','), actual.split(',')):
@@ -586,6 +610,6 @@ internal static class FixedVectorDiagnostic {
             sys.exit('MISMATCH: squeeze-escape simulation differs across runtimes.')
         if actual_squeeze_fixture_match.group(1) != expected_squeeze_fixture:
             sys.exit('MISMATCH: squeeze lifecycle fixture differs across runtimes.')
-        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9, 112 v10, 112 v11, 112 v12 matches, 400 v13, 230 controlled v14 and 400 v15 ticks plus collision and recovery fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
+        print('MATCH: 18 strength, 16 v4, 24 v5, 40 v6, 70 v7, 70 v8, 96 v9, 112 v10, 112 v11, 112 v12 matches, 400 v13, 230 controlled v14, 400 v15 and 400 v16 ticks plus collision and recovery fixtures; selected hidden state only; Douyin devices, arbitrary inputs and rewards remain unverified.')
     finally:
         server.shutdown(); server.server_close(); thread.join(timeout=5)

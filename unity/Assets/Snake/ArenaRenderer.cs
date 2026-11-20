@@ -95,6 +95,7 @@ namespace SnakeClub
         private float reboundStarted = -10f, previousRebound;
         private LineRenderer strengthAttackRing, strengthDamageRing, strengthPickupPendingRing, strengthLevelRing;
         private readonly LineRenderer[] recoverySupplyRings = new LineRenderer[PveFixedWorld.RecoverySupplyCount];
+        private readonly LineRenderer[] openingFruitRings = new LineRenderer[4];
         private ArenaState strengthImpactSource;
         private int seenStrengthAttackTick = -1, seenStrengthDamageTick = -1, seenStrengthLevelTick = -1;
         private float strengthAttackStarted = -10f, strengthDamageStarted = -10f, strengthLevelStarted = -10f;
@@ -410,6 +411,8 @@ namespace SnakeClub
             strengthLevelRing = MakeEffectRing("Strength level up", new Color(.65f, 1f, .60f, 1f));
             for (int i = 0; i < recoverySupplyRings.Length; i++)
                 recoverySupplyRings[i] = MakeEffectRing("Recovery supply " + i, new Color(.72f, 1f, .58f, 1f));
+            for (int i = 0; i < openingFruitRings.Length; i++)
+                openingFruitRings[i] = MakeEffectRing("Attracted opening fruit " + i, new Color(1f, .84f, .38f, 1f));
         }
 
         private LineRenderer MakeEffectRing(string name, Color color)
@@ -867,12 +870,18 @@ namespace SnakeClub
                     starObject.transform.localScale = Vector3.one * (1.2f + (ReducedEffects ? 0f : .15f * Mathf.Sin(visualClock.Time * 4)));
                 }
             }
-            int shownRecoveryFruit = 0;
+            int shownRecoveryFruit = 0, shownOpeningFruit = 0;
             foreach (var fruit in state.fruits)
             {
                 Point p = fruit.position;
                 float pulse = ReducedEffects ? .65f : .65f + .08f * Mathf.Sin(visualClock.Time * 2.4f + p.x + p.y);
                 fruits[Mathf.Abs(fruit.color % fruits.Length)].Add(Matrix4x4.TRS(new Vector3(p.x, .52f, p.y), Quaternion.identity, Vector3.one * pulse));
+                if (StrengthBodyVisual && fruit.openingAttracted && !fruit.recoverySupply && shownOpeningFruit < openingFruitRings.Length)
+                {
+                    var ring = openingFruitRings[shownOpeningFruit++];
+                    ring.enabled = true; ring.widthMultiplier = .09f;
+                    PlaceRing(ring, new Vector3(p.x, .34f, p.y), ReducedEffects ? .62f : .62f + .05f * Mathf.Sin(visualClock.Time * 5f));
+                }
                 if (StrengthBodyVisual && fruit.recoverySupply && shownRecoveryFruit < recoverySupplyRings.Length)
                 {
                     var ring = recoverySupplyRings[shownRecoveryFruit++];
@@ -882,6 +891,7 @@ namespace SnakeClub
                 }
             }
             for (int i = shownRecoveryFruit; i < recoverySupplyRings.Length; i++) recoverySupplyRings[i].enabled = false;
+            for (int i = shownOpeningFruit; i < openingFruitRings.Length; i++) openingFruitRings[i].enabled = false;
             for (int i = 0; i < bodies.Length; i++) { DrawBatch(links[i], bodyMaterials[i], cylinder); DrawBatch(bodies[i], bodyMaterials[i], sphere); DrawBatch(horns[i], bodyMaterials[i], cone); }
             for (int i = 0; i < fruits.Length; i++) DrawBatch(fruits[i], fruitMaterials[i]);
             scaleMaterial.color = Color.Lerp(Palette[SkinPalette[Mathf.Clamp(SelectedSkin, 0, SkinPalette.Length - 1)]], Color.white, .65f);

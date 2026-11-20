@@ -56,7 +56,7 @@ namespace SnakeClub.Core
         public Point position;
         public int color;
         // Local practice presentation only; the actual fruit remains shared.
-        internal bool recoverySupply;
+        internal bool recoverySupply, openingAttracted;
     }
 
     [Serializable]
