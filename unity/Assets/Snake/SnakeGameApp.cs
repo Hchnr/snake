@@ -73,7 +73,7 @@ namespace SnakeClub
         private static readonly Rect GameTopBar = new Rect(48, 50, 984, 188);
         private static readonly Rect GameMiniMap = new Rect(790, 285, 240, 240);
         private static readonly Rect GamePauseButton = new Rect(55, 285, 215, 76);
-        private static readonly Rect StrengthGuidancePanel = new Rect(100, 1320, 880, 100);
+        private static readonly Rect StrengthGuidancePanel = new Rect(100, 1790, 880, 100);
         private const float RecoveryMarkerHalfSize = 23f;
         private readonly EventOutcomeNotice eventOutcome = new EventOutcomeNotice();
         private readonly EliminationFeedback eliminationFeedback = new EliminationFeedback();
@@ -941,7 +941,9 @@ namespace SnakeClub
             if (showProtection || showRecovery || showStrengthIntro)
             {
                 Panel(StrengthGuidancePanel, new Color(.025f, .08f, .14f, .90f));
-                Label(new Rect(125, 1330, 830, 80), showProtection ? protectionText : showRecovery ? recoveryText : StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted, fixedPve.LocalOpeningFood, fixedPve.LocalFreeBoost), showProtection || showRecovery ? 30 : 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
+                Label(new Rect(StrengthGuidancePanel.x + 25, StrengthGuidancePanel.y + 10, StrengthGuidancePanel.width - 50, StrengthGuidancePanel.height - 20),
+                    showProtection ? protectionText : showRecovery ? recoveryText : StrengthTutorialHints.Select(state.tick, hasSteered, tutorialBoosted, fixedPve.LocalOpeningFood, fixedPve.LocalFreeBoost),
+                    showProtection || showRecovery ? 30 : 25, new Color(.75f, .97f, .88f), TextAnchor.MiddleCenter, true);
             }
             bool strengthHeadWarning = !paused && fixedPve != null && fixedPve.StrengthPreview && state != null && !string.IsNullOrEmpty(state.strengthHeadThreat);
             if (strengthHeadWarning)
@@ -1026,7 +1028,7 @@ namespace SnakeClub
                 if (Button(strengthGuide ? new Rect(185, 1120, 310, 75) : new Rect(345, 980, 390, 75), "返回菜单", new Color(.15f, .22f, .31f))) BackToMenu();
                 if (strengthGuide && Button(new Rect(525, 1120, 365, 75), "视野：" + GrowthView.PreferenceLabel(viewPreference), new Color(.12f, .35f, .40f))) CycleViewPreference();
             }
-            else DrawControls();
+            else if (!showGuidance) DrawControls();
         }
 
         // Screen coordinates here have Unity's bottom-left origin, matching

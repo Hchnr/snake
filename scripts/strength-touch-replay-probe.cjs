@@ -107,7 +107,7 @@ async function main() {
   await delay(600); await capture('home'); await tap(270, 640);
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_READY'), 'start match');
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_TICK'), 'first simulation tick');
-  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃')), 'visible protection explanation');
+  await waitFor(() => events.some(e => e.includes('SNAKE_TOUCH_CUE') && e.includes('暂不能与对手互吃') && e.includes('全屏拖动转向') && e.includes('双指加速')), 'visible protection and control explanation');
   await capture('ready');
   if (process.env.SNAKE_WEAK_EDGE_CAPTURE_DIR) {
     const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_WEAK_EDGE \d+ [^ ]+ \d+ [-0-9.]+ [-0-9.]+/.test(e)), 'actual off-screen weak-body pointer', 120000);
@@ -122,11 +122,12 @@ async function main() {
   await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= 6; }), 'opening ticks');
   let index = events.length;
   // The explanation is not a control pad: drag from inside it.
-  await touch('touchStart', [point(250, 680, 1)]); await delay(100);
-  const steeredPoint = openingLeft ? point(170, 680, 1) : point(250, 600, 1);
+  await touch('touchStart', [point(250, 920, 1)]); await delay(100);
+  const steeredPoint = openingLeft ? point(170, 920, 1) : point(250, 840, 1);
   await touch('touchMove', [steeredPoint]);
   const expectedHeading = openingLeft ? 128 : 64;
   await waitFor(() => events.slice(index).some(e => new RegExp(`SNAKE_TOUCH_TICK \\d+ ${expectedHeading} 0(?:\\s|$)`).test(e)), 'actual steering');
+  console.log('PASS protection guidance drag -> heading ' + expectedHeading);
   if (openingLeft) {
     const line = await waitFor(() => events.slice(index).find(e => /SNAKE_TOUCH_OPENING \d+ 128 1 \d+/.test(e)), 'actual capped opening assist');
     const m = line.match(/SNAKE_TOUCH_OPENING (\d+) 128 1 (\d+)/);
