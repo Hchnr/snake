@@ -251,7 +251,8 @@ namespace SnakeClub
                 localRecoverySupply: localStrength, localSafeRecovery: localStrength, localAlignedStart: localStrength,
                 localCappedStart: localStrength, localStableBlocked: localStrength, localRecoveryPriority: localStrength,
                 localSqueezeEscape: localStrength, localMultiBite: localStrength, localHeadTieAfterBite: localStrength, localOpeningBoost: localStrength,
-                localFreeBoost: localStrength && !localStrengthRun, localOpeningDefense: localStrength && !localStrengthRun);
+                localFreeBoost: localStrength && !localStrengthRun, localOpeningDefense: localStrength && !localStrengthRun,
+                localOpeningFruit: localStrength && !localStrengthRun);
             state = fixedPve.RenderState();
             strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);
             matchHighlights.Reset(); matchHighlights.Observe(state, playerId);
@@ -1021,7 +1022,7 @@ namespace SnakeClub
                 if (strengthGuide)
                 {
                     Label(new Rect(180, 720, 720, 280),
-                        (fixedPve.LocalOpeningDefense ? "开局15秒攻防强化，防御最后3秒逐渐降低\n" : fixedPve.LocalOpeningBoost ? "开局15秒攻防额外强化（含出生保护）\n" : fixedPve.LocalStrengthAdvantage ? "本局玩家自带攻防优势\n" : "") + "任意位置拖动转向 · 第二指按住加速\n" + (fixedPve.LocalFreeBoost ? "累计前8秒加速免耗身体\n" : "") + "强度足够才能吃身体，不足时弹开\n金点和弱点箭头提示目标 · 红叉提示危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
+                        (fixedPve.LocalOpeningFruit ? "开局15秒吸引附近果实，攻防强化\n防御最后3秒逐渐降低\n" : fixedPve.LocalOpeningDefense ? "开局15秒攻防强化，防御最后3秒逐渐降低\n" : fixedPve.LocalOpeningBoost ? "开局15秒攻防额外强化（含出生保护）\n" : fixedPve.LocalStrengthAdvantage ? "本局玩家自带攻防优势\n" : "") + "任意位置拖动转向 · 第二指按住加速\n" + (fixedPve.LocalFreeBoost ? "累计前8秒加速免耗身体\n" : "") + "强度足够才能吃身体，不足时弹开\n金点和弱点箭头提示目标 · 红叉提示危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
                         27, new Color(.76f, .92f, .90f), TextAnchor.MiddleCenter);
                 }
                 if (Button(strengthGuide ? new Rect(265, 1010, 550, 90) : new Rect(265, 825, 550, 90), "继续对战", new Color(.10f, .60f, .49f))) paused = false;

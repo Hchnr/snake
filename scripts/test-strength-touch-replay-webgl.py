@@ -127,8 +127,27 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
                     Debug.Log("SNAKE_TOUCH_FADE " + fixedPve.Tick + " " + fixedPve.CurrentPlayerHardness + " " + opening);
                 }"""
         code = inject_once(code, before, after)
+    if os.environ.get('SNAKE_STRENGTH_CAPTURE_FRUIT') == '1':
+        before = '        [NonSerialized] private bool initializedInDomain;'
+        code = inject_once(code, before, '        private bool strengthDiagnosticFruitLogged;\n        private float strengthDiagnosticFruitFreezeUntil;\n' + before)
+        before = '            while (stepTimer >= .05f && !fixedPve.Finished)\n            {\n                byte heading = EncodeDirection(direction);'
+        after = before.replace('                byte heading', '                if (strengthDiagnosticFruitFreezeUntil > Time.realtimeSinceStartup) { stepTimer = 0; return; }\n                byte heading')
+        code = inject_once(code, before, after)
+        before = '                state = fixedPve.RenderState();\n                strengthProtectionNotice.Observe(fixedPve, state, playerId);'
+        after = '''                state = fixedPve.RenderState();
+                if (!strengthDiagnosticFruitLogged && fixedPve.LocalOpeningFruit)
+                    for (int i = 0; i < fixedPve.Fruit.Count; i++)
+                        if (fixedPve.IsOpeningFruitAttracted(i) && !fixedPve.IsRecoveryFruit(i))
+                        {
+                            strengthDiagnosticFruitLogged = true;
+                            strengthDiagnosticFruitFreezeUntil = Time.realtimeSinceStartup + 2f;
+                            Debug.Log("SNAKE_TOUCH_FRUIT " + fixedPve.Tick + " " + i);
+                            break;
+                        }
+                strengthProtectionNotice.Observe(fixedPve, state, playerId);'''
+        code = inject_once(code, before, after)
     before = '            strengthProtectionNotice.Reset(); strengthProtectionNotice.Observe(fixedPve, state, playerId);'
-    after = before + '\n            if (fixedPve.RulesVersion != PveFixedRecording.LocalStrengthOpeningDefenseRules) throw new InvalidOperationException("Expected v15 strength practice");\n            Debug.Log("SNAKE_TOUCH_READY");'
+    after = before + '\n            if (fixedPve.RulesVersion != PveFixedRecording.LocalStrengthOpeningFruitRules) throw new InvalidOperationException("Expected v16 strength practice");\n            Debug.Log("SNAKE_TOUCH_READY");'
     code = inject_once(code, before, after)
     before = '                fixedPve.Step(heading, pointerBoost, recordedSteering);\n                runInputs.Add(heading);'
     after = '''                fixedPve.Step(heading, pointerBoost, recordedSteering);
@@ -174,7 +193,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             {
                 byte[] tape = runInputs.ToArray();
                 string live = SnakeClub.Tests.StrengthPveReplayVector.Terminal(fixedPve);
-                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart, fixedPve.LocalCappedStart, fixedPve.LocalStableBlocked, fixedPve.LocalRecoveryPriority, fixedPve.LocalSqueezeEscape, fixedPve.LocalMultiBite, fixedPve.LocalHeadTieAfterBite, fixedPve.LocalOpeningBoost, fixedPve.LocalFreeBoost, fixedPve.LocalOpeningDefense);
+                bool valid = PveFixedRecording.TryReplayStrength(strengthDiagnosticSeed, firstRun, tape, out var replay, fixedPve.LocalStrengthAdvantage, fixedPve.LocalOpeningFood, fixedPve.LocalOpeningEncounter, fixedPve.LocalRecoverySupply, fixedPve.LocalSafeRecovery, fixedPve.LocalAlignedStart, fixedPve.LocalCappedStart, fixedPve.LocalStableBlocked, fixedPve.LocalRecoveryPriority, fixedPve.LocalSqueezeEscape, fixedPve.LocalMultiBite, fixedPve.LocalHeadTieAfterBite, fixedPve.LocalOpeningBoost, fixedPve.LocalFreeBoost, fixedPve.LocalOpeningDefense, fixedPve.LocalOpeningFruit);
                 bool match = valid && SnakeClub.Tests.StrengthPveReplayVector.Terminal(replay) == live;
                 Debug.Log("SNAKE_STRENGTH_E2E " + (match ? "MATCH" : "FAIL") + " " + strengthDiagnosticSeed + " " +
                     (firstRun ? 1 : 0) + " " + fixedPve.Tick + " " + live + " " + Convert.ToBase64String(tape));
@@ -226,10 +245,15 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             for line in result.stdout.splitlines():
                 if line.startswith('PASS weak body indicator') or line.startswith('PASS pointer referred'):
                     print(line, flush=True)
+        if os.environ.get('SNAKE_STRENGTH_CAPTURE_FRUIT') == '1':
+            fruit_evidence = next((line for line in result.stdout.splitlines() if line.startswith('PASS actual opening fruit attraction')), '')
+            if not fruit_evidence:
+                sys.exit('Missing evidence of the v16 actual fruit attraction.')
+            print(fruit_evidence, flush=True)
         if os.environ.get('SNAKE_STRENGTH_CAPTURE_FADE') == '1':
             fade_evidence = next((line for line in result.stdout.splitlines() if line.startswith('PASS actual opening defense fade notice')), '')
             if not fade_evidence:
-                sys.exit('Missing evidence of the v15 opening-defense fade notice.')
+                sys.exit('Missing evidence of the v16 opening-defense fade notice.')
             print(fade_evidence, flush=True)
         if require_recovery == '0':
             if 'SKIP recovery assertion:' not in result.stdout:
@@ -255,7 +279,7 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
             sys.exit('Recording did not include valid persistent steering and boost input.')
         print('Replaying the actual recorded inputs in desktop .NET...', flush=True)
         ref = subprocess.run(['dotnet', 'run', '--project', str(root / 'test/v3/Snake.V3.Core.Tests.csproj'), '--',
-                              'strength-opening-defense-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
+                              'strength-opening-fruit-replay-terminal', seed, first, tape], capture_output=True, text=True, timeout=180, check=True)
         try:
             terminal = json.loads(ref.stdout.strip().splitlines()[-1])
         except (IndexError, json.JSONDecodeError):

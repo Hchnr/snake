@@ -66,6 +66,7 @@ namespace SnakeClub.Tests.Editor
                 TestStrengthImpactVisual();
                 TestStrengthMultiImpactVisual();
                 TestStrengthRecoveryVisual();
+                TestOpeningFruitVisual();
                 TestOccludedRecoveryMarkers();
                 TestRecoveryContactOcclusion();
                 TestStrengthAppearanceVisual();
@@ -571,6 +572,47 @@ namespace SnakeClub.Tests.Editor
                 renderer.MotionPaused = false; renderer.Draw(pausedMatch.RenderState(), "you");
                 Require(!attack.enabled && !damage.enabled, "suspension replayed an old impact");
                 Debug.Log("PASS Unity strength impacts follow real bite positions");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestOpeningFruitVisual()
+        {
+            var root = new GameObject("Opening fruit visual regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true; renderer.ReducedEffects = true;
+                var world = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                    localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true,
+                    localMultiBite: true, localHeadTieAfterBite: true, localOpeningBoost: true, localFreeBoost: true,
+                    localOpeningDefense: true, localOpeningFruit: true);
+                var actors = (PveFixedFighter[])world.Fighters;
+                actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 16)) { shieldTicks = 10000 };
+                actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(70000, 70000, 0, 16)) { shieldTicks = 10000 };
+                for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+                var fruit = (System.Collections.Generic.List<PveFixedFruit>)world.Fruit;
+                for (int i = 0; i < fruit.Count; i++) fruit[i] = new PveFixedFruit(new CapturePoint(90000, 90000), i % 4);
+                fruit[0] = new PveFixedFruit(new CapturePoint(2300, 0), 1);
+                var rings = (LineRenderer[])typeof(ArenaRenderer).GetField("openingFruitRings", flags).GetValue(renderer);
+                renderer.Draw(world.RenderState(), "you"); Require(!rings[0].enabled, "fruit ring appeared before attraction");
+                world.Step(0, false, true); renderer.Draw(world.RenderState(), "you");
+                Require(world.IsOpeningFruitAttracted(0) && rings[0].enabled && Mathf.Abs(rings[0].GetPosition(0).x - 2.47f) < .001f,
+                    "ring did not follow actual attracted fruit");
+                renderer.MotionPaused = true; renderer.Draw(world.RenderState(), "you");
+                Require(rings[0].enabled, "pause removed the actual fruit ring");
+                renderer.StrengthBodyVisual = false; renderer.Draw(world.RenderState(), "you");
+                Require(!rings[0].enabled, "opening fruit ring leaked into another mode");
+                renderer.StrengthBodyVisual = true; renderer.MotionPaused = false;
+                var recovery = (bool[])typeof(PveFixedWorld).GetField("recoveryFruit", flags).GetValue(world); recovery[0] = true;
+                renderer.Draw(world.RenderState(), "you");
+                Require(!rings[0].enabled, "fruit displayed both attraction and recovery rings");
+                recovery[0] = false; world.Step(0, false, true); renderer.Draw(world.RenderState(), "you");
+                Require(!world.IsOpeningFruitAttracted(0) && !rings[0].enabled, "respawned fruit retained the attraction ring");
+                Debug.Log("PASS Unity opening fruit ring follows actual movement");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
@@ -1783,7 +1825,7 @@ namespace SnakeClub.Tests.Editor
                 string pending = PlayerPrefs.GetString("snake.v3.pending", "");
                 Call("LoadPreferences"); Call("StartMain");
                 var world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.LocalFreeBoost && world.LocalOpeningDefense && world.RulesVersion == PveFixedRecording.LocalStrengthOpeningDefenseRules && Field("activeRun").GetValue(app) == null &&
+                Require(world != null && world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.LocalFreeBoost && world.LocalOpeningDefense && world.LocalOpeningFruit && world.RulesVersion == PveFixedRecording.LocalStrengthOpeningFruitRules && Field("activeRun").GetValue(app) == null &&
                     (bool)Field("defaultStrengthPractice").GetValue(app), "default entry did not start local strength rules");
                 Require((bool)Field("firstRun").GetValue(app) && world.RenderState().remaining == 60 && world.OpeningBoostRemaining == 300, "account tutorial changed local first run or opening boost");
                 var tape = (System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app);
@@ -1810,7 +1852,7 @@ namespace SnakeClub.Tests.Editor
                 Field("busy").SetValue(app, true); Call("RetryMatch");
                 Require(ReferenceEquals(world, Field("fixedPve").GetValue(app)), "busy retry started a new match");
                 Field("busy").SetValue(app, false); Call("RetryMatch"); world = (PveFixedWorld)Field("fixedPve").GetValue(app);
-                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.LocalFreeBoost && world.LocalOpeningDefense && world.FreeBoostRemaining == 160 && world.RulesVersion == PveFixedRecording.LocalStrengthOpeningDefenseRules && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
+                Require(world.StrengthPreview && world.LocalStrengthAdvantage && world.LocalOpeningFood && world.LocalOpeningEncounter && world.LocalRecoverySupply && world.LocalSafeRecovery && world.LocalAlignedStart && world.LocalCappedStart && world.LocalStableBlocked && world.LocalRecoveryPriority && world.LocalSqueezeEscape && world.LocalMultiBite && world.LocalHeadTieAfterBite && world.LocalOpeningBoost && world.LocalFreeBoost && world.LocalOpeningDefense && world.LocalOpeningFruit && world.FreeBoostRemaining == 160 && world.RulesVersion == PveFixedRecording.LocalStrengthOpeningFruitRules && Field("activeRun").GetValue(app) == null && !(bool)Field("firstRun").GetValue(app) &&
                     world.RenderState().remaining == 90, "retry did not remain in local strength practice");
                 Call("BackToMenu"); Require(!(bool)Field("defaultStrengthPractice").GetValue(app), "main mode leaked after returning home");
                 Debug.Log("PASS Unity default entry and retry use isolated strength rules");
