@@ -255,6 +255,7 @@ var cases = new (string name, Action run)[]
     ("recovery priority protects only actual available supplies", RecoveryPriorityCases),
     ("squeeze escape preserves controls and bounded protection", SqueezeEscapeRegression.Run),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
+    ("off-screen weak body pointer follows real eligible segments", SnakeClub.Tests.WeakBodyEdgeRegression.Run),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),

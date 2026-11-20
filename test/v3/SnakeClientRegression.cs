@@ -69,6 +69,7 @@ namespace SnakeClub.Tests.Editor
                 TestOccludedRecoveryMarkers();
                 TestRecoveryContactOcclusion();
                 TestStrengthAppearanceVisual();
+                TestWeakBodyEdgeProjection();
                 TestFallbackOpeningBoostVisual();
                 TestReferenceLayers();
                 TestStrengthPickupWarningVisual();
@@ -1042,6 +1043,73 @@ namespace SnakeClub.Tests.Editor
             var legacy = new PveFixedWorld(42, false, null);
             Require(string.IsNullOrEmpty(StrengthContactNotice.Text(legacy, 0, out _)), "contact panel leaked into legacy mode");
             Debug.Log("PASS Unity recovery guidance respects actual contact notice lifetime and layout");
+        }
+
+        private static void TestWeakBodyEdgeProjection()
+        {
+            const BindingFlags staticFlags = BindingFlags.Static | BindingFlags.NonPublic;
+            const BindingFlags instanceFlags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var viewportMethod = typeof(SnakeGameApp).GetMethod("WeakBodySafeViewport", staticFlags);
+            WeakBodyViewport View(Rect safe, float width, float height)
+            {
+                object[] args = { safe, width, height, 0f, 0f, 0f };
+                return (WeakBodyViewport)viewportMethod.Invoke(null, args);
+            }
+            var normal = View(new Rect(0, 0, 540, 960), 540, 960);
+            Require(Mathf.Abs(normal.left) < .01f && Mathf.Abs(normal.top) < .01f &&
+                Mathf.Abs(normal.right - 1080) < .01f && Mathf.Abs(normal.bottom - 1920) < .01f, "standard weak-edge viewport was wrong");
+            var tall = View(new Rect(0, 0, 390, 844), 390, 844);
+            Require(Mathf.Abs(tall.left) < .01f && tall.top < -200 && tall.bottom > 2120,
+                "tall screen's visible top and bottom were excluded");
+            var wide = View(new Rect(0, 0, 1000, 600), 1000, 600);
+            Require(wide.left < -1000 && wide.right > 2000 && Mathf.Abs(wide.top) < .01f && Mathf.Abs(wide.bottom - 1920) < .01f,
+                "wide screen's visible sides were excluded");
+            var inset = View(new Rect(10, 47, 370, 750), 390, 844);
+            Require(Mathf.Abs(inset.left) < .01f && Mathf.Abs(inset.right - 1080) < .01f && inset.top < -100 && inset.bottom > 2020,
+                "safe-area inset was not mapped into the viewport");
+            var invalid = View(Rect.zero, 0, 0);
+            Require(invalid.right == invalid.left && invalid.bottom == invalid.top, "invalid screen produced a usable viewport");
+            var fallback = View(Rect.zero, 540, 960);
+            Require(Mathf.Abs(fallback.right - 1080) < .01f && Mathf.Abs(fallback.bottom - 1920) < .01f,
+                "missing safe area did not fall back to the screen");
+
+            var root = new GameObject("Weak body screen projection regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>(); typeof(ArenaRenderer).GetMethod("Initialize", instanceFlags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true;
+                var world = new PveFixedWorld(11, false, null, true);
+                renderer.Draw(world.RenderState(), "you");
+                var app = root.AddComponent<SnakeGameApp>(); var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, instanceFlags) ?? throw new Exception("Missing " + name);
+                Field("arenaRenderer").SetValue(app, renderer);
+                object[] args = { Screen.safeArea, (float)Screen.width, (float)Screen.height, 0f, 0f, 0f };
+                viewportMethod.Invoke(null, args);
+                Field("weakProjectionScale").SetValue(app, (float)args[3]);
+                Field("weakProjectionLeft").SetValue(app, (float)args[4]);
+                Field("weakProjectionTop").SetValue(app, (float)args[5]);
+                Field("weakProjectionHeight").SetValue(app, (float)Screen.height);
+                var project = type.GetMethod("ProjectWeakBodyEdge", instanceFlags);
+                var toVirtual = type.GetMethod("ToVirtual", instanceFlags);
+                var camera = (Camera)typeof(ArenaRenderer).GetField("view", instanceFlags).GetValue(renderer);
+                Point own = world.RenderState().snakes[0].segments[0];
+                foreach (int preference in new[] { -1, 0, 1 })
+                {
+                    camera.orthographicSize = GrowthView.CameraSize(16, false, preference);
+                    Point point = own + new Point(7, 4);
+                    Vector3 pixel = renderer.HeadToScreen(point);
+                    Require(pixel.z > 0, "projection fixture fell behind camera");
+                    var expected = (Vector2)toVirtual.Invoke(app, new object[] { new Vector2(pixel.x, pixel.y) });
+                    var actual = (Point)project.Invoke(app, new object[] { point });
+                    Require(Mathf.Abs(expected.x - actual.x) < .01f && Mathf.Abs(expected.y - actual.y) < .01f,
+                        "weak-body projection differs from the actual UI coordinates at view " + preference);
+                }
+                Field("weakProjectionScale").SetValue(app, 0f);
+                var invalidPoint = (Point)project.Invoke(app, new object[] { own });
+                Require(float.IsNaN(invalidPoint.x) && float.IsNaN(invalidPoint.y), "invalid scale produced a projected target");
+                Debug.Log("PASS Unity weak-body pointer uses the real camera and safe viewport");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
         private static void TestStrengthAppearanceVisual()

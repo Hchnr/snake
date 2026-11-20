@@ -58,6 +58,13 @@ namespace SnakeClub
         private ArenaState minimapWorld;
         private int minimapFrame = -1;
         private string opponentEdgeId = "";
+        private ArenaState weakEdgeWorld;
+        private int weakEdgeFrame = -1, weakEdgeSegment = -1;
+        private string weakEdgeId = "";
+        private bool weakEdgeAvailable;
+        private WeakBodyEdgeTarget weakEdgeTarget;
+        private Func<Point, Point> weakEdgeProjection;
+        private float weakProjectionScale, weakProjectionLeft, weakProjectionTop, weakProjectionHeight;
         private struct NameplateEntry { public Rect box; public Vector2 anchor; public Color color; public string label; }
         private readonly List<NameplateEntry> nameplateEntries = new List<NameplateEntry>(8);
         private readonly List<EdgeObstacle> edgeObstacles = new List<EdgeObstacle>(9);
@@ -573,6 +580,19 @@ namespace SnakeClub
             top = height - safe.yMax + (safe.height - 1920 * scale) * .5f;
         }
 
+        internal static WeakBodyViewport WeakBodySafeViewport(Rect safe, float width, float height,
+            out float scale, out float left, out float top)
+        {
+            scale = left = top = 0;
+            if (float.IsNaN(width) || float.IsNaN(height) || float.IsInfinity(width) || float.IsInfinity(height) || width <= 0 || height <= 0)
+                return default;
+            if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, width, height);
+            SafeUiMetrics(safe, width, height, out scale, out left, out top);
+            if (float.IsNaN(scale) || float.IsInfinity(scale) || scale <= 0) return default;
+            return new WeakBodyViewport((safe.xMin - left) / scale, (height - safe.yMax - top) / scale,
+                (safe.xMax - left) / scale, (height - safe.yMin - top) / scale);
+        }
+
         // Virtual IMGUI top-left coordinates to Unity bottom-left pixels.
         internal static Rect GameUiScreenRect(Rect rect, Rect safe, float width, float height)
         {
@@ -968,7 +988,7 @@ namespace SnakeClub
                     edgeObstacles.Add(new EdgeObstacle(entry.box.x, entry.box.y, entry.box.width, entry.box.height));
                 bool hasObjectiveEdge = DrawEventTargetEdge(state, out Rect objectiveEdge);
                 if (hasObjectiveEdge) edgeObstacles.Add(new EdgeObstacle(objectiveEdge.x, objectiveEdge.y, objectiveEdge.width, objectiveEdge.height));
-                DrawOpponentEdge(state);
+                if (!DrawWeakBodyEdge(state)) DrawOpponentEdge(state);
             }
             if (firstRun && tutorialHints && !online && !paused && !(fixedPve != null && fixedPve.StrengthPreview) && CanControlPlayer())
             {
@@ -999,7 +1019,7 @@ namespace SnakeClub
                 if (strengthGuide)
                 {
                     Label(new Rect(180, 720, 720, 280),
-                        (fixedPve.LocalOpeningBoost ? "开局15秒攻防额外强化（含出生保护）\n" : fixedPve.LocalStrengthAdvantage ? "本局玩家自带攻防优势\n" : "") + "任意位置拖动转向 · 第二指按住加速\n" + (fixedPve.LocalFreeBoost ? "累计前8秒加速免耗身体\n" : "") + "强度足够才能吃身体，不足时弹开\n金点可尝试吞食 · 红叉提示身体危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
+                        (fixedPve.LocalOpeningBoost ? "开局15秒攻防额外强化（含出生保护）\n" : fixedPve.LocalStrengthAdvantage ? "本局玩家自带攻防优势\n" : "") + "任意位置拖动转向 · 第二指按住加速\n" + (fixedPve.LocalFreeBoost ? "累计前8秒加速免耗身体\n" : "") + "强度足够才能吃身体，不足时弹开\n金点和弱点箭头提示目标 · 红叉提示危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
                         27, new Color(.76f, .92f, .90f), TextAnchor.MiddleCenter);
                 }
                 if (Button(strengthGuide ? new Rect(265, 1010, 550, 90) : new Rect(265, 825, 550, 90), "继续对战", new Color(.10f, .60f, .49f))) paused = false;
@@ -1221,6 +1241,52 @@ namespace SnakeClub
             Panel(box, new Color(.15f, .11f, .06f, .88f));
             DrawEdgeArrow(box, direction, new Color(1f, .88f, .55f));
             Label(new Rect(box.x + 48, box.y, box.width - 48, box.height), name, 22, new Color(1f, .88f, .55f), TextAnchor.MiddleCenter, true);
+            return true;
+        }
+
+        private Point ProjectWeakBodyEdge(Point position)
+        {
+            Vector3 pixel = arenaRenderer.HeadToScreen(position);
+            if (pixel.z <= 0 || weakProjectionScale <= 0) return new Point(float.NaN, float.NaN);
+            return new Point((pixel.x - weakProjectionLeft) / weakProjectionScale,
+                (weakProjectionHeight - pixel.y - weakProjectionTop) / weakProjectionScale);
+        }
+
+        private bool DrawWeakBodyEdge(ArenaState world)
+        {
+            if (world == null || fixedPve == null || !fixedPve.StrengthPreview || SimulationSuspended || !string.IsNullOrEmpty(status))
+            {
+                weakEdgeWorld = null; weakEdgeFrame = -1; weakEdgeId = ""; weakEdgeSegment = -1; weakEdgeAvailable = false;
+                return false;
+            }
+            if (!ReferenceEquals(weakEdgeWorld, world))
+            { weakEdgeWorld = world; weakEdgeFrame = -1; weakEdgeId = ""; weakEdgeSegment = -1; weakEdgeAvailable = false; }
+            if (weakEdgeFrame != Time.frameCount)
+            {
+                weakEdgeFrame = Time.frameCount;
+                float width = Screen.width, height = Screen.height;
+                var viewport = WeakBodySafeViewport(Screen.safeArea, width, height,
+                    out weakProjectionScale, out weakProjectionLeft, out weakProjectionTop);
+                weakProjectionHeight = height;
+                if (weakEdgeProjection == null) weakEdgeProjection = ProjectWeakBodyEdge;
+                weakEdgeAvailable = WeakBodyEdgeIndicator.TrySelect(world, playerId, weakEdgeProjection, viewport, weakEdgeId, weakEdgeSegment, out weakEdgeTarget);
+                weakEdgeId = weakEdgeAvailable ? weakEdgeTarget.id : "";
+                weakEdgeSegment = weakEdgeAvailable ? weakEdgeTarget.segment : -1;
+            }
+            if (!weakEdgeAvailable) return false;
+            SnakeState player = null;
+            foreach (var snake in world.snakes) if (snake != null && snake.id == playerId) { player = snake; break; }
+            if (player == null || !player.alive || player.segments == null || player.segments.Count == 0) return false;
+            Point playerScreen = ProjectWeakBodyEdge(player.segments[0]);
+            var direction = new Vector2(weakEdgeTarget.screen.x - playerScreen.x, weakEdgeTarget.screen.y - playerScreen.y);
+            if (float.IsNaN(direction.x) || float.IsNaN(direction.y) || float.IsInfinity(direction.x) || float.IsInfinity(direction.y) || direction.sqrMagnitude < .01f ||
+                !EventTargetIndicator.TryEdge(weakEdgeTarget.screen, 110, 410, 970, 1450, out Point edge) ||
+                !EdgeIndicatorLayout.TryPlace(edge, edgeObstacles, out Point origin)) return false;
+            var box = new Rect(origin.x, origin.y, EdgeIndicatorLayout.DefaultWidth, 54);
+            Panel(box, new Color(.15f, .11f, .045f, .92f));
+            var color = new Color(1f, .88f, .55f);
+            DrawEdgeArrow(box, direction, color);
+            Label(new Rect(box.x + 48, box.y, box.width - 48, box.height), "弱点", 26, color, TextAnchor.MiddleCenter, true);
             return true;
         }
 
