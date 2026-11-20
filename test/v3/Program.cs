@@ -1095,10 +1095,12 @@ static void ResultMotionCases()
 
 static void GrowthViewCases()
 {
-    Check(GrowthView.CharacterScale(16) == 1f && GrowthView.CharacterScale(80) == 1.5f &&
-        GrowthView.CharacterScale(-1) == 1f && GrowthView.CharacterScale(int.MaxValue) == 1.5f,
+    Check(GrowthView.CharacterScale(16) == 1f && GrowthView.CharacterScale(80) == 1.8f &&
+        GrowthView.CharacterScale(-1) == 1f && GrowthView.CharacterScale(int.MaxValue) == 1.8f &&
+        GrowthView.BodyScale(16) == 1f && GrowthView.BodyScale(80) == 1.5f && GrowthView.BodyScale(-1) == 1f && GrowthView.BodyScale(int.MaxValue) == 1.5f,
         "growth scale escaped its bounds");
-    Check(GrowthView.CharacterScale(48) > GrowthView.CharacterScale(16) && GrowthView.CharacterScale(48) < GrowthView.CharacterScale(80),
+    Check(GrowthView.CharacterScale(48) > GrowthView.BodyScale(48) && GrowthView.BodyScale(48) > GrowthView.BodyScale(16) &&
+        GrowthView.CharacterScale(48) < GrowthView.CharacterScale(80),
         "visible size did not follow current length");
     Check(GrowthView.CameraSize(16, false, 0) == 20f && GrowthView.CameraSize(80, false, 0) == 28f &&
         GrowthView.CameraSize(48, true, 0) > GrowthView.CameraSize(48, false, 0), "camera did not follow growth and boost");
