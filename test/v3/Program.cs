@@ -272,6 +272,7 @@ var cases = new (string name, Action run)[]
     ("squeeze escape preserves controls and bounded protection", SqueezeEscapeRegression.Run),
     ("strength weak-point hints follow current combat inputs", StrengthWeakPointCases),
     ("off-screen weak body pointer follows real eligible segments", SnakeClub.Tests.WeakBodyEdgeRegression.Run),
+    ("off-screen body danger follows real vulnerable player segments", SnakeClub.Tests.BodyThreatEdgeRegression.Run),
     ("nearby strength head warning reflects actual combat and protection", StrengthHeadWarningCases),
     ("strength body warnings follow real nearby threats", StrengthBodyThreatCases),
     ("completed local PvE replay ends on the same elimination step", CompletedPveRecordingCases),

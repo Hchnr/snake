@@ -71,6 +71,7 @@ namespace SnakeClub.Tests.Editor
                 TestRecoveryContactOcclusion();
                 TestStrengthAppearanceVisual();
                 TestWeakBodyEdgeProjection();
+                TestBodyThreatEdgeProjection();
                 TestFallbackOpeningBoostVisual();
                 TestFallbackStrengthMarkerVisibility();
                 TestReferenceLayers();
@@ -1090,6 +1091,56 @@ namespace SnakeClub.Tests.Editor
             var legacy = new PveFixedWorld(42, false, null);
             Require(string.IsNullOrEmpty(StrengthContactNotice.Text(legacy, 0, out _)), "contact panel leaked into legacy mode");
             Debug.Log("PASS Unity recovery guidance respects actual contact notice lifetime and layout");
+        }
+
+        private static void TestBodyThreatEdgeProjection()
+        {
+            const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+            var root = new GameObject("Body threat edge projection regression");
+            try
+            {
+                var renderer = root.AddComponent<ArenaRenderer>(); typeof(ArenaRenderer).GetMethod("Initialize", flags).Invoke(renderer, null);
+                renderer.StrengthBodyVisual = true;
+                var world = new PveFixedWorld(1, false, null, true, localAdvantage: true, localOpeningFood: true,
+                    localOpeningEncounter: true, localRecoverySupply: true, localSafeRecovery: true, localAlignedStart: true,
+                    localCappedStart: true, localStableBlocked: true, localRecoveryPriority: true, localSqueezeEscape: true,
+                    localMultiBite: true, localHeadTieAfterBite: true, localOpeningBoost: true, localFreeBoost: true,
+                    localOpeningDefense: true, localOpeningFruit: true);
+                var actors = (PveFixedFighter[])world.Fighters;
+                actors[0] = new PveFixedFighter("you", new PveFixedMotion(0, 0, 0, 60));
+                actors[1] = new PveFixedFighter("bot-1", new PveFixedMotion(-53100, -400, 49152, 80));
+                for (int i = 2; i < actors.Length; i++) actors[i].alive = false;
+                var state = world.RenderState(); renderer.Draw(state, "you");
+                var app = root.AddComponent<SnakeGameApp>(); var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing " + name);
+                Field("arenaRenderer").SetValue(app, renderer); Field("fixedPve").SetValue(app, world); Field("playerId").SetValue(app, "you");
+                var update = type.GetMethod("UpdateBodyThreatEdge", flags);
+                update.Invoke(app, new object[] { state });
+                Require((bool)Field("bodyThreatOffscreen").GetValue(app) && (bool)Field("bodyThreatEdgeAvailable").GetValue(app),
+                    "actual offscreen threatened player body did not produce a pointer");
+                var target = (BodyThreatEdgeTarget)Field("bodyThreatEdgeTarget").GetValue(app);
+                var threatMarks = (System.Collections.Generic.List<bool>)typeof(SnakeState).GetField("strengthThreatSegments", flags).GetValue(state.snakes[0]);
+                Require(target.segment > 0 && threatMarks[target.segment] &&
+                    target.position.x == state.snakes[0].segments[target.segment].x, "pointer did not use the actual marked segment");
+                var obstacles = (System.Collections.Generic.List<EdgeObstacle>)Field("edgeObstacles").GetValue(app);
+                type.GetMethod("AddPlayerBodyEdgeObstacles", flags).Invoke(app, new object[] { state });
+                Require(obstacles.Count > 0, "visible player body did not reserve any space");
+                bool edgeFound = EventTargetIndicator.TryEdge(target.screen, 110, 410, 970, 1450, out Point edge);
+                bool placed = EdgeIndicatorLayout.TryPlace(edge, obstacles, out Point origin, EdgeIndicatorLayout.ObjectiveWidth);
+                Require(edgeFound && placed, "body warning could not avoid visible player body");
+                foreach (var item in obstacles)
+                    Require(!(origin.x < item.x + item.width && origin.x + EdgeIndicatorLayout.ObjectiveWidth > item.x &&
+                        origin.y < item.y + item.height && origin.y + 54 > item.y), "body warning covered a visible body segment");
+                Field("paused").SetValue(app, true); update.Invoke(app, new object[] { state });
+                Require(!(bool)Field("bodyThreatOffscreen").GetValue(app) && !(bool)Field("bodyThreatEdgeAvailable").GetValue(app),
+                    "paused game retained an edge warning");
+                Field("paused").SetValue(app, false); actors[1].shieldTicks = 1; state = world.RenderState();
+                update.Invoke(app, new object[] { state });
+                Require(!(bool)Field("bodyThreatOffscreen").GetValue(app) && !(bool)Field("bodyThreatEdgeAvailable").GetValue(app),
+                    "a protected attacker retained an edge warning");
+                Debug.Log("PASS Unity offscreen body danger uses actual camera and player segment");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
         }
 
         private static void TestWeakBodyEdgeProjection()

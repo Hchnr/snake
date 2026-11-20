@@ -868,6 +868,65 @@ namespace SnakeClub.Core
         }
     }
 
+    public readonly struct BodyThreatEdgeTarget
+    {
+        public readonly int segment;
+        public readonly Point position, screen;
+        public readonly float distanceSquared;
+        public BodyThreatEdgeTarget(int segment, Point position, Point screen, float distanceSquared)
+        { this.segment = segment; this.position = position; this.screen = screen; this.distanceSquared = distanceSquared; }
+    }
+
+    // Presentation only: locate a currently marked vulnerable player segment.
+    // The arrow locates the threatened body, not a safe or recommended path.
+    public static class BodyThreatEdgeIndicator
+    {
+        private const float EnterPadding = 60f, StayPadding = 20f;
+        private static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
+        private static bool InViewport(Point point, WeakBodyViewport viewport, float padding) =>
+            point.x >= viewport.left - padding && point.x <= viewport.right + padding &&
+            point.y >= viewport.top - padding && point.y <= viewport.bottom + padding;
+
+        public static bool TrySelect(ArenaState world, string playerId, Func<Point, Point> project,
+            WeakBodyViewport viewport, int previousSegment, out bool onlyOffscreen, out BodyThreatEdgeTarget target)
+        {
+            target = default; onlyOffscreen = false;
+            if (world == null || world.phase != "running" || world.snakes == null || project == null || string.IsNullOrEmpty(playerId) ||
+                !Finite(viewport.left) || !Finite(viewport.top) || !Finite(viewport.right) || !Finite(viewport.bottom) ||
+                viewport.right <= viewport.left || viewport.bottom <= viewport.top) return false;
+            SnakeState player = null;
+            foreach (var snake in world.snakes) if (snake != null && snake.id == playerId) { player = snake; break; }
+            if (player == null || !player.alive || !Finite(player.shield) || player.shield > 0 ||
+                player.segments == null || player.segments.Count == 0) return false;
+            Point head = player.segments[0];
+            if (!Finite(head.x) || !Finite(head.y)) return false;
+            bool any = false, visible = false, nearStay = false, nearEnter = false, hasPrevious = false;
+            BodyThreatEdgeTarget closest = default, previous = default;
+            int count = Math.Min(player.segments.Count, player.strengthThreatSegments.Count);
+            for (int part = 1; part < count; part++)
+            {
+                if (!player.strengthThreatSegments[part]) continue;
+                Point position = player.segments[part];
+                float dx = position.x - head.x, dy = position.y - head.y, distance = dx * dx + dy * dy;
+                if (!Finite(distance)) return false;
+                Point screen = project(position);
+                // If projection is unavailable we cannot claim all threats are offscreen.
+                if (!Finite(screen.x) || !Finite(screen.y)) return false;
+                visible |= InViewport(screen, viewport, 0);
+                nearStay |= InViewport(screen, viewport, StayPadding);
+                nearEnter |= InViewport(screen, viewport, EnterPadding);
+                var current = new BodyThreatEdgeTarget(part, position, screen, distance);
+                if (part == previousSegment) { previous = current; hasPrevious = true; }
+                if (!any || distance < closest.distanceSquared || (distance == closest.distanceSquared && part < closest.segment)) closest = current;
+                any = true;
+            }
+            onlyOffscreen = any && !visible;
+            if (!onlyOffscreen || nearStay || (nearEnter && !hasPrevious)) return false;
+            target = hasPrevious && OpponentEdgeIndicator.KeepPrevious(previous.distanceSquared, closest.distanceSquared) ? previous : closest;
+            return true;
+        }
+    }
+
     // Presentation only: fade the minimap when its opaque panel would cover
     // an actor, and hold the fade briefly to avoid flickering at its edge.
     public sealed class MinimapOcclusion

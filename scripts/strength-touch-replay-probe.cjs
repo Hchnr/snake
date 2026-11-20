@@ -45,7 +45,7 @@ async function tap(x, y) {
   await touch('touchStart', [point(x, y)]); await delay(120); await touch('touchEnd', []);
 }
 async function capture(name) {
-  const directory = process.env.SNAKE_STRENGTH_CAPTURE_DIR || process.env.SNAKE_WEAK_EDGE_CAPTURE_DIR;
+  const directory = process.env.SNAKE_STRENGTH_CAPTURE_DIR || process.env.SNAKE_BODY_THREAT_CAPTURE_DIR || process.env.SNAKE_WEAK_EDGE_CAPTURE_DIR;
   if (!directory) return;
   fs.mkdirSync(directory, { recursive: true });
   const result = await call('Page.captureScreenshot', { format: 'png' });
@@ -122,6 +122,15 @@ async function main() {
     const x = (Number(match[4]) + 70) / 2, y = (Number(match[5]) + 27) / 2;
     await drag('weak body indicator', x, y, x, y + 60, 192);
     console.log('PASS pointer referred to a marked live segment at tick ' + match[1]);
+  }
+  if (process.env.SNAKE_BODY_THREAT_CAPTURE_DIR) {
+    const line = await waitFor(() => events.find(e => /SNAKE_TOUCH_BODY_EDGE \d+ \d+ [-0-9.]+ [-0-9.]+/.test(e)), 'actual offscreen body danger pointer', 120000);
+    const match = line.match(/SNAKE_TOUCH_BODY_EDGE (\d+) (\d+) ([-0-9.]+) ([-0-9.]+)/);
+    if (!match) throw Error('Malformed body danger pointer diagnostic');
+    await delay(150); await capture('body-danger-edge');
+    const x = (Number(match[3]) + 100) / 2, y = (Number(match[4]) + 27) / 2;
+    await drag('body danger indicator', x, y, x, y + 60, 192);
+    console.log('PASS body pointer referred to a marked player segment at tick ' + match[1]);
   }
   // Let a few real ticks elapse so the seeded touch path is reproducible.
   await waitFor(() => events.some(e => { const m = e.match(/SNAKE_TOUCH_TICK (\d+) /); return m && Number(m[1]) >= 6; }), 'opening ticks');
