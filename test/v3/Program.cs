@@ -264,6 +264,7 @@ var cases = new (string name, Action run)[]
     ("offline opening food gives real reachable early growth", StrengthOpeningFoodCases),
     ("offline opening opponent retains real combat and earlier rules", StrengthOpeningEncounterCases),
     ("offline recovery supply follows real bites and bounded opportunities", StrengthRecoverySupplyCases),
+    ("default touch recovery fixture reaches actual recovery under varied boost timing", SnakeClub.Tests.TouchRecoveryFixture.Run),
     ("safe recovery avoids nearby AI and preserves the v4 replay", StrengthSafeRecoveryCases),
     ("aligned offline start follows the default direction and preserves v5", StrengthAlignedStartCases),
     ("capped offline opening respects steering and preserves v6 replay", StrengthCappedStartCases),

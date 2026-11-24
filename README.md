@@ -89,7 +89,7 @@ WebGL 指纹和客户端回放检查需要 Chrome，可用 `SNAKE_CHROME` 指定
 
 该触摸诊断的 CDP 请求有独立超时，连接中断会结束等待；外层超时会终止其进程组。此进程组清理目前仅支持 macOS / Linux（POSIX）。可运行 `node --test test/v3/cdp-requests.test.cjs` 和 `python3 test/v3/headless_process_test.py` 检查断连、超时与清理，不代替真实触摸或抖音设备测试。
 
-`python3 scripts/test-strength-touch-replay-webgl.py` 默认严格要求自然对局出现保护结束提示和回追；触摸时序会变化，回追未发生时测试会失败。若只验证左拖限角及完整跨端回放，可显式运行 `SNAKE_STRENGTH_OPENING_LEFT=1 SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=0 SNAKE_STRENGTH_REQUIRE_RECOVERY=0 python3 scripts/test-strength-touch-replay-webgl.py`；输出会标明跳过的两项，不能把它当作回追或提示验收。确定性回追覆盖由上面的逐步指纹测试另行检查。
+`python3 scripts/test-strength-touch-replay-webgl.py` 默认严格要求出现保护结束提示和实际受伤后的回追：隔离诊断使用固定种子 1016，在第 9 步等待真实拖动后继续，以稳定覆盖该场景；随后记录实际输入并与桌面 .NET 完整回放对比。自选种子、视觉专项和跳过回追的测试不使用该等待，触摸时序仍可能使回追未发生。若只验证左拖限角及完整跨端回放，可显式运行 `SNAKE_STRENGTH_OPENING_LEFT=1 SNAKE_STRENGTH_REQUIRE_PROTECTION_CUE=0 SNAKE_STRENGTH_REQUIRE_RECOVERY=0 python3 scripts/test-strength-touch-replay-webgl.py`；输出会标明跳过的两项，不能把它当作回追或提示验收。确定性回追覆盖由上面的逐步指纹测试另行检查。
 
 运行 `python3 scripts/evaluate-aligned-start.py --seeds 100` 可比较开局方向和首次转向辅助的脚本样本；结果不能代替真人手感或平衡测试。
 
