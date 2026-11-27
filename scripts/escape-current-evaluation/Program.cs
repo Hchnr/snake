@@ -1,15 +1,22 @@
 using SnakeClub.Core;
 
 int samples = int.Parse(args[0]);
-Console.WriteLine("v16; scripted nearest fruit/tail every 8 ticks, no boost; not human play");
+bool pulsedBoost = args.Length > 1 && args[1] == "pulsed";
+if (args.Length > 1 && args[1] != "pulsed" && args[1] != "off") throw new ArgumentException("Invalid boost policy");
+Console.WriteLine($"v16; scripted nearest fruit/tail every 8 ticks, boost={(pulsedBoost ? "2s on/2s off" : "off")}; not human play");
 foreach (bool first in new[] { false, true })
 foreach (int policy in new[] { 0, 1 })
 {
-    int used = 0, observedAfter = 0, repeat = 0, max = 0;
+    int used = 0, observedAfter = 0, repeat = 0, max = 0, boosted = 0, ate = 0, eliminated = 0;
+    long boostTicks = 0;
     var cases = new List<string>();
     for (int seed = 1; seed <= samples; seed++)
     {
-        var result = Evaluate(seed, first, policy);
+        var result = Evaluate(seed, first, policy, pulsedBoost);
+        if (result.boostTicks > 0) boosted++;
+        if (result.eaten > 0) ate++;
+        if (!result.alive) eliminated++;
+        boostTicks += result.boostTicks;
         if (result.used)
         {
             used++;
@@ -21,9 +28,10 @@ foreach (int policy in new[] { 0, 1 })
     }
     Console.WriteLine($"first={first} policy={(policy == 0 ? "fruit" : "tail")} seeds={samples} " +
         $"used={used} observed_after={observedAfter} after_streak_ge4={repeat} max_after={max} " +
+        $"boosted_matches={boosted} boost_ticks={boostTicks} ate_matches={ate} eliminated_matches={eliminated} " +
         $"cases=seed:activation:end:max_after[{string.Join(",", cases)}]");
 }
-static Result Evaluate(int seed, bool firstRun, int policy)
+static Result Evaluate(int seed, bool firstRun, int policy, bool pulsedBoost)
 {
     var world = new PveFixedWorld(seed, firstRun, null, strengthPreview: true,
         localAdvantage: true, localOpeningFood: true, localOpeningEncounter: true,
@@ -32,7 +40,7 @@ static Result Evaluate(int seed, bool firstRun, int policy)
         localSqueezeEscape: true, localMultiBite: true, localHeadTieAfterBite: true,
         localOpeningBoost: true, localFreeBoost: true, localOpeningDefense: true, localOpeningFruit: true);
     byte heading = 0;
-    int consecutive = 0, longest = 0, blocks = 0, after = 0, longestAfter = 0;
+    int consecutive = 0, longest = 0, blocks = 0, after = 0, longestAfter = 0, boostTicks = 0;
     while (!world.Finished)
     {
         if (world.Tick % 8 == 0)
@@ -63,7 +71,8 @@ static Result Evaluate(int seed, bool firstRun, int policy)
             if (nearest < long.MaxValue)
                 heading = (byte)(((int)Math.Round(Math.Atan2(dy, dx) * 128 / Math.PI) + 256) & 255);
         }
-        world.Step(heading, false, true);
+        world.Step(heading, pulsedBoost && world.Tick % (4 * PveFixedWorld.TickRate) < 2 * PveFixedWorld.TickRate, true);
+        if (world.Fighters[0].motion.Boosting) boostTicks++;
         if (world.LastPlayerBlockedTick == world.Tick)
         {
             blocks++; consecutive++; longest = Math.Max(longest, consecutive);
@@ -73,7 +82,7 @@ static Result Evaluate(int seed, bool firstRun, int policy)
         else { consecutive = 0; after = 0; }
     }
     return new Result(world.Tick, world.Fighters[0].alive, world.SqueezeEscapeUsed,
-        world.LastSqueezeEscapeTick, longest, blocks, world.PlayerSegmentsEaten, world.PlayerSegmentsLostToBites, longestAfter);
+        world.LastSqueezeEscapeTick, longest, blocks, world.PlayerSegmentsEaten, world.PlayerSegmentsLostToBites, longestAfter, boostTicks);
 }
 
-readonly record struct Result(int tick, bool alive, bool used, int started, int longest, int blocks, int eaten, int lost, int longestAfter);
+readonly record struct Result(int tick, bool alive, bool used, int started, int longest, int blocks, int eaten, int lost, int longestAfter, int boostTicks);

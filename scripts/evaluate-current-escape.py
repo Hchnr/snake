@@ -12,6 +12,7 @@ from xml.sax.saxutils import escape
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--seeds', type=int, default=100, help='consecutive seeds starting at 1')
+parser.add_argument('--pulsed-boost', action='store_true', help='alternate two seconds of boost and two seconds without boost')
 args = parser.parse_args()
 if not 1 <= args.seeds <= 1000:
     parser.error('--seeds must be between 1 and 1000')
@@ -22,4 +23,5 @@ project = f'''<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</O
 with tempfile.TemporaryDirectory(prefix='snake-squeeze-eval-') as directory:
     path = Path(directory) / 'Evaluate.csproj'
     path.write_text(project, encoding='utf-8')
-    subprocess.run(['dotnet', 'run', '--project', str(path), '-c', 'Release', '--', str(args.seeds)], check=True)
+    subprocess.run(['dotnet', 'run', '--project', str(path), '-c', 'Release', '--', str(args.seeds),
+                    'pulsed' if args.pulsed_boost else 'off'], check=True)
