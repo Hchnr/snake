@@ -1034,11 +1034,11 @@ namespace SnakeClub
             else if (paused)
             {
                 bool strengthGuide = fixedPve != null && fixedPve.StrengthPreview;
-                Panel(strengthGuide ? new Rect(130, 590, 820, 650) : new Rect(160, 660, 760, 300), new Color(.035f, .065f, .12f, .94f));
-                Label(strengthGuide ? new Rect(200, 625, 680, 85) : new Rect(200, 700, 680, 85), "游戏已暂停", 46, Color.white, TextAnchor.MiddleCenter, true);
+                Panel(strengthGuide ? new Rect(130, 500, 820, 740) : new Rect(160, 660, 760, 300), new Color(.035f, .065f, .12f, .94f));
+                Label(strengthGuide ? new Rect(200, 525, 680, 85) : new Rect(200, 700, 680, 85), "游戏已暂停", 46, Color.white, TextAnchor.MiddleCenter, true);
                 if (strengthGuide)
                 {
-                    Label(new Rect(180, 720, 720, 280),
+                    Label(new Rect(180, 625, 720, 375),
                         (fixedPve.LocalOpeningFruit ? "开局15秒吸引附近果实，攻防强化\n防御最后3秒逐渐降低\n" : fixedPve.LocalOpeningDefense ? "开局15秒攻防强化，防御最后3秒逐渐降低\n" : fixedPve.LocalOpeningBoost ? "开局15秒攻防额外强化（含出生保护）\n" : fixedPve.LocalStrengthAdvantage ? "本局玩家自带攻防优势\n" : "") + "任意位置拖动转向 · 第二指按住加速\n" + (fixedPve.LocalFreeBoost ? "累计前8秒加速免耗身体\n" : "") + "强度足够才能吃身体，不足时弹开\n金点和弱点箭头提示目标 · 红叉提示危险\n围住对手可获得短时攻防强化\n时间到按长度排名，同长比淘汰",
                         27, new Color(.76f, .92f, .90f), TextAnchor.MiddleCenter);
                 }
