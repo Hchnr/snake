@@ -666,6 +666,12 @@ namespace SnakeClub
             if (!string.IsNullOrEmpty(squeeze)) { protection = ""; recovery = squeeze; }
         }
 
+        internal static string RecoveryWithBirthExpiry(string recovery, string squeeze, bool parallelExpiry)
+        {
+            return parallelExpiry && string.IsNullOrEmpty(squeeze) && !string.IsNullOrEmpty(recovery)
+                ? "出生保护结束\n" + recovery : recovery;
+        }
+
         internal static void ResolveStrengthGuidance(string protection, string contact, string capture, string recovery, bool intro, bool parallelExpiry,
             out bool showProtection, out bool showRecovery, out bool showIntro)
         {
@@ -838,6 +844,7 @@ namespace SnakeClub
             string squeezeText = StrengthSqueezeEscapeNotice.Text(fixedPve, state, playerId, SimulationSuspended);
             PrioritizeSqueezeGuidance(squeezeText, ref protectionText, ref recoveryText);
             bool parallelExpiry = fixedPve != null && fixedPve.LocalOpeningBoost && strengthProtectionNotice.IsExpiryActive(fixedPve, state, playerId, SimulationSuspended);
+            recoveryText = RecoveryWithBirthExpiry(recoveryText, squeezeText, parallelExpiry);
             ResolveStrengthGuidance(protectionText, strengthNotice, captureText, recoveryText, StrengthIntroVisible(), parallelExpiry,
                 out bool showProtection, out bool showRecovery, out bool showStrengthIntro);
             bool showGuidance = showProtection || showRecovery || showStrengthIntro;

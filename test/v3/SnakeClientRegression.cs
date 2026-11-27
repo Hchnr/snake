@@ -929,6 +929,15 @@ namespace SnakeClub.Tests.Editor
             Require(hurt.LastPlayerDamageTick == 80 && hurt.RecoverySuppliesUsed > 0 &&
                 hurtNotice.IsExpiryActive(hurt, hurt.RenderState(), "you", false) && !string.IsNullOrEmpty(hurtRecovery) &&
                 !hurtChoice[0] && hurtChoice[1], "actual recovery did not take priority on shield expiry");
+            var combineExpiry = typeof(SnakeGameApp).GetMethod("RecoveryWithBirthExpiry", flags);
+            Require(combineExpiry != null, "combined birth expiry guidance missing");
+            string CombineExpiry(string recovery, string squeeze, bool active) =>
+                (string)combineExpiry.Invoke(null, new object[] { recovery, squeeze, active });
+            Require(CombineExpiry(hurtRecovery, "", true) == "出生保护结束\n" + hurtRecovery,
+                "actual simultaneous recovery omitted birth protection expiry");
+            Require(CombineExpiry(hurtRecovery, "", false) == hurtRecovery && CombineExpiry("", "", true) == "" &&
+                CombineExpiry("脱困保护", "脱困保护", true) == "脱困保护",
+                "combined expiry guidance changed non-expiry or active escape messages");
             var guidancePanel = (Rect)typeof(SnakeGameApp).GetField("StrengthGuidancePanel", flags).GetValue(null);
             var contactRect = new Rect(area.x, area.y, area.width, area.height);
             Require(!guidancePanel.Overlaps(contactRect), "simultaneous notices overlap in virtual layout");

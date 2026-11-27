@@ -202,7 +202,8 @@ with tempfile.TemporaryDirectory(prefix='snake-strength-input-') as directory:
                 runInputs.Add(heading);'''
     code = inject_once(code, before, after)
     before = '            if (showProtection || showRecovery || showStrengthIntro)\n'
-    after = '''            string visibleProtectionCue = showProtection ? protectionText : "";
+    after = '''            string visibleProtectionCue = showProtection ? protectionText :
+                showRecovery && recoveryText.Contains("出生保护结束") ? "出生保护结束 · 回追并行" : "";
             if (visibleProtectionCue != strengthDiagnosticCue)
             {
                 strengthDiagnosticCue = visibleProtectionCue;
