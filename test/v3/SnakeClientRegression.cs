@@ -60,6 +60,7 @@ namespace SnakeClub.Tests.Editor
                 TestGameplayComparison();
                 TestPracticeTutorialAccess();
                 TestDepthPracticeIsolation();
+                TestRewardOfferFeedback();
                 TestBackgroundSimulation();
                 TestStrengthBodyCombat();
                 TestProtectionWarningVisual();
@@ -312,6 +313,38 @@ namespace SnakeClub.Tests.Editor
                     ((System.Collections.Generic.List<byte>)Field("runInputs").GetValue(app)).Count == 0,
                     "an already eliminated local player advanced or recorded an input");
                 Debug.Log("PASS Unity local matches stop on the elimination step");
+            }
+            finally { UnityEngine.Object.DestroyImmediate(root); }
+        }
+
+        private static void TestRewardOfferFeedback()
+        {
+            var root = new GameObject("Reward feedback regression");
+            try
+            {
+                var app = root.AddComponent<SnakeGameApp>();
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var type = typeof(SnakeGameApp);
+                FieldInfo Field(string name) => type.GetField(name, flags) ?? throw new Exception("Missing field: " + name);
+                var outcome = type.GetMethod("ApplyRewardOfferOutcome", flags);
+                var result = new ArenaState { phase = "ended" };
+                Field("state").SetValue(app, result); Field("inGame").SetValue(app, true);
+                Field("lastRewardId").SetValue(app, "offer-a");
+                outcome.Invoke(app, new object[] { "offer-a", result, new ApiReply { error = "广告响应超时，请稍后重试" } });
+                Require(((string)Field("resultNote").GetValue(app)).Contains("超时") && (string)Field("lastRewardId").GetValue(app) == "offer-a",
+                    "result screen hid the failure or discarded the retryable offer");
+                outcome.Invoke(app, new object[] { "offer-a", result, new ApiReply { ok = true, coins = 12 } });
+                Require((string)Field("resultNote").GetValue(app) == "额外金币 +12" && (string)Field("lastRewardId").GetValue(app) == "",
+                    "result screen did not show the confirmed reward");
+                Field("lastRewardId").SetValue(app, "offer-b");
+                outcome.Invoke(app, new object[] { "offer-a", result, new ApiReply { ok = true, coins = 99 } });
+                Require((string)Field("lastRewardId").GetValue(app) == "offer-b" && (string)Field("resultNote").GetValue(app) == "额外金币 +12",
+                    "stale reward callback changed a newer offer");
+                Field("state").SetValue(app, new ArenaState { phase = "running" });
+                outcome.Invoke(app, new object[] { "offer-b", result, new ApiReply { error = "广告暂不可用" } });
+                Require((string)Field("resultNote").GetValue(app) == "额外金币 +12" && (string)Field("frontNotice").GetValue(app) == "广告暂不可用",
+                    "old result callback overwrote the new match's result note");
+                Debug.Log("PASS Unity reward feedback follows the originating result and offer");
             }
             finally { UnityEngine.Object.DestroyImmediate(root); }
         }
