@@ -353,8 +353,10 @@ namespace SnakeClub
                 Panel("Color swatch", card.transform, new Rect(25, 34, 80, 95), swatches[i % swatches.Length]);
                 var thumbnail = MakeRaw("Character thumbnail", card.transform, new Rect(25, 13, 90, 130), null);
                 thumbnail.raycastTarget = false; thumbnail.enabled = false; skinThumbnails[i] = thumbnail;
-                MakeText("Name", card.transform, new Rect(125, 25, 295, 58), SkinCatalog.Get(i).Name, 30, Color.white, TextAnchor.MiddleLeft, true);
-                skinStates[i] = MakeText("Status", card.transform, new Rect(125, 90, 295, 48), "", 21, new Color(.76f, .92f, .90f), TextAnchor.MiddleLeft);
+                var cardName = MakeText("Name", card.transform, new Rect(125, 25, 295, 58), SkinCatalog.Get(i).Name, 36, Color.white, TextAnchor.MiddleLeft, true);
+                cardName.resizeTextForBestFit = true; cardName.resizeTextMinSize = 22; cardName.resizeTextMaxSize = 36;
+                skinStates[i] = MakeText("Status", card.transform, new Rect(125, 90, 295, 48), "", 28, new Color(.76f, .92f, .90f), TextAnchor.MiddleLeft);
+                skinStates[i].resizeTextForBestFit = true; skinStates[i].resizeTextMinSize = 18; skinStates[i].resizeTextMaxSize = 28;
             }
             skinPrevious = MakeButton("Previous skins", skinPage, new Rect(220, 1455, 210, 55), new Color(.13f, .30f, .37f), () => { if (skinPageIndex > 0) skinPageIndex--; });
             MakeText("Previous label", skinPrevious.transform, new Rect(0, 0, 210, 55), "上一页", 22, Color.white, TextAnchor.MiddleCenter, true);
