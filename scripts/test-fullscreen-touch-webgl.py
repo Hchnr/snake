@@ -4,6 +4,9 @@
 Temporary instrumentation reports actual simulation inputs and pause changes;
 protection is extended only in the disposable build to keep the test running.
 This does not replace device, Douyin or multitouch hardware validation.
+Set SNAKE_TOUCH_VIEWPORT_WIDTH and SNAKE_TOUCH_VIEWPORT_HEIGHT to test another
+viewport; coordinates are mapped to the centered UI and physical corners are
+also tested when the viewport differs from the 540 x 960 reference.
 """
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer

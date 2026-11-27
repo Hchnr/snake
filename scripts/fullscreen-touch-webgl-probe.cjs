@@ -10,6 +10,16 @@ const chrome = spawn(process.argv[2], [
   '--remote-debugging-port=0', '--user-data-dir=' + profile, 'about:blank'
 ], { stdio: 'ignore' });
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+// Coordinates below are authored for the 540 x 960 reference viewport.
+// Map them into the centered 1080 x 1920 Unity safe layout for other sizes.
+const viewportWidth = Number(process.env.SNAKE_TOUCH_VIEWPORT_WIDTH || 540);
+const viewportHeight = Number(process.env.SNAKE_TOUCH_VIEWPORT_HEIGHT || 960);
+if (!Number.isInteger(viewportWidth) || !Number.isInteger(viewportHeight) ||
+    viewportWidth < 240 || viewportWidth > 1440 || viewportHeight < 400 || viewportHeight > 3200)
+  throw Error('Invalid touch viewport size');
+const viewportScale = Math.min(viewportWidth / 540, viewportHeight / 960);
+const viewportLeft = (viewportWidth - 540 * viewportScale) / 2;
+const viewportTop = (viewportHeight - 960 * viewportScale) / 2;
 let ws, sequence = 0, pending = new Map(), events = [], failure;
 function call(method, params = {}) {
   const id = ++sequence;
@@ -26,7 +36,7 @@ async function waitFor(predicate, description, timeout = 12000) {
 }
 function hasSince(index, fragment) { return events.slice(index).some(e => e.includes(fragment)); }
 async function touch(type, points) { await call('Input.dispatchTouchEvent', { type, touchPoints: points }); }
-function point(x, y, id = 1) { return { x, y, id }; }
+function point(x, y, id = 1) { return { x: viewportLeft + x * viewportScale, y: viewportTop + y * viewportScale, id }; }
 async function tap(x, y) {
   await touch('touchStart', [point(x, y)]); await delay(120); await touch('touchEnd', []);
 }
@@ -68,7 +78,7 @@ async function main() {
   };
   await call('Page.enable'); await call('Runtime.enable');
   await call('Network.setUserAgentOverride', { userAgent: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0 Mobile Safari/537.36' });
-  await call('Emulation.setDeviceMetricsOverride', { width: 540, height: 960, deviceScaleFactor: 1, mobile: true });
+  await call('Emulation.setDeviceMetricsOverride', { width: viewportWidth, height: viewportHeight, deviceScaleFactor: 1, mobile: true });
   await call('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
   // CDP implementations differ on partial touchEnd arguments. Record the DOM's
   // changed and remaining IDs so a wrong release cannot produce a false pass.
@@ -100,6 +110,16 @@ async function main() {
   await drag('top-right', 530, 20, 450, 20, 128);
   await drag('bottom-left', 10, 940, 10, 860, 64);
   await drag('bottom-right', 530, 940, 450, 940, 128);
+  if (viewportWidth !== 540 || viewportHeight !== 960) {
+    // The reference-layout corners can be inset on a tall or wide screen.
+    // Exercise the physical viewport edges separately, including those margins.
+    const rx = x => (x - viewportLeft) / viewportScale;
+    const ry = y => (y - viewportTop) / viewportScale;
+    await drag('physical top-left', rx(8), ry(8), rx(8), ry(58), 192);
+    await drag('physical top-right', rx(viewportWidth - 8), ry(8), rx(viewportWidth - 58), ry(8), 128);
+    await drag('physical bottom-left', rx(8), ry(viewportHeight - 8), rx(8), ry(viewportHeight - 58), 64);
+    await drag('physical bottom-right', rx(viewportWidth - 8), ry(viewportHeight - 8), rx(viewportWidth - 58), ry(viewportHeight - 8), 128);
+  }
   await drag('minimap', 450, 175, 450, 235, 192);
   await drag('pause button', 115, 160, 55, 160, 128);
   let index = events.length;
