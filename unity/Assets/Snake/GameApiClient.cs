@@ -145,6 +145,19 @@ namespace SnakeClub
         private bool platformReady;
         private TTAppLifeCycle lifecycle;
         private RewardedAdAttempt activeAd;
+        private bool platformForeground = true, adWasForeground;
+        private void Update()
+        {
+            bool foreground = platformForeground && Application.isFocused && !applicationPaused;
+            // The host may suspend the entire JS runtime during a full-screen ad
+            // without sending focus events. Do not count a long frozen frame as
+            // foreground waiting time when it resumes.
+            activeAd?.AdvanceTimeout(Time.unscaledDeltaTime, foreground && adWasForeground);
+            adWasForeground = foreground;
+        }
+        private bool applicationPaused;
+        private void OnApplicationPause(bool paused) { applicationPaused = paused; if (paused) adWasForeground = false; }
+        private void OnApplicationFocus(bool focused) { if (!focused) adWasForeground = false; }
         internal void TrackAd(RewardedAdAttempt attempt)
         {
             if (activeAd != null && !activeAd.Finished) throw new InvalidOperationException("An ad is already active");
@@ -212,6 +225,7 @@ namespace SnakeClub
 
         private void OnPlatformShow(Dictionary<string, object> data)
         {
+            platformForeground = true;
             NotifyPlatformVisibility(true);
             try
             {
@@ -226,7 +240,7 @@ namespace SnakeClub
             catch (Exception) { /* Ignore malformed platform parameters. */ }
         }
 
-        private void OnPlatformHide() => NotifyPlatformVisibility(false);
+        private void OnPlatformHide() { platformForeground = false; adWasForeground = false; NotifyPlatformVisibility(false); }
 
         private void OnDestroy()
         {

@@ -81,7 +81,17 @@ public static class RewardedAdFlowRegression
         Require(ownerCase.Finished && calls == 0 && destroyOwner.Destroys == 1 && releases == 1,
             "owner destroyed during SDK Destroy suppresses already finishing callback");
         Reset(); var silent = new FakeRewardedAd(); var unresolved = Start(() => silent);
-        Require(!unresolved.Finished && calls == 0 && tracked != null, "missing SDK callbacks remain unresolved without invented timeout");
-        unresolved.Cancel();
+        unresolved.AdvanceTimeout(1000, false); unresolved.AdvanceTimeout(1000, true);
+        for (int i = 0; i < 715; i++) unresolved.AdvanceTimeout(.25f, true);
+        unresolved.AdvanceTimeout(float.NaN, true); unresolved.AdvanceTimeout(-1, true);
+        Require(!unresolved.Finished && calls == 0 && tracked != null, "silent SDK timed out too early");
+        for (int i = 0; i < 4; i++) unresolved.AdvanceTimeout(.25f, true);
+        silent.StaleClose(true);
+        Require(unresolved.Finished && calls == 1 && !rewarded && message.Contains("超时") &&
+            releases == 1 && silent.Destroys == 1 && tracked == null, "timeout did not fail once or allowed a late reward");
+        Reset(); var timely = new FakeRewardedAd(); var timelyAttempt = Start(() => timely);
+        for (int i = 0; i < 719; i++) timelyAttempt.AdvanceTimeout(.25f, true);
+        timely.Closed(true); timelyAttempt.AdvanceTimeout(.25f, true);
+        Require(calls == 1 && rewarded && timely.Destroys == 1, "timeout changed a timely SDK completion");
     }
 }
