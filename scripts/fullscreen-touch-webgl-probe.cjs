@@ -85,6 +85,25 @@ async function main() {
   await call('Page.addScriptToEvaluateOnNewDocument', { source: `for (const type of ['touchstart','touchend','touchcancel']) document.addEventListener(type, e => console.log('SNAKE_TOUCH_DOM ' + type + ' ' + [...e.changedTouches].map(t => t.identifier).join(',') + ' ' + [...e.touches].map(t => t.identifier).join(',')), true);` });
   await call('Page.navigate', { url: process.argv[3] });
   await waitFor(() => hasSince(0, 'SNAKE_TOUCH_HOME'), 'Unity home', 50000);
+  if (process.env.SNAKE_TOUCH_SKIN_CHECK === '1') {
+    await delay(600);
+    let index = events.length;
+    await tap(115, 755);
+    await waitFor(() => hasSince(index, 'SNAKE_TOUCH_FRONT skins'), 'open wardrobe');
+    await delay(300);
+    index = events.length; await tap(385, 500);
+    await waitFor(() => hasSince(index, 'SNAKE_TOUCH_SKIN_SELECTED 1'), 'select second skin');
+    index = events.length; await tap(270, 790);
+    await waitFor(() => hasSince(index, 'SNAKE_TOUCH_SKIN_EQUIPPED 1'), 'apply second skin');
+    await delay(300);
+    if (process.env.SNAKE_TOUCH_SKIN_SCREENSHOT) {
+      const screenshot = await call('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(process.env.SNAKE_TOUCH_SKIN_SCREENSHOT, Buffer.from(screenshot.data, 'base64'));
+    }
+    index = events.length; await tap(88, 58);
+    await waitFor(() => hasSince(index, 'SNAKE_TOUCH_FRONT home skin=1'), 'return with selected skin');
+    console.log('PASS wardrobe selection, apply and return to home');
+  }
   await delay(600); await tap(270, 910); await delay(300);
   let homeViewIndex = events.length;
   await tap(270, 600); await waitFor(() => hasSince(homeViewIndex, 'SNAKE_TOUCH_VIEW 1'), 'home view preference');
