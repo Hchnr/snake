@@ -1088,7 +1088,7 @@ static void ResultMotionCases()
     var winner = new SnakeState { id = "other", alive = true }; world.snakes.Add(winner);
     for (int i = 0; i < 12; i++) winner.segments.Add(new Point());
     world.winner = "other";
-    Check(StrengthMatchOutcome.Explain(world, "you").Contains("你的长度 10，第一名 12"), "survival without victory lacked the actual lengths");
+    Check(StrengthMatchOutcome.Explain(world, "you").Contains("你的长度 10，第一名长度 12"), "survival without victory did not identify both lengths");
     winner.segments.RemoveRange(10, 2); winner.kills = 2;
     Check(StrengthMatchOutcome.Explain(world, "you").Contains("对手淘汰更多"), "equal-length tiebreak was not explained");
     world.winner = "";
