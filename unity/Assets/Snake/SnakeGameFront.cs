@@ -634,7 +634,7 @@ namespace SnakeClub
             Label(new Rect(85, 72, 440, 55), "等级 " + Progression.Level(p.experience) + "   天赋点 " + Progression.AvailablePoints(p), 27, Color.white, TextAnchor.MiddleLeft, true);
             Label(new Rect(560, 72, 420, 55), "金币  " + p.coins, 29, new Color(1f, .82f, .43f), TextAnchor.MiddleRight, true);
             Label(new Rect(80, 205, 920, 56), "S N A K E   C L U B", 28, new Color(.50f, .96f, .88f), TextAnchor.MiddleCenter, true);
-            Label(new Rect(80, 262, 920, 120), "灵蛇秘境", 82, Color.white, TextAnchor.MiddleCenter, true);
+            Label(new Rect(80, 262, 920, 120), "小蛇吃大蛇", 82, Color.white, TextAnchor.MiddleCenter, true);
             Label(new Rect(100, 382, 880, 55), "围猎对手  ·  梦游探洞  ·  每日争榜", 30, new Color(.76f, .91f, .93f), TextAnchor.MiddleCenter);
             if (homeAvatar != null && homeAvatar.Texture != null) GUI.DrawTexture(new Rect(260, 465, 560, 540), homeAvatar.Texture, ScaleMode.ScaleToFit, true);
             if (Button(new Rect(120, 1035, 840, 142), busy ? "正在准备…" : "开始吞食试玩", new Color(.08f, .61f, .50f))) StartMain();

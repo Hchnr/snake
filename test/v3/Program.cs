@@ -351,7 +351,9 @@ static void DouyinExchangeCases()
         return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"error\":0,\"openid\":\"registered\",\"anonymous_openid\":\"visitor\",\"session_key\":\"private\"}") });
     });
     var client = new HttpClient(handler);
-    var exchange = new DouyinSessionExchange(client, TimeSpan.FromMilliseconds(100));
+    // The successful stub should use the production deadline; a separate
+    // never-completing handler below exercises timeout behavior explicitly.
+    var exchange = new DouyinSessionExchange(client);
     var result = exchange.Exchange("app id", "secret&key", "code+1", "anon/2").GetAwaiter().GetResult();
     Check(result.Status == 200 && result.OpenId == "registered" && result.AnonymousId == "visitor", "registered/anonymous identities were not retained");
     Check(seenUrl.Contains("appid=app%20id") && seenUrl.Contains("secret=secret%26key") && seenUrl.Contains("code=code%2B1") && seenUrl.Contains("anonymous_code=anon%2F2"), "request parameters were not encoded");

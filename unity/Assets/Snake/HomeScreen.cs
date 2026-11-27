@@ -82,7 +82,7 @@ namespace SnakeClub
             coins = MakeText("Coins", layout, new Rect(580, 62, 390, 70), "金币 0", 29, new Color(1f, .88f, .54f), TextAnchor.MiddleRight, true);
 
             MakeText("Brand", layout, new Rect(140, 190, 800, 54), "S N A K E   C L U B", 26, new Color(.69f, 1f, .93f), TextAnchor.MiddleCenter, true);
-            var title = MakeText("Title", layout, new Rect(100, 245, 880, 120), "灵蛇秘境", 82, Color.white, TextAnchor.MiddleCenter, true);
+            var title = MakeText("Title", layout, new Rect(100, 245, 880, 120), "小蛇吃大蛇", 82, Color.white, TextAnchor.MiddleCenter, true);
             var titleShadow = title.gameObject.AddComponent<Shadow>(); titleShadow.effectColor = new Color(.02f, .14f, .22f, .8f); titleShadow.effectDistance = new Vector2(0, -5);
             MakeText("Subtitle", layout, new Rect(130, 365, 820, 55), "围猎对手  ·  成为今日蛇王", 29, new Color(.83f, .99f, .95f), TextAnchor.MiddleCenter);
 
