@@ -1007,17 +1007,19 @@ namespace SnakeClub.Core
         private const int HoldTicks = 12, ForgetTicks = 40;
         private const float ReturnClearance = 12f;
         private static readonly float[] VerticalOffsets = { 0, -56, -112, -168, -224, -280, -336, -392 };
+        private static readonly float[] LateralOffsets = { 0, -150, 150 };
         private struct ReservedArea { public float x, y, width, height; }
         private struct PreviousSlot { public int index, changedAt, seenAt; }
         private readonly List<Point> placed = new List<Point>(8);
         private readonly List<Point> anchors = new List<Point>(8);
         private readonly List<ReservedArea> reserved = new List<ReservedArea>(2);
+        private readonly List<ReservedArea> preferredAvoidance = new List<ReservedArea>(8);
         private readonly Dictionary<string, PreviousSlot> history = new Dictionary<string, PreviousSlot>();
         private readonly List<string> expired = new List<string>(8);
         private int tick = -1;
 
         // Reset clears only this draw's geometry; ClearHistory is used on a new match.
-        public void Reset() { placed.Clear(); anchors.Clear(); reserved.Clear(); }
+        public void Reset() { placed.Clear(); anchors.Clear(); reserved.Clear(); preferredAvoidance.Clear(); }
         public void ClearHistory() { Reset(); history.Clear(); tick = -1; }
         public void BeginFrame(int currentTick)
         {
@@ -1033,32 +1035,46 @@ namespace SnakeClub.Core
         {
             if (width > 0 && height > 0) reserved.Add(new ReservedArea { x = x, y = y, width = width, height = height });
         }
+        // Opponent artwork is a preference, not a hard obstacle: in a crowded
+        // scene the player's label remains more useful than no label at all.
+        public void PreferAvoid(float x, float y, float width, float height)
+        {
+            if (width > 0 && height > 0) preferredAvoidance.Add(new ReservedArea { x = x, y = y, width = width, height = height });
+        }
         public void AddAnchor(Point anchor)
         {
             if (!float.IsNaN(anchor.x) && !float.IsNaN(anchor.y) && !float.IsInfinity(anchor.x) && !float.IsInfinity(anchor.y)) anchors.Add(anchor);
         }
 
         public bool TryPlace(Point anchor, out Point topLeft) => TryPlace(null, anchor, out topLeft);
-        public bool TryPlace(string id, Point anchor, out Point topLeft)
+        public bool TryPlace(string id, Point anchor, out Point topLeft) => Place(id, anchor, false, out topLeft);
+        public bool TryPlacePlayer(string id, Point anchor, out Point topLeft) => Place(id, anchor, true, out topLeft);
+        private bool Place(string id, Point anchor, bool lateral, out Point topLeft)
         {
             topLeft = default;
             if (float.IsNaN(anchor.x) || float.IsNaN(anchor.y) || float.IsInfinity(anchor.x) || float.IsInfinity(anchor.y) ||
                 anchor.x < 90 || anchor.x > 990 || anchor.y < 260 || anchor.y > 1430) return false;
             PreviousSlot old = default;
             bool remembered = !string.IsNullOrEmpty(id) && history.TryGetValue(id, out old);
-            int chosen = -1;
-            if (remembered && Candidate(anchor, old.index, 0, out topLeft))
+            int chosen = -1, count = VerticalOffsets.Length * (lateral ? LateralOffsets.Length : 1);
+            // First seek a slot clear of other artwork. If none exists, retry
+            // against only hard obstacles rather than losing the player's label.
+            for (int pass = 0; pass < (lateral ? 2 : 1) && chosen < 0; pass++)
             {
-                chosen = old.index;
-                // Return to a better slot only after the hold and with extra clearance.
-                if ((long)tick - old.changedAt >= HoldTicks)
-                    for (int i = 0; i < old.index; i++)
-                        if (Candidate(anchor, i, ReturnClearance, out var preferred))
-                        { chosen = i; topLeft = preferred; break; }
+                bool avoidSoft = lateral && pass == 0;
+                if (remembered && Candidate(anchor, old.index, 0, lateral, avoidSoft, out topLeft))
+                {
+                    chosen = old.index;
+                    // Return to a better slot only after the hold and with extra clearance.
+                    if ((long)tick - old.changedAt >= HoldTicks)
+                        for (int i = 0; i < old.index; i++)
+                            if (Candidate(anchor, i, ReturnClearance, lateral, avoidSoft, out var preferred))
+                            { chosen = i; topLeft = preferred; break; }
+                }
+                if (chosen < 0)
+                    for (int i = 0; i < count; i++)
+                        if (Candidate(anchor, i, 0, lateral, avoidSoft, out topLeft)) { chosen = i; break; }
             }
-            if (chosen < 0)
-                for (int i = 0; i < VerticalOffsets.Length; i++)
-                    if (Candidate(anchor, i, 0, out topLeft)) { chosen = i; break; }
             if (chosen < 0)
             {
                 if (remembered) { old.seenAt = tick; history[id] = old; }
@@ -1070,16 +1086,20 @@ namespace SnakeClub.Core
             return true;
         }
 
-        private bool Candidate(Point anchor, int index, float extra, out Point topLeft)
+        private bool Candidate(Point anchor, int index, float extra, bool lateral, bool avoidSoft, out Point topLeft)
         {
             topLeft = default;
-            if (index < 0 || index >= VerticalOffsets.Length) return false;
-            float x = Math.Max(30, Math.Min(840, anchor.x - Width / 2));
-            float y = Math.Max(400, Math.Min(1450 - Height, anchor.y - 68 + VerticalOffsets[index]));
+            int vertical = lateral ? index / LateralOffsets.Length : index;
+            if (index < 0 || vertical >= VerticalOffsets.Length) return false;
+            float x = Math.Max(30, Math.Min(840, anchor.x - Width / 2 + (lateral ? LateralOffsets[index % LateralOffsets.Length] : 0)));
+            float y = Math.Max(400, Math.Min(1450 - Height, anchor.y - 68 + VerticalOffsets[vertical]));
             // The anchor sits above the avatar; never move a plate down onto its face.
             if (y + Height > anchor.y - 12) return false;
             if (x + Width + extra > 760 && y - extra < 545) return false;
             foreach (var area in reserved)
+                if (x < area.x + area.width + 6 + extra && x + Width + 6 + extra > area.x &&
+                    y < area.y + area.height + 6 + extra && y + Height + 6 + extra > area.y) return false;
+            if (avoidSoft) foreach (var area in preferredAvoidance)
                 if (x < area.x + area.width + 6 + extra && x + Width + 6 + extra > area.x &&
                     y < area.y + area.height + 6 + extra && y + Height + 6 + extra > area.y) return false;
             foreach (var head in anchors)

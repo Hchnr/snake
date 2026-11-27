@@ -586,6 +586,23 @@ static void ContactNoticeLayoutCases()
 static void NameplateCases()
 {
     var layout = new NameplateLayout();
+    var playerAnchor = new Point(540, 800);
+    layout.BeginFrame(1); layout.AddAnchor(playerAnchor); layout.PreferAvoid(510, 710, 160, 90);
+    Check(layout.TryPlacePlayer("you", playerAnchor, out var lateral) && lateral.x == 285 && lateral.y == 732,
+        "player label did not move beside overlapping opponent artwork");
+    layout.BeginFrame(2); layout.AddAnchor(playerAnchor);
+    Check(layout.TryPlacePlayer("you", playerAnchor, out var held) && held.x == lateral.x,
+        "player label immediately jumped back when artwork moved");
+    layout.BeginFrame(14); layout.AddAnchor(playerAnchor);
+    Check(layout.TryPlacePlayer("you", playerAnchor, out var returned) && returned.x == 435,
+        "player label did not return after sustained clearance");
+    layout.ClearHistory(); layout.BeginFrame(1); layout.AddAnchor(playerAnchor);
+    layout.PreferAvoid(0, 0, 1080, 1920);
+    Check(layout.TryPlacePlayer("you", playerAnchor, out var fallback) && fallback.x == 435 && fallback.y == 732,
+        "fully crowded opponent artwork hid the player label");
+    layout.BeginFrame(2); layout.AddAnchor(playerAnchor); layout.Reserve(0, 0, 1080, 1920);
+    Check(!layout.TryPlacePlayer("you", playerAnchor, out _), "soft fallback ignored a hard obstacle");
+    layout.ClearHistory();
     // The opponent's anchor may be below the player's sprite top while its
     // otherwise valid label falls across the player's actual illustration.
     var playerTop = new Point(538, 610); var crowdedOpponent = new Point(600, 816);

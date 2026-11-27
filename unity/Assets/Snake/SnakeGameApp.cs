@@ -1450,6 +1450,12 @@ namespace SnakeClub
                 if (screen.z <= 0) continue;
                 Vector2 anchor = ToVirtual(screen);
                 nameplates.AddAnchor(new Point(anchor.x, anchor.y));
+                if (snake.id != playerId && (arenaRenderer.TryCharacterScreenBounds(snake.id, out Rect bounds) ||
+                    arenaRenderer.TryFallbackHeadScreenBounds(snake.segments[0], out bounds)))
+                {
+                    Rect area = NameplateVirtualBounds(bounds, Screen.safeArea, Screen.width, Screen.height);
+                    nameplates.PreferAvoid(area.x, area.y, area.width, area.height);
+                }
             }
             // The player and a marked objective get the first available slots.
             for (int priority = 0; priority < 3; priority++)
@@ -1479,7 +1485,9 @@ namespace SnakeClub
             Vector3 projected = arenaRenderer.NameplateAnchor(snake.id, snake.segments[0]);
             if (projected.z <= 0) return;
             Vector2 position = ToVirtual(projected);
-            if (!nameplates.TryPlace(snake.id, new Point(position.x, position.y), out var placed)) return;
+            Point anchor = new Point(position.x, position.y);
+            if (!(snake.id == playerId ? nameplates.TryPlacePlayer(snake.id, anchor, out var placed) :
+                nameplates.TryPlace(snake.id, anchor, out placed))) return;
             string label = snake.id == playerId ? "你" : snake.bot ? snake.name : "玩家 " + snake.name;
             if (fixedPve != null && fixedPve.StrengthPreview)
                 label = snake.id == playerId ? "你" : snake.bot ? "AI" : "玩家";
