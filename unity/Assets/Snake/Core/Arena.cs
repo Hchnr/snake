@@ -185,7 +185,7 @@ namespace SnakeClub.Core
             if (winner == null) return "时间到 · 你成功存活";
             int winningLength = winner.segments.Count;
             return length == winningLength ? "时间到 · 长度相同，对手淘汰更多" :
-                "时间到 · 你的长度 " + length + "，第一名 " + winningLength;
+                "时间到 · 你的长度 " + length + "，第一名长度 " + winningLength;
         }
     }
 
