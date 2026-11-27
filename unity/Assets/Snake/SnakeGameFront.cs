@@ -79,11 +79,8 @@ namespace SnakeClub
                 () =>
                 {
                     if (string.IsNullOrEmpty(lastRewardId) || lastRewardCoins <= 0) return;
-                    StartRewarded(lastRewardKind, lastRewardId, 0, reply =>
-                    {
-                        if (reply.ok) { lastRewardId = ""; resultNote = "额外金币 +" + reply.coins; }
-                        else if (!string.IsNullOrEmpty(reply.error)) resultNote = reply.error;
-                    });
+                    string source = lastRewardId; ArenaState origin = state;
+                    StartRewarded(lastRewardKind, source, 0, reply => ApplyRewardOfferOutcome(source, origin, reply));
                 });
         }
 
@@ -914,7 +911,18 @@ namespace SnakeClub
             if (string.IsNullOrEmpty(lastRewardId) || lastRewardCoins <= 0 || !GamePlatform.HasRewardedAds(api)) return;
             if (!SmallButton(rect, "看广告再得 " + lastRewardCoins + " 金币", new Color(.25f, .40f, .55f), 25)) return;
             string source = lastRewardId, kind = lastRewardKind;
-            StartRewarded(kind, source, 0, reply => { if (reply.ok) { lastRewardId = ""; frontNotice = "额外金币 +" + reply.coins; } });
+            ArenaState origin = inGame && state != null && state.phase == "ended" ? state : null;
+            StartRewarded(kind, source, 0, reply => ApplyRewardOfferOutcome(source, origin, reply));
+        }
+
+        private void ApplyRewardOfferOutcome(string source, ArenaState origin, ApiReply reply)
+        {
+            if (reply == null || string.IsNullOrEmpty(source) || lastRewardId != source) return;
+            if (reply.ok) lastRewardId = "";
+            string message = reply.ok ? "额外金币 +" + reply.coins : reply.error;
+            if (string.IsNullOrEmpty(message)) return;
+            if (origin != null && inGame && ReferenceEquals(state, origin) && state.phase == "ended") resultNote = message;
+            else frontNotice = message;
         }
 
         private void StartRewarded(string kind, string source, int index, Action<ApiReply> after)
