@@ -7,6 +7,7 @@ This does not replace device, Douyin or multitouch hardware validation.
 Set SNAKE_TOUCH_VIEWPORT_WIDTH and SNAKE_TOUCH_VIEWPORT_HEIGHT to test another
 viewport; coordinates are mapped to the centered UI and physical corners are
 also tested when the viewport differs from the 540 x 960 reference.
+Set SNAKE_TOUCH_SKIN_CHECK=1 to exercise selecting a skin and returning home.
 """
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -58,6 +59,14 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
     before = '        [NonSerialized] private bool initializedInDomain;'
     after = '        private bool touchDiagnosticHome;\n' + before
     code = inject_once(code, before, after)
+    if os.environ.get('SNAKE_TOUCH_SKIN_CHECK') == '1':
+        before = '        [NonSerialized] private bool initializedInDomain;'
+        code = inject_once(code, before, '        private string touchDiagnosticFront;\n' + before)
+        before = '            bool homeVisible = !inGame && (frontPage == "home" || frontPage == "skins") && !developerRooms;'
+        after = '''            if (!inGame && frontPage != touchDiagnosticFront)
+            { touchDiagnosticFront = frontPage; Debug.Log("SNAKE_TOUCH_FRONT " + frontPage + " skin=" + EffectiveSkin); }
+''' + before
+        code = inject_once(code, before, after)
     before = '                    if (resultVisible)\n                    {\n                        SnakeState own = state.snakes.Find(s => s.id == playerId);'
     after = '                    if (homeVisible && frontPage == "home" && !touchDiagnosticHome) { touchDiagnosticHome = true; Debug.Log("SNAKE_TOUCH_HOME"); }\n' + before
     code = inject_once(code, before, after)
@@ -107,6 +116,10 @@ with tempfile.TemporaryDirectory(prefix='snake-touch-webgl-') as directory:
     app_path.write_text(code)
     front_path = project / 'Assets/Snake/SnakeGameFront.cs'
     front = front_path.read_text()
+    if os.environ.get('SNAKE_TOUCH_SKIN_CHECK') == '1':
+        before = '                index => previewSkin = index, EquipPreviewSkin, TrialPreviewSkin);'
+        after = '                index => { previewSkin = index; Debug.Log("SNAKE_TOUCH_SKIN_SELECTED " + index); }, index => { EquipPreviewSkin(index); Debug.Log("SNAKE_TOUCH_SKIN_EQUIPPED " + EffectiveSkin); }, TrialPreviewSkin);'
+        front = inject_once(front, before, after)
     before = '            viewPreference = GrowthView.NextPreference(viewPreference);'
     after = before + '\n            Debug.Log("SNAKE_TOUCH_VIEW " + viewPreference);'
     front_path.write_text(inject_once(front, before, after))
